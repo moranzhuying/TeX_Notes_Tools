@@ -32,9 +32,12 @@ MENU = [
     ("2", "笔记工作区管理（仓库状态 / 批量提交 / 建仓库）", "manager/manager.py", "面板"),
     ("3", "符号库管理", "symbols/symbols.py", "面板"),
     ("4", "写作进度追踪表", "progress/progress.py", "后台"),
-    ("5", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked"),
-    ("6", "配置路径检查与修复", "guard/sync_paths.py", "参数:"),
-    ("7", "提交本工具集到 GitHub", "guard/commit.py", "面板"),
+    ("5", "从模板新建笔记", "maintain/new_note.py", "面板"),
+    ("6", "笔记工具（提交 / 切换习题编排模式）", "maintain/note_tools.py", "面板"),
+    ("7", "清理编译产物（aux / log / xdv …）", "maintain/clean_aux.py", "面板"),
+    ("8", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked"),
+    ("9", "配置路径检查与修复", "guard/sync_paths.py", "参数:"),
+    ("10", "提交本工具集到 GitHub", "guard/commit.py", "面板"),
 ]
 
 
@@ -54,7 +57,7 @@ def show_menu():
     print(f"  工具根：{TOOLS_ROOT}")
     print("-" * 62)
     for no, title, rel, _ in MENU:
-        mark = "*" if no == "7" else " "
+        mark = "*" if no == "10" else " "
         print(f" {mark}{no}. {title}")
     print("-" * 62)
     print("  0. 退出")

@@ -2,8 +2,6 @@
 
 一套维护本地 LaTeX 笔记的工具，配合「笔记写作」等模板使用。
 
-**本目录既是运行位置，也是发布仓库** —— 每个脚本只有一份，改完直接提交即可，不需要在「本机副本」与「仓库副本」之间手工同步。
-
 | 脚本 | 用途 | 详细说明 |
 |---|---|---|
 | `launcher.py` | **总面板**：列出并调起下面各工具 | 见下 |
@@ -11,6 +9,9 @@
 | `manager/manager.py` | 笔记工作区管理：仓库状态 / 批量提交 / 建仓库 | `manager.md` |
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 | 见下 |
 | `progress/progress.py` | 写作进度追踪：扫描笔记并在浏览器中查看 | `progress.md`、`progress_design.md` |
+| `maintain/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
+| `maintain/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
+| `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …） | 见下 |
 | `guard/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `guard/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
@@ -171,7 +172,7 @@ stagnant_days = 14
 recent_count = 6
 ```
 
-## check_sensitive.py — 提交前本机信息扫描
+## check_sensitive.py — 提交前扫描本机信息
 
 防止把本机路径、用户名或项目专有词推进公开仓库。三种模式：
 
@@ -206,6 +207,10 @@ Tools/
 │   ├── symbols.py / symbols.md / symbols.conf(.example)
 ├── progress/              写作进度追踪
 │   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
+├── maintain/              维护与创建
+│   ├── new_note.py       从模板新建一本笔记
+│   ├── note_tools.py     单本笔记的入口（提交 / 习题模式）
+│   └── clean_aux.py      清理编译产物
 └── guard/                 防护与提交
     ├── git_setup.py       Git 基本信息（环境检测 / 账户 / SSH）
     ├── check_sensitive.py 提交前本机信息扫描
@@ -217,7 +222,46 @@ Tools/
 直接运行 `python launcher.py` 即可进入总面板；也可以进入子目录单独运行某个脚本
 （脚本的配置与运行档案都放在**它自己所在的目录**，所以单独运行同样正常）。
 
-## 生成的档案（仅在本机，勿入库）
+## new_note.py — 从模板新建笔记
+
+开始一本新笔记的标准动作是多步手工操作：复制骨架 → 清掉模板自带的测试章节 →
+`git init` → 建远程 → 首推。本工具一步做完。
+
+```bash
+python maintain/new_note.py <笔记名>                 # 只建本地仓库
+python maintain/new_note.py <笔记名> --push          # 同时建 GitHub 仓库并推送
+python maintain/new_note.py <笔记名> --dry-run       # 预演，不写任何文件
+```
+
+- 只复制**源码与配置**（`.gitignore`/`.gitattributes`/`structure.sty`/脚本三件套/`Content`/`Figures` 等），
+  跳过编译产物与 `__pycache__`。
+- 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`；
+  `main.tex` 的 `\title` 与首个 `\part` 会改成笔记名。
+- 仓库分支用 `master`（与既有笔记仓库一致）。
+
+## note_tools.py — 单本笔记的入口
+
+笔记目录里的 `commit.py` / `setup_mode.py` 必须**在笔记目录内**运行（前者依赖同目录的 `.git`，
+后者读写同目录的 `Content/`）。本工具让你不必先 `cd` 过去。
+
+列表会显示每本笔记的未提交改动数，选中后可选「提交并推送」或「切换习题编排模式」。
+
+## clean_aux.py — 清理编译产物
+
+编译一次就会留下 `.aux/.log/.xdv/.fls/...` 一堆中间文件，它们被 `.gitignore` 忽略、
+但会一直堆积。本工具按仓库分组列出占用，确认后再删。
+
+```bash
+python maintain/clean_aux.py                 # 只列出（默认）
+python maintain/clean_aux.py --write         # 删除（先确认）
+python maintain/clean_aux.py --write --yes   # 删除且不确认
+python maintain/clean_aux.py --with-pdf      # 连同 PDF 一起清
+python maintain/clean_aux.py --area notes    # 只处理某区域：notes / template / tools / all
+```
+
+**默认不动 PDF**（那通常是你真正想留的东西），且只按扩展名匹配编译产物，不会碰到源码。
+
+## 生成的档案（仅在本机）
 
 | 文件 | 说明 |
 |---|---|

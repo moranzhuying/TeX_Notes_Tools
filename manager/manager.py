@@ -21,6 +21,14 @@ from pathlib import Path
 
 CONF_NAME = "manager.conf"
 
+# 本脚本在 <Tools>/manager/ 下，向上两级即工作区根
+TOOLS_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE = TOOLS_DIR.parent
+
+# 本脚本在 <Tools>/manager/ 下，向上两级即工作区根
+TOOLS_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE = TOOLS_DIR.parent
+
 PANEL = """==============================================================
   笔记工作区管理面板
 ==============================================================
@@ -214,11 +222,88 @@ def repos(root):
     return [d for d in subdirs(root) if (d / ".git").is_dir()]
 
 
+def zones(cfg):
+    """列出所有「区域」：[(区域名, 路径), ...]
+
+    笔记区取 manager.conf 的 root；工作区下的其它目录若其子目录里有 git 仓库，
+    也算一个区域（模板区、工具区）。这样状态总览与批量提交就能覆盖整个工作区，
+    而不只是笔记区。
+    """
+    out = []
+    notes = cfg.get("root", "")
+    notes_p = Path(notes) if notes else None
+    if notes_p and notes_p.is_dir():
+        out.append(("笔记区", notes_p))
+
+    if not WORKSPACE.is_dir():
+        return out
+    for e in sorted(WORKSPACE.iterdir()):
+        if not e.is_dir() or e.name.startswith(".") or e.name.startswith("_"):
+            continue
+        if notes_p and e == notes_p:
+            continue
+        if e == TOOLS_DIR:
+            out.append(("工具区", e))
+            continue
+        try:
+            has_repo = any(sub.is_dir() and (sub / ".git").is_dir() for sub in e.iterdir())
+        except OSError:
+            has_repo = False
+        if has_repo:
+            out.append((e.name, e))
+    return out
+
+
+def zone_repos(zpath):
+    """区域内的仓库列表。
+
+    除了「其下有 .git 的子目录」，还要看**该目录自身**是不是仓库 ——
+    工具区（Tools/）本身就是仓库，没有夹一层子目录。
+    """
+    out = []
+    if (zpath / ".git").is_dir():
+        out.append(zpath)
+    out += [d for d in subdirs(zpath) if (d / ".git").is_dir()]
+    return out
+
+
+def zones(cfg):
+    """列出所有「区域」：[(区域名, 路径), ...]
+
+    笔记区取 manager.conf 的 root；工作区下的其它目录若其子目录里有 git 仓库，
+    也算一个区域（模板区、工具区）。这样状态总览与批量提交就能覆盖整个工作区，
+    而不只是笔记区。
+    """
+    out = []
+    notes = cfg.get("root", "")
+    notes_p = Path(notes) if notes else None
+    if notes_p and notes_p.is_dir():
+        out.append(("笔记区", notes_p))
+
+    if not WORKSPACE.is_dir():
+        return out
+    for e in sorted(WORKSPACE.iterdir()):
+        if not e.is_dir() or e.name.startswith(".") or e.name.startswith("_"):
+            continue
+        if notes_p and e == notes_p:
+            continue
+        if e == TOOLS_DIR:
+            out.append(("工具区", e))
+            continue
+        try:
+            has_repo = any(sub.is_dir() and (sub / ".git").is_dir() for sub in e.iterdir())
+        except OSError:
+            has_repo = False
+        if has_repo:
+            out.append((e.name, e))
+    return out
+
+
 # ---------------------------------------------------------------- 功能
 
 
 def set_root(cfg):
-    print("【四】设置笔记根目录\n")
+    print("【一】设置笔记根目录\n")
     print(f"  当前：{cfg.get('root') or '（未设置）'}\n")
     new = input("新的根目录（回车保持不变）：").strip().strip('"')
     if not new:
@@ -243,79 +328,80 @@ def set_root(cfg):
 
 
 def show_status(cfg):
-    root = cfg.get("root")
-    print("【五】各仓库状态\n")
-    if not root or not Path(root).is_dir():
-        print("  ✗ 尚未设置有效的笔记根目录（请先用选项 4）。")
-        return
-    ds = subdirs(root)
-    rs = [d for d in ds if (d / ".git").is_dir()]
-    if not rs:
-        print("  未找到 git 仓库。")
+    print("【二】各仓库状态\n")
+    zs = zones(cfg)
+    if not zs:
+        print("  ✗ 没有找到任何区域（请先用选项 1 设置笔记根目录）。")
         return
 
-    print(f"  {'文件夹':<36} {'分支':<8} {'改动':>4} {'领先/落后':>10}  远程")
-    print("  " + "-" * 88)
-    for d in rs:
-        _, br, _ = git(["branch", "--show-current"], cwd=d)
-        _, st, _ = git(["status", "--porcelain"], cwd=d)
-        _, rem, _ = git(["remote", "get-url", "origin"], cwd=d)
-        ahead = behind = "-"
-        if rem:
-            ok, out, _ = git(["rev-list", "--left-right", "--count",
-                              f"origin/{br or 'master'}...HEAD"], cwd=d)
-            if ok and out:
-                parts = out.split()
-                if len(parts) == 2:
-                    behind, ahead = parts[0], parts[1]
-        repo = rem.rstrip("/").split("/")[-1].replace(".git", "") if rem else "✗ 无远程"
-        n = len(st.splitlines()) if st else 0
-        mark = "✓" if (rem and n == 0 and ahead in ("0", "-")) else ("!" if n else "")
-        track = f"{ahead}/{behind}" if ahead != "-" else "—"
-        print(f"  {d.name:<36} {br or '-':<8} {n:>4} {track:>9}  {repo} {mark}")
+    total = 0
+    for zname, zpath in zs:
+        rs = zone_repos(zpath)
+        print(f"  【{zname}】{zpath}")
+        if not rs:
+            print("    （没有 git 仓库）\n")
+            continue
+        print(f"    {'文件夹':<34} {'分支':<8} {'改动':>4} {'领先/落后':>10}  远程")
+        print("    " + "-" * 84)
+        for d in rs:
+            _, br, _ = git(["branch", "--show-current"], cwd=d)
+            _, st, _ = git(["status", "--porcelain"], cwd=d)
+            _, rem, _ = git(["remote", "get-url", "origin"], cwd=d)
+            ahead = behind = "-"
+            if rem:
+                ok, out, _ = git(["rev-list", "--left-right", "--count",
+                                  f"origin/{br or 'master'}...HEAD"], cwd=d)
+                if ok and out:
+                    parts = out.split()
+                    if len(parts) == 2:
+                        behind, ahead = parts[0], parts[1]
+            repo = rem.rstrip("/").split("/")[-1].replace(".git", "") if rem else "✗ 无远程"
+            n = len(st.splitlines()) if st else 0
+            mark = "✓" if (rem and n == 0 and ahead in ("0", "-")) else ("!" if n else "")
+            track = f"{ahead}/{behind}" if ahead != "-" else "—"
+            print(f"    {d.name:<34} {br or '-':<8} {n:>4} {track:>9}  {repo} {mark}")
+        total += len(rs)
+        print()
 
-    skip = set(cfg.get("ignore", "").replace("，", ",").split(","))
-    skip.discard("")
-    no_repo = [d for d in ds
-               if not (d / ".git").is_dir()
-               and d.name not in skip
-               and "rchieved" not in d.name]
-    if no_repo:
-        print(f"\n  未入版本控制的子文件夹（{len(no_repo)} 个）：")
-        for d in no_repo:
-            print(f"    {d.name}")
-        print("    ↓ 可用面板选项 7 为其创建仓库")
-
-
+    print(f"  合计 {total} 个仓库")
 def pick_repos(cfg, skip_clean=False):
-    """让用户选择要操作的仓库；返回选中的目录列表。"""
-    root = cfg.get("root")
-    rs = [d for d in subdirs(root) if (d / ".git").is_dir()] if root else []
-    if skip_clean:
-        rs = [d for d in rs if git(["status", "--porcelain"], cwd=d)[1]]
-    if not rs:
+    """让用户选择要操作的仓库（跨所有区域）；返回选中的目录列表。"""
+    items = []
+    for zname, zpath in zones(cfg):
+        for d in zone_repos(zpath):
+            if skip_clean and not git(["status", "--porcelain"], cwd=d)[1]:
+                continue
+            items.append((zname, d))
+
+    if not items:
         print("  没有符合条件的仓库。")
         return []
+
     print("  可操作的仓库：")
-    for i, d in enumerate(rs, 1):
+    cur = None
+    for i, (zname, d) in enumerate(items, 1):
+        if zname != cur:
+            print(f"    [{zname}]")
+            cur = zname
         n = len(git(["status", "--porcelain"], cwd=d)[1].splitlines())
         print(f"    {i:>2}. {d.name:<38} {n} 项改动")
+
     print("\n  输入编号（英文逗号分隔，回车＝全选，0＝取消）：")
     sel = input("  > ").strip()
     if sel == "0":
         return []
     if not sel:
-        return rs
+        return [d for _, d in items]
     out = []
     for s in sel.replace("，", ",").split(","):
         s = s.strip()
-        if s.isdigit() and 1 <= int(s) <= len(rs):
-            out.append(rs[int(s) - 1])
+        if s.isdigit() and 1 <= int(s) <= len(items):
+            out.append(items[int(s) - 1][1])
     return out
 
 
 def commit_push_all(cfg):
-    print("【六】批量提交并推送\n")
+    print("【三】批量提交并推送\n")
     targets = pick_repos(cfg, skip_clean=True)
     if not targets:
         return
@@ -358,10 +444,10 @@ def commit_push_all(cfg):
 
 
 def create_repo(cfg):
-    print("【七】为未入版本控制的文件夹创建仓库\n")
+    print("【四】为未入版本控制的文件夹创建仓库\n")
     root = cfg.get("root")
     if not root or not Path(root).is_dir():
-        print("  ✗ 尚未设置有效的笔记根目录（请先用选项 4）。")
+        print("  ✗ 尚未设置有效的笔记根目录（请先用选项 1）。")
         return
     skip = set(cfg.get("ignore", "").replace("，", ",").split(","))
     skip.discard("")
