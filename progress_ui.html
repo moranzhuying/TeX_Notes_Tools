@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>写作进度追踪表</title>
+<style>
+:root{
+  --bg:#1c1c1b; --bg2:#252524; --bg3:#313130;
+  --fg:#f0f0ee; --fg2:#b4b2a9; --fg3:#888780;
+  --bd:rgba(255,255,255,.13); --bd2:rgba(255,255,255,.26);
+  --blue:#4a9be8; --gray-mid:#8b8982; --gray-dark:#5f5e5a; --orange:#ef9f27;
+  --green:#639922;
+}
+html[data-theme="light"]{
+  --bg:#ffffff; --bg2:#f5f5f4; --bg3:#e8e8e6;
+  --fg:#1a1a1a; --fg2:#5f5e5a; --fg3:#8b8982;
+  --bd:rgba(0,0,0,.12); --bd2:rgba(0,0,0,.25);
+  --blue:#2f7fca; --gray-mid:#a9a7a0; --gray-dark:#c4c2ba; --orange:#c9821a;
+  --green:#4f7c1b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:13px; line-height:1.5;
+}
+.mono{font-family:"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+button{font-family:inherit;font-size:12px;color:var(--fg);background:transparent;
+  border:.5px solid var(--bd2);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{background:var(--bg2)}
+button.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+button.pri:hover{filter:brightness(1.08)}
+button.on{background:var(--bg3)}
+.ico{width:14px;height:14px;display:inline-block;vertical-align:-2px}
+.ico-btn{display:inline-flex;align-items:center;gap:5px}
+
+/* 顶栏 */
+#topbar{display:flex;align-items:center;gap:10px;padding:8px 16px;
+  border-bottom:.5px solid var(--bd);position:sticky;top:0;background:var(--bg);z-index:20}
+#topbar .title{font-size:14px;font-weight:500;margin-right:4px}
+#topbar .sp{flex:1}
+#svc{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2)}
+#svc .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+#svc.off .dot{background:var(--orange)}
+.tstamp{font-size:12px;color:var(--fg3)}
+
+/* 布局 */
+.layout{display:flex;min-height:calc(100vh - 45px)}
+nav{width:150px;flex:0 0 150px;border-right:.5px solid var(--bd);padding:10px 8px}
+nav .item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:7px;
+  cursor:pointer;font-size:13px;color:var(--fg2);margin-bottom:4px}
+nav .item:hover{background:var(--bg2)}
+nav .item.on{background:var(--bg2);color:var(--fg);font-weight:500}
+main{flex:1;min-width:0;padding:16px 20px 40px}
+.sec-h{font-size:13px;font-weight:500;color:var(--fg2);margin:0 0 10px}
+.card{background:var(--bg2);border-radius:10px;padding:14px 16px}
+.card+.card{margin-top:12px}
+
+/* 进度条 */
+.bar{display:flex;gap:2px;height:9px;border-radius:3px;overflow:hidden;background:var(--bg3)}
+.bar span{display:block;min-width:0}
+.sw{background:var(--blue)} .se{background:var(--gray-mid)} .sm{background:var(--gray-dark)}
+
+/* 续写区 */
+#resume{margin-bottom:14px}
+#resume .row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;cursor:pointer}
+#resume .row:hover{background:var(--bg3)}
+#resume .rname{color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#resume .rnote{font-size:12px;color:var(--fg3);flex:0 0 auto}
+#resume .stale{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:12px;padding:2px 8px;border-radius:20px;background:var(--bg3);color:var(--orange)}
+
+/* 合计卡 */
+#globalCard .g-row{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:10px}
+.metric{min-width:78px}
+.metric .k{font-size:12px;color:var(--fg3)}
+.metric .v{font-size:20px;font-weight:500;line-height:1.25}
+
+/* 笔记卡片 */
+#notesGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ncard{background:var(--bg2);border-radius:10px;padding:14px 16px;cursor:pointer;
+  border:.5px solid transparent}
+.ncard:hover{border-color:var(--bd2)}
+.ncard .hd{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.ncard .nm{font-size:14px;font-weight:500;flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ncard .pc{font-size:15px;font-weight:500}
+.ncard .sub{font-size:12px;color:var(--fg3);margin-bottom:9px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ncard .nums{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:12px;color:var(--fg2)}
+.ncard .nums b{font-weight:500;color:var(--fg)}
+.ncard .flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.flag{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--bg3);color:var(--fg3)}
+.flag.warn{color:var(--orange)}
+
+/* 排序 */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.sel{display:inline-flex;border:.5px solid var(--bd2);border-radius:6px;overflow:hidden}
+.sel button{border:0;border-radius:0;padding:5px 11px}
+.sel button.on{background:var(--bg3);font-weight:500}
+
+/* 明细 */
+#detailWrap{display:flex;gap:16px;align-items:flex-start}
+#tree{flex:1;min-width:0;background:var(--bg2);border-radius:10px;padding:6px}
+#panel{flex:0 0 320px;background:var(--bg2);border-radius:10px;padding:14px 16px;
+  position:sticky;top:60px}
+.nrow{display:flex;align-items:center;gap:8px;border-radius:6px;cursor:pointer;
+  padding:0 8px;height:30px}
+.nrow:hover{background:var(--bg3)}
+.nrow.sel{background:var(--bg3);box-shadow:inset 2px 0 0 var(--blue)}
+.nrow.lv0{height:34px;font-weight:500}
+.nrow .caret{width:12px;height:12px;flex:0 0 12px;color:var(--fg3);transition:transform .12s}
+.nrow.open .caret{transform:rotate(90deg)}
+.nrow .caret.leaf{visibility:hidden}
+.nrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nrow .cnt{font-size:12px;color:var(--fg3);flex:0 0 auto}
+.nrow .mini{flex:0 0 56px;height:6px;gap:1px}
+.nrow .mini span{border-radius:1px}
+.st{background:var(--orange)}
+.legend .li .mk{width:14px;height:14px;flex:0 0 14px}
+.legend .li .cbx{margin:0}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px}
+.dot.w{background:var(--blue)}
+.dot.e{background:transparent;border:1.5px solid var(--gray-mid)}
+.dot.m{background:transparent;border:1.5px solid var(--gray-dark)}
+.marks{display:flex;gap:9px;flex:0 0 auto;align-items:center}
+.mk{width:14px;height:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mk:hover{opacity:.72}
+.kids{margin-left:14px;border-left:.5px solid var(--bd);padding-left:2px}
+.pdot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+.pdot.hard{background:#e24b4a}
+.pdot.soft{background:var(--orange)}
+
+.cbx{width:15px;height:15px;flex:0 0 15px;border:.5px solid var(--bd2);border-radius:4px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;margin-right:2px}
+.cbx:hover{border-color:var(--fg3)}
+.cbx.on{background:var(--blue);border-color:var(--blue)}
+.nrow.excluded{opacity:.62}
+/* 行内标签：未启用（被排除）/ 未编译（未纳入编译但计入） */
+.tag-un,.tag-nc{font-size:10px;line-height:1.6;padding:0 5px;border-radius:4px;
+  flex:0 0 auto;white-space:nowrap}
+.tag-un{background:var(--bg3);color:var(--fg3);border:.5px solid var(--bd2)}
+.tag-nc{color:var(--fg3);border:.5px dashed var(--bd2)}
+.legend{border-top:.5px solid var(--bd);margin-top:12px;padding-top:10px}
+.legend .li{display:flex;align-items:center;gap:8px;font-size:12px;
+  color:var(--fg3);padding:2px 0}
+
+/* 搜索与筛选 */
+.search{display:flex;align-items:center;gap:7px;background:var(--bg2);
+  border:.5px solid var(--bd);border-radius:7px;padding:6px 10px;min-width:210px}
+.search input{border:0;background:transparent;color:var(--fg);font-size:13px;
+  outline:none;width:100%;font-family:inherit}
+.search input::placeholder{color:var(--fg3)}
+
+/* 未启用章 / 未纳入索引的文件 */
+#unused,#orphans{margin-top:14px;background:var(--bg2);border-radius:10px;overflow:hidden}
+#unused .uh,#orphans .uh{padding:11px 16px;cursor:pointer;display:flex;align-items:center;
+  gap:8px;font-size:13px;color:var(--fg2)}
+#unused .uh:hover,#orphans .uh:hover{background:var(--bg3)}
+#unused .ub,#orphans .ub{padding:0 16px 14px}
+#unused table,#orphans table{width:100%;border-collapse:collapse;font-size:12px}
+#unused td,#unused th,#orphans td,#orphans th{text-align:left;padding:6px 8px;
+  border-bottom:.5px solid var(--bd);color:var(--fg2)}
+#unused th,#orphans th{color:var(--fg3);font-weight:400}
+#unused .uhint,#orphans .uhint{padding:0 16px 10px;font-size:11px;color:var(--fg3)}
+.tbtn{display:inline-block;white-space:nowrap;cursor:pointer;font-size:12px;
+  padding:3px 10px;border:.5px solid var(--bd2);border-radius:5px;color:var(--fg2);
+  line-height:1.4}
+.tbtn:hover{background:var(--bg3);color:var(--fg)}
+.tdel{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+  cursor:pointer;color:var(--fg3);font-size:14px;line-height:1;border-radius:4px}
+.tdel:hover{color:var(--fg);background:var(--bg3)}
+
+/* 详情面板 */
+.p-title{font-size:14px;font-weight:500;margin-bottom:3px;word-break:break-all}
+.p-path{font-size:11px;color:var(--fg3);word-break:break-all;margin-bottom:12px}
+.p-line{display:flex;align-items:center;justify-content:space-between;padding:5px 0}
+.p-line .k{color:var(--fg2);font-size:12px}
+.p-line .v{font-size:12px}
+.p-line .v.todo{color:var(--orange)}
+.p-sec{border-top:.5px solid var(--bd);margin-top:10px;padding-top:10px}
+.p-lab{font-size:12px;color:var(--fg3);margin-bottom:6px}
+textarea,input[type=text]{width:100%;background:var(--bg3);border:.5px solid var(--bd);
+  border-radius:6px;color:var(--fg);font-family:inherit;font-size:13px;padding:8px;
+  resize:vertical;outline:none}
+textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
+.todo-item{display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:12px}
+.todo-item .tx{flex:1;word-break:break-word}
+.todo-item.done .tx{color:var(--fg3);text-decoration:line-through}
+.tbox{width:12px;height:12px;flex:0 0 12px;border:.5px solid var(--gray-mid);border-radius:3px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.p-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.p-empty{color:var(--fg3);font-size:12px;padding:20px 0;text-align:center}
+.p-warn{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--fg2);
+  padding:3px 0}
+.p-warn svg{flex:0 0 12px;margin-top:2px}
+.hint{color:var(--fg3);font-size:12px}
+.empty{color:var(--fg3);font-size:13px;padding:24px;text-align:center}
+
+#toast{position:fixed;right:20px;bottom:20px;max-width:340px;z-index:50;
+  background:var(--bg2);border:.5px solid var(--bd2);border-radius:8px;
+  padding:10px 16px;font-size:13px;color:var(--fg);
+  opacity:0;transition:opacity .18s;pointer-events:none}
+#toast.on{opacity:1}
+
+@media(max-width:760px){
+  .layout{flex-direction:column}
+  nav{width:100%;flex:auto;border-right:0;border-bottom:.5px solid var(--bd);
+    padding:6px;display:flex;gap:6px;position:sticky;top:45px;background:var(--bg);z-index:19}
+  nav .item{margin:0;flex:1;justify-content:center}
+  main{padding:12px}
+  #detailWrap{flex-direction:column}
+  #panel{flex:auto;width:100%;position:static}
+  #notesGrid{grid-template-columns:1fr}
+  textarea,input[type=text],.search input{font-size:16px}
+  button{padding:8px 12px;min-height:38px}
+}
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <span class="title">写作进度追踪表</span>
+  <span id="svc"><span class="dot"></span><span id="svcTxt">已连接</span></span>
+  <span class="tstamp mono" id="tstamp"></span>
+  <span class="sp"></span>
+  <button class="ico-btn" id="btnRefresh" title="重新扫描">
+    <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5V5.2h-2.7"/></svg>
+    刷新</button>
+  <button class="ico-btn" id="btnReport" title="导出 Markdown 报告">
+    <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8"/><path d="M4.8 7.2L8 10.4l3.2-3.2"/><path d="M3 12.5h10"/></svg>
+    报告</button>
+  <button class="ico-btn" id="btnTheme" title="切换亮暗">
+    <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1"/></svg>
+    主题</button>
+  <button class="ico-btn" id="btnQuit" title="退出服务">
+    <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+      stroke-linecap="round"><path d="M8 2.5v5"/><path d="M4.6 4.3a5 5 0 1 0 6.8 0"/></svg>
+    退出</button>
+</header>
+
+<div class="layout">
+  <nav>
+    <div class="item on" data-view="overview">总览</div>
+    <div class="item" data-view="detail">明细</div>
+  </nav>
+  <main>
+    <section id="view-overview">
+      <div id="resume"></div>
+      <div id="globalCard"></div>
+      <div class="toolbar">
+        <span class="hint">排序</span>
+        <span class="sel" id="sortSel">
+          <button data-sort="recent" class="on">按最近改动</button>
+          <button data-sort="name">按名称</button>
+        </span>
+      </div>
+      <div id="notesGrid"></div>
+    </section>
+    <section id="view-detail" hidden>
+      <div class="toolbar">
+        <span class="sel" id="noteSel"></span>
+        <span class="sel" id="filterSel">
+          <button data-f="all" class="on">全部</button>
+          <button data-f="written">已写</button>
+          <button data-f="empty">未写</button>
+          <button data-f="missing">未建</button>
+          <button data-f="todo">待补</button>
+        </span>
+        <div class="search">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+            stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14"/></svg>
+          <input id="q" type="text" placeholder="搜索小节（按 / 聚焦）">
+        </div>
+        <button id="btnEditRange" class="ico-btn" title="显示行尾复选框，用于调整计入范围">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11.2 2.6l2.2 2.2L6.1 12.1l-3 .8.8-3z"/><path d="M2.5 14.2h11"/></svg>
+          编辑范围</button>
+        <button id="btnUnusedToggle" class="ico-btn on"
+          title="在树中一并显示未启用的章（灰显）；关掉则只显示计入范围内的章">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 2.2l6.1 3.2L8 8.6 1.9 5.4z"/><path d="M2.3 10.9L8 13.9l5.7-3"/></svg>
+          未启用章</button>
+      </div>
+      <div id="detailWrap">
+        <div id="tree"></div>
+        <aside id="panel"><div class="p-empty">点击左侧任一小节查看详情</div></aside>
+      </div>
+      <div id="unused"></div>
+      <div id="orphans"></div>
+    </section>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================ 状态层 ============================ */
+const S = {
+  data: null,
+  view: "overview",
+  sort: "recent",
+  noteIdx: 0,
+  filter: "all",
+  query: "",
+  selected: null,          // 选中的叶子 id
+  open: new Set(),         // 展开的目录节点 id
+  unusedOpen: false,
+  orphansOpen: false,
+  showUnused: true,        // 树中是否一并显示未启用的章（灰显）
+  editMode: false,         // 编辑范围：显示行尾复选框
+};
+
+const API = {
+  data:    (force) => "/api/data" + (force ? "?refresh=1" : ""),
+  entry:   "/api/entry",
+  chapter: "/api/chapter",
+  open:    "/api/open",
+  quit:    "/api/quit",
+  report:  "/api/report",
+};
+
+/* ============================ 数据层 ============================ */
+async function fetchData(force) {
+  const r = await fetch(API.data(force));
+  if (!r.ok) throw new Error("数据请求失败");
+  return await r.json();
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {}),
+  });
+  if (!r.ok) throw new Error("请求失败");
+  return await r.json();
+}
+
+async function loadAndRender(force) {
+  setSvc(true);
+  try {
+    const d = await fetchData(force);
+    S.data = d;
+    if (S.noteIdx >= d.notes.length) S.noteIdx = 0;
+    ensureDefaultOpen();
+    refreshAll();
+  } catch (e) {
+    setSvc(false, "服务已停止");
+  }
+}
+
+/* 默认展开当前笔记中最近改动的那一章 */
+function ensureDefaultOpen() {
+  if (S.open.size) return;
+  const n = currentNote();
+  if (!n) return;
+  const cand = (n.tops || []).filter((t) => t.decision);
+  if (!cand.length) return;
+  let pick = cand[0];
+  cand.forEach((t) => {
+    if ((t.last_mtime || 0) > (pick.last_mtime || 0)) pick = t;
+  });
+  S.open.add(pick.id);
+}
+
+/* ============================ 计算层 ============================ */
+function currentNote() {
+  if (!S.data || !S.data.notes.length) return null;
+  return S.data.notes[S.noteIdx];
+}
+
+function walkLeaves(node, acc) {
+  acc = acc || [];
+  if (node.type === "leaf") { acc.push(node); }
+  else { (node.children || []).forEach((c) => walkLeaves(c, acc)); }
+  return acc;
+}
+
+function noteLeaves(note) {
+  const acc = [];
+  (note.tops || []).forEach((t) => { if (t.decision) walkLeaves(t, acc); });
+  return acc;
+}
+
+function leafState(leaf) {
+  if (leaf.status === "missing") return "missing";
+  if (leaf.status === "empty") return "empty";
+  if (leaf.todo_count > 0) return "todo";
+  return "written";
+}
+
+function matchFilter(leaf) {
+  const st = leafState(leaf);
+  if (S.filter === "all") return true;
+  if (S.filter === "written") return st === "written";
+  if (S.filter === "empty") return st === "empty";
+  if (S.filter === "missing") return st === "missing";
+  if (S.filter === "todo") return st === "todo";
+  return true;
+}
+
+function matchQuery(leaf) {
+  if (!S.query) return true;
+  const q = S.query.toLowerCase();
+  const t = (leaf.view_title || "").toLowerCase();
+  const n = (leaf.name || "").toLowerCase();
+  return t.indexOf(q) >= 0 || n.indexOf(q) >= 0;
+}
+
+function leafVisible(leaf) {
+  return matchFilter(leaf) && matchQuery(leaf);
+}
+
+/* 过滤后仍有可见后代的分支才显示 */
+function nodeHasVisible(node) {
+  if (node.type === "leaf") return leafVisible(node);
+  const kids = node.children || [];
+  if (!kids.length) {
+    /* 内容写在自身 index.tex 里、没有下级文件的目录：以自身为准参与筛选 */
+    if (S.query) {
+      const q = S.query.toLowerCase();
+      const t = (node.view_title || "").toLowerCase();
+      const n = (node.name || "").toLowerCase();
+      if (t.indexOf(q) < 0 && n.indexOf(q) < 0) return false;
+    }
+    if (S.filter === "all") return true;
+    const st = (node.stats && node.stats.written > 0) ? "written" : "empty";
+    if (S.filter === "written") return st === "written";
+    if (S.filter === "empty") return st === "empty";
+    return false;
+  }
+  return kids.some(nodeHasVisible);
+}
+
+function sortedNotes() {
+  const ns = (S.data.notes || []).slice();
+  if (S.sort === "name") {
+    ns.sort((a, b) => a.title.localeCompare(b.title, "zh-Hans-CN"));
+  } else {
+    ns.sort((a, b) => (b.last_mtime || 0) - (a.last_mtime || 0));
+  }
+  return ns;
+}
+
+function sortedForDisplay() {
+  /* 明细页的笔记选择始终按名称，避免索引跳动 */
+  return (S.data.notes || []).slice();
+}
+
+/* ============================ 工具 ============================ */
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmtInt(n) { return (n || 0).toLocaleString("zh-CN"); }
+
+function fmtBig(n) {
+  n = n || 0;
+  if (n >= 100000000) return (n / 100000000).toFixed(2) + " 亿";
+  if (n >= 10000) return (n / 10000).toFixed(1) + " 万";
+  return fmtInt(n);
+}
+
+function barHTML(c) {
+  const total = Math.max(c.planned || 0, 1);
+  const w = (c.written || 0) / total * 100;
+  const e = (c.empty || 0) / total * 100;
+  const m = (c.missing || 0) / total * 100;
+  return '<div class="bar">'
+    + '<span class="sw" style="width:' + w + '%"></span>'
+    + '<span class="se" style="width:' + e + '%"></span>'
+    + '<span class="sm" style="width:' + m + '%"></span>'
+    + '</div>';
+}
+
+const SVG_CHECK = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#8b8982" '
+  + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M3.2 8.4L6.4 11.6L12.8 4.6"/></svg>';
+const SVG_CIRCLE = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#ef9f27" '
+  + 'stroke-width="1.8"><circle cx="8" cy="8" r="5.2"/></svg>';
+const SVG_CARET = '<svg class="caret" viewBox="0 0 16 16" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
+  + 'stroke-linejoin="round"><path d="M6 3.5L10.5 8L6 12.5"/></svg>';
+const SVG_TICK = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" '
+  + 'stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M3.5 8.4L6.4 11.3L12.5 4.8"/></svg>';
+
+/* 定理环境名的中文对照（structure.sty 定义的 17 个） */
+const ENV_CN = {
+  definition: "定义", axiom: "公理", hypothesis: "假设", theorem: "定理",
+  lemma: "引理", proposition: "命题", corollary: "推论", metatheorem: "元定理",
+  criteria: "准则", problem: "问题", example: "例", remark: "注记",
+  exercise: "习题", algorithm: "算法", convention: "约定", alarm: "警示",
+  sketch: "分析",
+};
+
+/* ============================ 渲染层（互不调用） ============================ */
+function setSvc(ok, text) {
+  const el = document.getElementById("svc");
+  el.classList.toggle("off", !ok);
+  document.getElementById("svcTxt").textContent = text || (ok ? "已连接" : "离线");
+}
+
+function renderHeader() {
+  const el = document.getElementById("tstamp");
+  el.textContent = S.data ? ("扫描于 " + (S.data.scanned_at || "").replace("T", " ")) : "";
+}
+
+function renderResume() {
+  const d = S.data;
+  const box = document.getElementById("resume");
+  if (!d) { box.innerHTML = ""; return; }
+  let h = '<div class="card"><p class="sec-h">续写入口</p>';
+
+  const nexts = [];
+  (d.notes || []).forEach((n) => (n.planned_next || []).forEach((p) => nexts.push(p)));
+  nexts.slice(0, 2).forEach((p) => {
+    h += '<div class="row" data-open-path="' + esc(p.path) + '">'
+      + '<span class="dot w"></span>'
+      + '<span class="rname">' + esc(p.title) + '</span>'
+      + '<span class="rnote">已设为下一步</span></div>';
+  });
+
+  if ((d.recent || []).length) {
+    h += '<p class="sec-h" style="margin-top:' + (nexts.length ? '10px' : '0') + '">最近改动</p>';
+    d.recent.forEach((r) => {
+      h += '<div class="row" data-open-path="' + esc(r.path) + '">'
+        + '<span class="rname">' + esc(r.title) + '</span>'
+        + '<span class="rnote">' + esc(r.note) + ' · ' + esc(r.mtime_str) + '</span></div>';
+    });
+  }
+
+  if ((d.stagnant || []).length) {
+    h += '<div class="stale">';
+    d.stagnant.forEach((s) => {
+      h += '<span class="chip">' + esc(s.name) + ' 已停滞 ' + s.days + ' 天</span>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  box.innerHTML = h;
+}
+
+function renderGlobalCard() {
+  const g = S.data && S.data.global;
+  const box = document.getElementById("globalCard");
+  if (!g) { box.innerHTML = ""; return; }
+  box.innerHTML = '<div class="card" id="globalCardInner">'
+    + '<div class="g-row">'
+    + '<div class="metric"><div class="k">整体进度</div><div class="v mono">'
+      + (S.data.percent || 0) + '%</div></div>'
+    + '<div class="metric"><div class="k">规划小节</div><div class="v mono">'
+      + fmtInt(g.planned) + '</div></div>'
+    + '<div class="metric"><div class="k">已写</div><div class="v mono">'
+      + fmtInt(g.written) + '</div></div>'
+    + '<div class="metric"><div class="k">待补</div><div class="v mono">'
+      + fmtInt(S.data.pending_count) + '</div></div>'
+    + '<div class="metric"><div class="k">定理环境</div><div class="v mono">'
+      + fmtInt(g.envs) + '</div></div>'
+    + '</div>'
+    + barHTML(g)
+    + '</div>';
+}
+
+function renderNotesGrid() {
+  const box = document.getElementById("notesGrid");
+  if (!S.data) { box.innerHTML = ""; return; }
+  const ns = sortedNotes();
+  if (!ns.length) { box.innerHTML = '<div class="empty">未发现笔记</div>'; return; }
+  let h = "";
+  ns.forEach((n) => {
+    const c = n.counted || {};
+    const flags = [];
+    const nc = (n.tops || []).filter((t) => t.decision_reason === "not_compiled").length;
+    if (nc) flags.push('<span class="flag">' + nc + ' 章未编译</span>');
+    if (n.excluded_count) flags.push('<span class="flag">' + n.excluded_count + ' 章未启用</span>');
+    if (n.pending_count) flags.push('<span class="flag warn">' + n.pending_count + ' 节待补</span>');
+    h += '<div class="ncard" data-note="' + esc(n.name) + '">'
+      + '<div class="hd"><span class="nm">' + esc(n.title) + '</span>'
+      + '<span class="pc mono">' + (n.percent || 0) + '%</span></div>'
+      + '<div class="sub">' + esc(n.name) + '</div>'
+      + barHTML(c)
+      + '<div class="nums">'
+      + '<span>已写 <b class="mono">' + fmtInt(c.written) + '</b> / '
+        + fmtInt(c.planned) + '</span>'
+      + '<span>环境 <b class="mono">' + fmtInt(c.envs) + '</b></span>'
+      + '<span>字数 <b class="mono">' + fmtBig(c.chars) + '</b></span>'
+      + '</div>'
+      + (flags.length ? '<div class="flags">' + flags.join("") + '</div>' : '')
+      + '</div>';
+  });
+  box.innerHTML = h;
+}
+
+function renderNoteSel() {
+  const box = document.getElementById("noteSel");
+  if (!S.data) { box.innerHTML = ""; return; }
+  let h = "";
+  sortedForDisplay().forEach((n, i) => {
+    h += '<button data-note-idx="' + i + '" class="'
+      + (i === S.noteIdx ? "on" : "") + '">' + esc(n.title) + '</button>';
+  });
+  box.innerHTML = h;
+}
+
+function miniBar(stats) {
+  const total = Math.max((stats && stats.planned) || 0, 1);
+  const w = ((stats && stats.written) || 0) / total * 100;
+  const e = ((stats && stats.empty) || 0) / total * 100;
+  const m = ((stats && stats.missing) || 0) / total * 100;
+  return '<span class="mini bar">'
+    + '<span class="sw" style="width:' + w + '%"></span>'
+    + '<span class="se" style="width:' + e + '%"></span>'
+    + '<span class="sm" style="width:' + m + '%"></span></span>';
+}
+
+/* 小节：三个维度（环境 / 正文 / 证明）的完成情况，蓝为已完成、橙为待补 */
+function dimBar(marks) {
+  const m = marks || {};
+  let h = '<span class="mini bar">';
+  ["env", "body", "proof"].forEach((d) => {
+    h += '<span class="' + (m[d] === "todo" ? "st" : "sw")
+      + '" style="width:33.33%"></span>';
+  });
+  return h + '</span>';
+}
+
+function nodeRowHTML(node, depth) {
+  const isDir = node.type !== "leaf" && node.type !== "missing";
+  const isOpen = S.open.has(node.id);
+  const sel = S.selected === node.id ? " sel" : "";
+  const raw = node.view_title || node.name;
+  const label = node.num ? (node.num + " " + raw) : raw;
+  const ex = !!node.excluded;
+  /* 复选框只在「编辑范围」模式下出现，且置于行尾，避免干扰日常浏览 */
+  const cbx = S.editMode
+    ? '<span class="cbx' + (ex ? "" : " on") + '" data-toggle-node="' + esc(node.id)
+      + '" title="' + (ex ? "已排除，点击计入" : "计入中，点击排除") + '">'
+      + (ex ? "" : SVG_TICK) + '</span>'
+    : '';
+
+  let marksHTML = "";
+  let dotHTML = "";
+  let cnt = "";
+  let mini = "";
+
+  if (isDir) {
+    const st = node.stats || {};
+    mini = miniBar(st);
+    cnt = '<span class="cnt">' + (node.children || []).length + ' 项</span>'
+      + '<span class="cnt mono">' + (st.written || 0) + "/" + (st.planned || 0) + '</span>';
+  } else if (node.type === "missing") {
+    dotHTML = '<span class="dot m"></span>';
+    cnt = '<span class="cnt">未建</span>';
+  } else {
+    const st = leafState(node);
+    dotHTML = '<span class="dot ' + (st === "written" ? "w" : st === "empty" ? "e" : "m")
+      + '"></span>';
+    const mk = node.marks || {};
+    mini = dimBar(mk);
+    marksHTML = '<span class="marks">'
+      + ['env', 'body', 'proof'].map((d) => {
+          const todo = mk[d] === "todo";
+          return '<span class="mk" data-mark="' + d + '" data-id="' + esc(node.id)
+            + '" title="' + (d === "env" ? "环境" : d === "body" ? "正文" : "证明")
+            + (todo ? "：待补" : "：已完成") + '">'
+            + (todo ? SVG_CIRCLE : SVG_CHECK) + '</span>';
+        }).join("")
+      + '</span>';
+    if (node.todo_count) {
+      cnt = '<span class="cnt" style="color:var(--orange)">' + node.todo_count + ' 待补</span>';
+    }
+  }
+
+  /* 行内标签：未启用 = 被排除、不计入统计；未编译 = 索引里被注释掉、但仍计入 */
+  let tag = "";
+  if (ex) tag = '<span class="tag-un">未启用</span>';
+  else if (node.included === false) tag = '<span class="tag-nc">未编译</span>';
+
+  let h = '<div class="nrow' + (isDir ? " lv" + Math.min(depth, 3) : "")
+    + (isOpen ? " open" : "") + sel + (ex ? " excluded" : "")
+    + '" data-node="' + esc(node.id)
+    + '" data-kind="' + node.type + '">'
+    + (isDir ? SVG_CARET : '<span class="caret leaf"></span>')
+    + dotHTML + '<span class="nm">' + esc(label) + '</span>' + tag
+    + mini + cnt + marksHTML + cbx + '</div>';
+
+  if (isDir && isOpen) {
+    h += '<div class="kids">';
+    (node.children || []).forEach((c) => {
+      if (nodeHasVisible(c)) h += nodeRowHTML(c, depth + 1);
+    });
+    h += '</div>';
+  }
+  return h;
+}
+
+function renderTree() {
+  const box = document.getElementById("tree");
+  const n = currentNote();
+  if (!n) { box.innerHTML = '<div class="empty">请先选择笔记</div>'; return; }
+  let h = "";
+  (n.tops || []).forEach((t) => {
+    /* 未启用的章默认也进树（灰显 + 「未启用」标签）——否则它下面的节 / 小节
+       在页面上完全看不到，用户会以为工作台「没显示全」。可用工具栏按钮关掉。 */
+    if (!t.decision && !S.showUnused) return;
+    if (nodeHasVisible(t)) h += nodeRowHTML(t, 0);
+  });
+  box.innerHTML = h || '<div class="empty">没有符合条件的条目</div>';
+}
+
+function legendHTML() {
+  return '<div class="legend">'
+    + '<div class="li"><span class="dot w"></span>已写</div>'
+    + '<div class="li"><span class="dot e"></span>文件已建但内容为空</div>'
+    + '<div class="li"><span class="dot m"></span>索引已规划、文件尚未创建</div>'
+    + '<div class="li"><span class="mk">' + SVG_CHECK + '</span>'
+    + '环境 / 正文 / 证明 —— 已完成</div>'
+    + '<div class="li"><span class="mk">' + SVG_CIRCLE + '</span>'
+    + '同上三处 —— 待补</div>'
+    + '<div class="li"><span class="cbx on">' + SVG_TICK + '</span>'
+    + '计入统计（用「编辑范围」显示，取消即排除）</div>'
+    + '<div class="li"><span class="tag-un">未启用</span>'
+    + '<span>不计入统计，其下小节仍可展开查看</span></div>'
+    + '<div class="li"><span class="tag-nc">未编译</span>'
+    + '<span>索引里被注释掉，但已计入统计</span></div>'
+    + '</div>';
+}
+
+function renderPanel() {
+  const box = document.getElementById("panel");
+  const n = currentNote();
+  if (!n || !S.selected) {
+    box.innerHTML = '<div class="p-empty">点击左侧任一小节查看详情</div>'
+      + legendHTML();
+    return;
+  }
+  let leaf = null;
+  (n.tops || []).forEach((t) => {
+    walkLeaves(t).forEach((l) => { if (l.id === S.selected) leaf = l; });
+  });
+  if (!leaf) {
+    box.innerHTML = '<div class="p-empty">该条目已不在当前范围内</div>';
+    return;
+  }
+
+  const mk = leaf.marks || {};
+  const dims = [["env", "环境"], ["body", "正文"], ["proof", "证明"]];
+  const leafRaw = leaf.view_title || leaf.name;
+  const leafLabel = leaf.num ? (leaf.num + " " + leafRaw) : leafRaw;
+  let h = '<div class="p-title">' + esc(leafLabel) + '</div>'
+    + '<div class="p-path mono">' + esc(leaf.id) + '</div>';
+
+  dims.forEach(([k, label]) => {
+    const todo = mk[k] === "todo";
+    h += '<div class="p-line"><span class="k">' + label + '</span>'
+      + '<span class="v' + (todo ? " todo" : "") + '">'
+      + (todo ? "待补" : "已完成") + '</span></div>';
+  });
+
+  h += '<div class="p-sec">'
+    + '<div class="p-line"><span class="k">定理环境</span><span class="v mono">'
+      + (leaf.envs || 0) + ' 个</span></div>'
+    + '<div class="p-line"><span class="k">环境内字符</span><span class="v mono">'
+      + fmtInt(leaf.inner_chars) + '</span></div>'
+    + '<div class="p-line"><span class="k">陈述文字</span><span class="v mono">'
+      + fmtInt(leaf.body_chars) + '</span></div>'
+    + '<div class="p-line"><span class="k">行数</span><span class="v mono">'
+      + fmtInt(leaf.lines) + '</span></div>'
+    + '<div class="p-line"><span class="k">最后修改</span><span class="v mono">'
+      + esc(leaf.mtime_str || "—") + '</span></div>'
+    + '</div>';
+
+  /* 环境构成：只列出实际出现过的环境，按数量降序 */
+  const ek = leaf.env_names || {};
+  const ent = Object.keys(ek).sort((a, b) => ek[b] - ek[a]);
+  if (ent.length) {
+    h += '<div class="p-sec"><div class="p-lab">环境构成</div>';
+    ent.forEach((k) => {
+      h += '<div class="p-line"><span class="k">' + esc(ENV_CN[k] || k)
+        + '</span><span class="v mono">' + ek[k] + ' 个</span></div>';
+    });
+    h += '</div>';
+  }
+
+  const warns = [];
+  if (leaf.unpaired) warns.push("有 \\begin 未配对，编译会报错");
+  if (leaf.empty_envs > 0) warns.push("存在 " + leaf.empty_envs + " 个空环境");
+  if (leaf.status === "written" && !leaf.has_proof && !leaf.has_sketch) {
+    warns.push("未见 proof 或 sketch 环境");
+  }
+  if (leaf.status === "written" && !leaf.body_chars) warns.push("无陈述性文字");
+  if (warns.length) {
+    h += '<div class="p-sec"><div class="p-lab">值得留意</div>';
+    warns.forEach((w) => {
+      h += '<div class="p-warn">' + SVG_CIRCLE + '<span>' + esc(w) + '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<div class="p-sec"><div class="p-lab">备注</div>'
+    + '<textarea id="noteBox" rows="3" placeholder="写点什么…">'
+    + esc(leaf.note || "") + '</textarea></div>';
+
+  h += '<div class="p-sec"><div class="p-lab">待办</div><div id="todoList">';
+  (leaf.todos || []).forEach((t, i) => {
+    h += '<div class="todo-item' + (t.done ? " done" : "") + '">'
+      + '<span class="tbox" data-todo-toggle="' + i + '">'
+      + (t.done ? SVG_CHECK : "") + '</span>'
+      + '<span class="tx">' + esc(t.text) + '</span>'
+      + '<span class="tdel" data-todo-del="' + i + '" title="删除">×</span></div>';
+  });
+  h += '</div><input type="text" id="todoNew" placeholder="回车添加待办…"></div>';
+
+  h += '<div class="p-btns">'
+    + '<button class="pri" id="btnOpen">用 TeXStudio 打开</button>'
+    + '<button id="btnPlan">' + (leaf.planned ? "取消下一步" : "设为下一步") + '</button>'
+    + '</div>';
+
+  box.innerHTML = h + legendHTML();
+}
+
+function renderUnused() {
+  const box = document.getElementById("unused");
+  const n = currentNote();
+  if (!n) { box.innerHTML = ""; return; }
+  const rows = (n.tops || []).filter((t) => !t.decision);
+  if (!rows.length) { box.innerHTML = ""; return; }
+
+  const reasonText = {
+    empty_uncompiled: "未纳入编译且无内容",
+    manual_exclude: "手动排除",
+  };
+  let h = '<div class="uh" id="unusedHead">'
+    + '<span>' + (S.unusedOpen ? "▾" : "▸") + '</span>'
+    + '<span>未启用章节（' + rows.length + '）</span></div>';
+  if (S.unusedOpen) {
+    h += '<div class="uhint">这些章不计入进度统计，但已在上方的树里灰显列出 —— '
+      + '展开即可看到它们下面的全部小节，照常可以标记、备注、打开文件。'
+      + '点「计入」把整章纳入统计。</div>';
+    h += '<div class="ub"><table><thead><tr><th>章</th><th>小节数</th>'
+      + '<th>原因</th><th>操作</th></tr></thead><tbody>';
+    rows.forEach((t) => {
+      h += '<tr><td>' + esc(t.view_title || t.name) + '</td>'
+        + '<td class="mono">' + (t.stats ? t.stats.leaves : 0) + '</td>'
+        + '<td>' + esc(reasonText[t.decision_reason] || t.decision_reason || "")
+        + (t.manual ? ' · <span style="color:var(--orange)">手动</span>' : '')
+        + '</td>'
+        + '<td><span class="tbtn" data-chmode="force_include" data-id="' + esc(t.id)
+        + '" title="把这一章计入进度统计">计入</span></td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  box.innerHTML = h;
+}
+
+/* 索引里既没引用、也没注释掉的游离 tex：不属于笔记结构，但得让用户看得见 */
+function renderOrphans() {
+  const box = document.getElementById("orphans");
+  const n = currentNote();
+  if (!n) { box.innerHTML = ""; return; }
+  const rows = n.orphans || [];
+  if (!rows.length) { box.innerHTML = ""; return; }
+
+  let h = '<div class="uh" id="orphansHead">'
+    + '<span>' + (S.orphansOpen ? "▾" : "▸") + '</span>'
+    + '<span>未纳入索引的文件（' + rows.length + '）</span></div>';
+  if (S.orphansOpen) {
+    h += '<div class="uhint">这些 .tex 既没写进 index.tex、也没以注释形式出现，'
+      + '因此不属于笔记结构、不进树。多半是写到一半还没挂进索引的小节，'
+      + '或改名后忘删的旧文件。</div>'
+      + '<div class="ub"><table><thead><tr><th>文件</th><th>状态</th>'
+      + '<th>字数</th><th>最后修改</th><th>操作</th></tr></thead><tbody>';
+    rows.forEach((o) => {
+      h += '<tr><td class="mono">' + esc(o.id) + '</td>'
+        + '<td>' + (o.status === "written" ? "有内容" : "空") + '</td>'
+        + '<td class="mono">' + fmtInt(o.chars) + '</td>'
+        + '<td class="mono">' + esc(o.mtime_str || "—") + '</td>'
+        + '<td><span class="tbtn" data-open-path="' + esc(o.path)
+        + '">用 TeXStudio 打开</span></td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  box.innerHTML = h;
+}
+
+/* ============================ 调度层（唯一刷新入口） ============================ */
+function refreshAll() {
+  renderHeader();
+  renderResume();
+  renderGlobalCard();
+  renderNotesGrid();
+  renderNoteSel();
+  renderTree();
+  renderPanel();
+  renderUnused();
+  renderOrphans();
+}
+
+/* ============================ 交互 ============================ */
+function switchView(v) {
+  S.view = v;
+  document.querySelectorAll("nav .item").forEach((el) => {
+    el.classList.toggle("on", el.dataset.view === v);
+  });
+  document.getElementById("view-overview").hidden = (v !== "overview");
+  document.getElementById("view-detail").hidden = (v !== "detail");
+}
+
+document.getElementById("topbar").addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.id === "btnRefresh") loadAndRender(true);
+  else if (t.id === "btnTheme") {
+    const cur = document.documentElement.dataset.theme;
+    const nxt = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = nxt;
+    try { localStorage.setItem("wb_progress_theme", nxt); } catch (err) {}
+  } else if (t.id === "btnReport") {
+    window.location.href = API.report;
+  } else if (t.id === "btnQuit") {
+    postJSON(API.quit, {}).then(() => setSvc(false, "服务已停止")).catch(() => {});
+  }
+});
+
+document.querySelector("nav").addEventListener("click", (e) => {
+  const it = e.target.closest(".item");
+  if (it) switchView(it.dataset.view);
+});
+
+document.getElementById("sortSel").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  S.sort = b.dataset.sort;
+  document.querySelectorAll("#sortSel button").forEach((x) => {
+    x.classList.toggle("on", x === b);
+  });
+  renderNotesGrid();
+});
+
+document.getElementById("notesGrid").addEventListener("click", (e) => {
+  const c = e.target.closest(".ncard");
+  if (!c) return;
+  const idx = (S.data.notes || []).findIndex((n) => n.name === c.dataset.note);
+  if (idx < 0) return;
+  S.noteIdx = idx;
+  const n = S.data.notes[idx];
+  S.selected = null;
+  S.open = new Set();
+  const cand = (n.tops || []).filter((t) => t.decision && t.stats.written > 0);
+  const pick = cand.length ? cand[cand.length - 1] : (n.tops || [])[0];
+  if (pick) S.open.add(pick.id);
+  switchView("detail");
+  refreshAll();
+});
+
+document.getElementById("noteSel").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  S.noteIdx = parseInt(b.dataset.noteIdx, 10) || 0;
+  S.selected = null;
+  S.open = new Set();
+  ensureDefaultOpen();
+  refreshAll();
+});
+
+document.getElementById("filterSel").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  S.filter = b.dataset.f;
+  document.querySelectorAll("#filterSel button").forEach((x) => {
+    x.classList.toggle("on", x === b);
+  });
+  renderTree();
+});
+
+document.getElementById("btnEditRange").addEventListener("click", (e) => {
+  S.editMode = !S.editMode;
+  e.currentTarget.classList.toggle("on", S.editMode);
+  e.currentTarget.style.background = S.editMode ? "var(--bg3)" : "";
+  renderTree();
+  toast(S.editMode
+    ? "已进入「编辑范围」：行尾的复选框控制是否计入统计"
+    : "已退出「编辑范围」");
+});
+
+document.getElementById("q").addEventListener("input", (e) => {
+  S.query = e.target.value.trim();
+  renderTree();
+});
+
+document.getElementById("tree").addEventListener("click", (e) => {
+  const cb = e.target.closest("[data-toggle-node]");
+  if (cb) {
+    e.stopPropagation();
+    toggleNode(cb.dataset.toggleNode);
+    return;
+  }
+  const mk = e.target.closest(".mk");
+  if (mk) {
+    e.stopPropagation();
+    toggleMark(mk.dataset.id, mk.dataset.mark);
+    return;
+  }
+  const row = e.target.closest(".nrow");
+  if (!row) return;
+  const id = row.dataset.node;
+  if (row.dataset.kind === "leaf") {
+    S.selected = (S.selected === id) ? null : id;
+    renderTree();
+    renderPanel();
+  } else {
+    if (S.open.has(id)) S.open.delete(id); else S.open.add(id);
+    renderTree();
+  }
+});
+
+document.getElementById("unused").addEventListener("click", (e) => {
+  const head = e.target.closest("#unusedHead");
+  if (head) { S.unusedOpen = !S.unusedOpen; renderUnused(); return; }
+  const ch = e.target.closest("[data-chmode]");
+  if (ch) setChapterMode(ch.dataset.id, ch.dataset.chmode);
+});
+
+document.getElementById("orphans").addEventListener("click", (e) => {
+  const head = e.target.closest("#orphansHead");
+  if (head) { S.orphansOpen = !S.orphansOpen; renderOrphans(); return; }
+  const op = e.target.closest("[data-open-path]");
+  if (op) openFile(op.dataset.openPath);
+});
+
+document.getElementById("btnUnusedToggle").addEventListener("click", (e) => {
+  S.showUnused = !S.showUnused;
+  e.currentTarget.classList.toggle("on", S.showUnused);
+  renderTree();
+  toast(S.showUnused
+    ? "树中一并显示未启用的章（灰显，不计入统计）"
+    : "树中只显示计入范围内的章");
+});
+
+document.getElementById("resume").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-open-path]");
+  if (!row) return;
+  openFile(row.dataset.openPath);
+});
+
+function toggleMark(id, dim) {
+  const n = currentNote();
+  if (!n) return;
+  let leaf = null;
+  (n.tops || []).forEach((t) => {
+    walkLeaves(t).forEach((l) => { if (l.id === id) leaf = l; });
+  });
+  if (!leaf) return;
+  const cur = (leaf.marks || {})[dim] || "done";
+  const nxt = cur === "done" ? "todo" : "done";
+  postJSON(API.entry, {id: id, marks: {[dim]: nxt}})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function findNode(id) {
+  const n = currentNote();
+  if (!n) return null;
+  let found = null;
+  const dig = (node) => {
+    if (found) return;
+    if (node.id === id) { found = node; return; }
+    (node.children || []).forEach(dig);
+  };
+  (n.tops || []).forEach(dig);
+  return found;
+}
+
+/* 勾选 = 计入统计；取消勾选 = 该节点连同其子树一并排除 */
+function toggleNode(id) {
+  const node = findNode(id);
+  if (!node) return;
+  const mode = node.excluded ? "force_include" : "force_exclude";
+  postJSON(API.chapter, {id: id, mode: mode})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function setChapterMode(id, mode) {
+  postJSON(API.chapter, {id: id, mode: mode})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+let toastTimer = null;
+function toast(msg, sticky) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("on");
+  if (toastTimer) clearTimeout(toastTimer);
+  if (!sticky) toastTimer = setTimeout(() => el.classList.remove("on"), 2200);
+}
+
+function openFile(path) {
+  if (!path) { toast("没有可打开的文件路径"); return; }
+  toast("正在用 TeXStudio 打开…", true);
+  postJSON(API.open, {path: path})
+    .then((r) => {
+      toast(r.ok ? "已用 TeXStudio 打开" : ("打开失败：" + (r.message || "未知原因")));
+    })
+    .catch(() => toast("服务未响应，请确认服务仍在运行"));
+}
+
+document.getElementById("panel").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-todo-toggle]");
+  const d = e.target.closest("[data-todo-del]");
+  if (t) { toggleTodo(parseInt(t.dataset.todoToggle, 10)); return; }
+  if (d) { delTodo(parseInt(d.dataset.todoDel, 10)); return; }
+  if (e.target.id === "btnOpen") {
+    const lf = findSelectedLeaf();
+    if (lf) openFile(lf.path);
+    return;
+  }
+  if (e.target.id === "btnPlan") { togglePlan(); return; }
+});
+
+document.getElementById("panel").addEventListener("keydown", (e) => {
+  if (e.target.id === "todoNew" && e.key === "Enter") {
+    const v = e.target.value.trim();
+    if (v) addTodo(v);
+  }
+});
+
+document.getElementById("panel").addEventListener("blur", (e) => {
+  if (e.target.id === "noteBox") saveNote(e.target.value);
+}, true);
+
+function findSelectedLeaf() {
+  const n = currentNote();
+  if (!n || !S.selected) return null;
+  let leaf = null;
+  (n.tops || []).forEach((t) => {
+    walkLeaves(t).forEach((l) => { if (l.id === S.selected) leaf = l; });
+  });
+  return leaf;
+}
+
+function saveNote(text) {
+  if (!S.selected) return;
+  postJSON(API.entry, {id: S.selected, note: text})
+    .then((d) => { S.data = d; })
+    .catch(() => setSvc(false));
+}
+
+function addTodo(text) {
+  const leaf = findSelectedLeaf();
+  if (!leaf) return;
+  const todos = (leaf.todos || []).concat([{text: text, done: false}]);
+  postJSON(API.entry, {id: S.selected, todos: todos})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function toggleTodo(i) {
+  const leaf = findSelectedLeaf();
+  if (!leaf) return;
+  const todos = (leaf.todos || []).map((t, k) =>
+    k === i ? {text: t.text, done: !t.done} : t);
+  postJSON(API.entry, {id: S.selected, todos: todos})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function delTodo(i) {
+  const leaf = findSelectedLeaf();
+  if (!leaf) return;
+  const todos = (leaf.todos || []).filter((t, k) => k !== i);
+  postJSON(API.entry, {id: S.selected, todos: todos})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function togglePlan() {
+  const leaf = findSelectedLeaf();
+  if (!leaf) return;
+  postJSON(API.entry, {id: S.selected, planned: !leaf.planned})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target.tagName || "").toLowerCase();
+  const typing = tag === "input" || tag === "textarea";
+  if (e.key === "/" && !typing) {
+    e.preventDefault();
+    switchView("detail");
+    const q = document.getElementById("q");
+    q.focus();
+    q.select();
+  } else if (e.key === "Escape") {
+    if (typing) { e.target.blur(); return; }
+    if (S.selected) { S.selected = null; renderTree(); renderPanel(); }
+  }
+});
+
+/* ============================ 初始化 ============================ */
+(function init() {
+  try {
+    const t = localStorage.getItem("wb_progress_theme");
+    if (t) document.documentElement.dataset.theme = t;
+  } catch (err) {}
+  loadAndRender(false);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+# ===== 本机配置（含本机路径，不入版本控制） =====
+*.conf
+!*.conf.example
+.cwl_source
+.sensitive-words.txt
+
+# ===== 运行时档案与本机数据 =====
+notes_tree.json
+symbols_extract.json
+progress_marks.json
+progress_marks.json.bak
+progress_marks.json.tmp
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+
+# ===== 编辑器与系统文件 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# ===== 备份文件 =====
+*.bak
+*.bak-*
+*.old
+
+# ===== 历史改写工具与规则（_rules.txt 含旧路径，不入库） =====
+_tools/
+_rules.txt
+_replace.txt
+_tmp_*.py
+
+# ===== 本机专用脚本（按用户要求不入库） =====
+sync_paths.py
