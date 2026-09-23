@@ -202,6 +202,29 @@ cp hooks/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/
 
 钩子是本地文件（`.git/hooks/` 不进版本控制），换机器或重新 clone 后需重装。临时跳过单次检查用 `git commit --no-verify`。
 
+## 目录结构
+
+每个工具一个子目录，根目录只放总面板：
+
+```
+Tools/
+├── launcher.py            总面板：列出并调起下面各工具
+├── manager/               笔记工作区管理
+│   ├── manager.py / manager.md / manager.conf
+├── symbols/               符号库管理
+│   ├── symbols.py / symbols.md / symbols.conf(.example)
+├── progress/              写作进度追踪
+│   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
+└── guard/                 防护与提交
+    ├── check_sensitive.py 提交前本机信息扫描
+    ├── commit.py / commit.md
+    ├── sync_paths.py      配置路径检查（目录改名后修复 .conf）
+    └── hooks/pre-commit   供各仓库安装的 git 钩子
+```
+
+直接运行 `python launcher.py` 即可进入总面板；也可以进入子目录单独运行某个脚本
+（脚本的配置与运行档案都放在**它自己所在的目录**，所以单独运行同样正常）。
+
 ## 生成的档案（仅在本机，勿入库）
 
 | 文件 | 说明 |

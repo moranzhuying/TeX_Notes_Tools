@@ -20,6 +20,21 @@ import time
 from pathlib import Path
 
 CONF_NAME = "manager.conf"
+
+# 本脚本位于 <Tools>/manager/ 下，其余工具按功能分目录存放（symbols/、progress/ …）
+TOOLS_ROOT = Path(__file__).resolve().parent.parent
+
+
+def find_tool(name):
+    """在 Tools 根下查找指定脚本（支持子目录分层）。找不到返回 None。"""
+    direct = TOOLS_ROOT / name
+    if direct.is_file():
+        return direct
+    for p in sorted(TOOLS_ROOT.rglob(name)):
+        if p.is_file() and not any(
+                part in {".git", "__pycache__", "_tools"} for part in p.parts):
+            return p
+    return None
 DEFAULT_MSG = "更新笔记"
 
 PANEL = """==============================================================
@@ -569,9 +584,9 @@ def create_repo(cfg):
 def open_symbols():
     """进入 symbols.py 的面板（退出后返回本面板）。"""
     print("【九】符号库管理\n")
-    sp = Path(__file__).with_name("symbols.py")
-    if not sp.is_file():
-        print(f"  ✗ 未找到 symbols.py（应与本脚本同目录：{Path(__file__).parent}）")
+    sp = find_tool("symbols.py")
+    if not sp:
+        print(f"  ✗ 未找到 symbols.py（应在 {TOOLS_ROOT} 下）")
         return
     print("  即将进入符号库管理面板，退出后将返回本面板。\n")
     try:
@@ -583,9 +598,9 @@ def open_symbols():
 def open_progress():
     """启动「写作进度追踪表」本地服务（后台运行，不阻塞本面板）。"""
     print("【十一】写作进度追踪表\n")
-    pp = Path(__file__).with_name("progress.py")
-    if not pp.is_file():
-        print(f"  ✗ 未找到 progress.py（应与本脚本同目录：{Path(__file__).parent}）")
+    pp = find_tool("progress.py")
+    if not pp:
+        print(f"  ✗ 未找到 progress.py（应在 {TOOLS_ROOT} 下）")
         return
     print("  正在启动本地服务，稍后会自动打开浏览器。")
     print("  服务在后台运行；结束时请用页面右上角的「退出」按钮。\n")

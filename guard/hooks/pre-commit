@@ -3,12 +3,12 @@
 #
 # 由工具仓库的 check_sensitive.py 提供。脚本按下列顺序查找，因此本钩子
 # 不含任何本机绝对路径，可直接随仓库分发：
-#   1) 本仓库根目录        （工具仓库自身）
-#   2) 同级目录下的 Tools/ （笔记仓库、模板仓库的情形）
-#   3) 上一级目录下的 Tools/
+#   1) 本仓库根目录 / guard/     （工具仓库自身）
+#   2) 同级目录下的 Tools/guard/ （笔记仓库、模板仓库的情形）
+#   3) 上一级目录下的 Tools/guard/
 # 词表来自沿途的 .sensitive-words.txt（脚本会逐级向上收集合并）。
 #
-# 装法：cp hooks/pre-commit <仓库>/.git/hooks/pre-commit && chmod +x <仓库>/.git/hooks/pre-commit
+# 装法：cp guard/hooks/pre-commit <仓库>/.git/hooks/pre-commit && chmod +x <仓库>/.git/hooks/pre-commit
 # 卸载：删除该文件即可
 # 临时跳过单次检查：git commit --no-verify
 
@@ -16,8 +16,9 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 SCRIPT=""
 for CAND in "$REPO/check_sensitive.py" \
-            "$REPO/../Tools/check_sensitive.py" \
-            "$REPO/../../Tools/check_sensitive.py"; do
+            "$REPO/guard/check_sensitive.py" \
+            "$REPO/../Tools/guard/check_sensitive.py" \
+            "$REPO/../../Tools/guard/check_sensitive.py"; do
     if [ -f "$CAND" ]; then
         SCRIPT="$CAND"
         break
