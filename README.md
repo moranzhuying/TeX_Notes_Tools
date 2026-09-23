@@ -230,20 +230,54 @@ Tools/
 
 ## new_note.py — 从模板新建笔记
 
-开始一本新笔记的标准动作是多步手工操作：复制骨架 → 清掉模板自带的测试章节 →
-`git init` → 建远程 → 首推。本工具一步做完。
+把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按录入的章节结构生成
+`Content/` → `git init` → 首次提交 →（可选）建远程并推送。
+
+**不带参数运行会进入交互式引导**（从总面板进来就是这条路）：依次询问笔记名、
+是否建远程、用哪个模板，然后让你粘贴章节结构，最后给出确认预览。
 
 ```bash
-python maintain/new_note.py <笔记名>                 # 只建本地仓库
-python maintain/new_note.py <笔记名> --push          # 同时建 GitHub 仓库并推送
-python maintain/new_note.py <笔记名> --dry-run       # 预演，不写任何文件
+python maintain/new_note.py                        # 交互式引导（推荐）
+python maintain/new_note.py <笔记名>                # 只建本地仓库
+python maintain/new_note.py <笔记名> --push         # 同时建 GitHub 仓库并推送
+python maintain/new_note.py <笔记名> --template <目录>
+python maintain/new_note.py <笔记名> --outline <文件>   # 从文件读章节结构
+python maintain/new_note.py <笔记名> --dry-run      # 预演，不写任何文件
 ```
+
+### 章节结构怎么写
+
+用**缩进**表示层级，用 `|` 分隔「目录名」与「中译名」（中译名可省，省了就不写标题）：
+
+```
+1_Modules_over_Rings | 环上的模
+  1_Basic_definitions | 基本定义
+    1_Modules | 模
+    2_Homomorphisms | 同态
+  2_Exact_sequences | 正合列
+```
+
+生成结果遵循本模板系的既有约定：
+
+| 生成物 | 内容 |
+|---|---|
+| `Content/<章>/index.tex` | 只有 `\input`（指向各节） |
+| `Content/<章>/<节>/index.tex` | 只有 `\input`（指向各小节） |
+| 该**节的第 1 个小节**.tex | `\chapter{章中译}` + `\section{小节中译}` |
+| 其余小节.tex | 只有 `\section{小节中译}` |
+
+> 「节」这一层本身**不带标题** —— 它只作分组。`\chapter` 只出现在该章第一个节的第一个小节里。
+>
+> 中译名留空时，会退而使用目录名本身作为标题。
+
+### 其他说明
 
 - 只复制**源码与配置**（`.gitignore`/`.gitattributes`/`structure.sty`/脚本三件套/`Content`/`Figures` 等），
   跳过编译产物与 `__pycache__`。
-- 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`；
-  `main.tex` 的 `\title` 与首个 `\part` 会改成笔记名。
+- 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`。
+- `main.tex` 的 `\title`、首个 `\part` 会改成笔记名，`\mainmatter` 下会写入新的章节 `\input` 链。
 - 仓库分支用 `master`（与既有笔记仓库一致）。
+- 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
 
 ## note_tools.py — 单本笔记的入口
 
