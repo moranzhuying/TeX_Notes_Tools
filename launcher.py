@@ -5,12 +5,13 @@ launcher.py — 工具集总面板
 
 Tools 下每个工具各占一个子目录，本脚本是它们的统一入口：
 
-| 目录        | 工具                                                     |
-|-------------|----------------------------------------------------------|
-| `manager/`  | 笔记工作区管理面板（环境检测 / 批量提交 / 建仓库）        |
-| `symbols/`  | 符号库管理（提取 / 回填 / 刷新补全 / 分发）               |
-| `progress/` | 写作进度追踪表（浏览器查看）                              |
-| `guard/`    | 提交前本机信息扫描、配置路径检查、提交脚本                |
+| 目录        | 工具                                                       |
+|-------------|------------------------------------------------------------|
+| `manager/`  | 笔记工作区管理（仓库状态 / 批量提交 / 建仓库）              |
+| `symbols/`  | 符号库管理（提取 / 回填 / 刷新补全 / 分发）                 |
+| `progress/` | 写作进度追踪表（浏览器查看）                                |
+| `maintain/` | 新建笔记、笔记工具、清理编译产物、仓库体检、全文检索、记录   |
+| `guard/`    | 环境配置、提交前扫描、路径检查、提交脚本                    |
 
 用法：
     python launcher.py
@@ -23,22 +24,29 @@ from pathlib import Path
 TOOLS_ROOT = Path(__file__).resolve().parent
 WORKSPACE = TOOLS_ROOT.parent
 
-# (序号, 标题, 相对脚本路径, 运行方式)
-#   面板   = 前台运行，退出后回到本面板
-#   后台   = 启动后立即返回（服务类）
-#   参数   = 前台运行并附加命令行参数
+# (序号, 标题, 相对脚本路径, 运行方式, 分组)
+#   面板 = 前台运行，退出后回到本面板
+#   后台 = 启动后立即返回（服务类）
+#   参数 = 前台运行并附加命令行参数
 MENU = [
-    ("1", "设置 git 基本信息（环境检测 / 账户 / SSH）", "guard/git_setup.py", "面板"),
-    ("2", "笔记工作区管理（仓库状态 / 批量提交 / 建仓库）", "manager/manager.py", "面板"),
-    ("3", "符号库管理", "symbols/symbols.py", "面板"),
-    ("4", "写作进度追踪表", "progress/progress.py", "后台"),
-    ("5", "从模板新建笔记", "maintain/new_note.py", "面板"),
-    ("6", "笔记工具（提交 / 切换习题编排模式）", "maintain/note_tools.py", "面板"),
-    ("7", "清理编译产物（aux / log / xdv …）", "maintain/clean_aux.py", "面板"),
-    ("8", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked"),
-    ("9", "配置路径检查与修复", "guard/sync_paths.py", "参数:"),
-    ("10", "提交本工具集到 GitHub", "guard/commit.py", "面板"),
+    ("1", "设置 git 基本信息（环境检测 / 账户 / SSH）", "guard/git_setup.py", "面板", "核心工具"),
+    ("2", "笔记工作区管理（仓库状态 / 批量提交 / 建仓库）", "manager/manager.py", "面板", "核心工具"),
+    ("3", "符号库管理", "symbols/symbols.py", "面板", "核心工具"),
+    ("4", "写作进度追踪表", "progress/progress.py", "后台", "核心工具"),
+
+    ("5", "从模板新建笔记", "maintain/new_note.py", "面板", "创建与维护"),
+    ("6", "笔记工具（提交 / 切换习题编排模式）", "maintain/note_tools.py", "面板", "创建与维护"),
+    ("7", "清理编译产物（aux / log / xdv …）", "maintain/clean_aux.py", "面板", "创建与维护"),
+    ("8", "仓库体检（规范 / 误跟踪 / 未提交）", "maintain/repo_check.py", "面板", "创建与维护"),
+    ("9", "本地全文检索", "maintain/search_notes.py", "面板", "创建与维护"),
+    ("10", "工作记录查看", "maintain/show_memory.py", "面板", "创建与维护"),
+
+    ("11", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
+    ("12", "配置路径检查与修复", "guard/sync_paths.py", "参数:", "信息安全与提交"),
+    ("13", "提交本工具集到 GitHub", "guard/commit.py", "面板", "信息安全与提交"),
 ]
+
+SUBMIT_NO = "13"          # 打 * 标记的那一项
 
 
 def clear():
@@ -50,23 +58,27 @@ def clear():
 
 
 def show_menu():
-    print("=" * 62)
+    print("=" * 64)
     print("  LaTeX 笔记工具集")
-    print("=" * 62)
+    print("=" * 64)
     print(f"  工作区：{WORKSPACE}")
     print(f"  工具根：{TOOLS_ROOT}")
-    print("-" * 62)
-    for no, title, rel, _ in MENU:
-        mark = "*" if no == "10" else " "
-        print(f" {mark}{no}. {title}")
-    print("-" * 62)
-    print("  0. 退出")
-    print("=" * 62)
+    print("-" * 64)
+    group = None
+    for no, title, _rel, _mode, grp in MENU:
+        if grp != group:
+            print(f"  ── {grp} ──")
+            group = grp
+        mark = "*" if no == SUBMIT_NO else " "
+        print(f" {mark}{no:>2}. {title}")
+    print("-" * 64)
+    print("   0. 退出")
+    print("=" * 64)
 
 
 def run(item):
-    """执行菜单项。返回 True 表示执行完毕可以继续，False 表示无需等待。"""
-    no, title, rel, mode = item
+    """执行菜单项。返回 False 表示无需等待回车。"""
+    _no, _title, rel, mode, _grp = item
     script = TOOLS_ROOT / rel
     if not script.is_file():
         print(f"  ✗ 未找到 {rel}")
@@ -113,9 +125,9 @@ def main():
             continue
 
         clear()
-        print("=" * 62)
+        print("=" * 64)
         print(f"  【{item[0]}】{item[1]}")
-        print("=" * 62)
+        print("=" * 64)
         print()
 
         if run(item):

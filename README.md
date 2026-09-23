@@ -12,6 +12,9 @@
 | `maintain/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
 | `maintain/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
 | `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …） | 见下 |
+| `maintain/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
+| `maintain/search_notes.py` | 跨笔记全文检索 | 见下 |
+| `maintain/show_memory.py` | 查看工作记录（.workbuddy/memory） | 见下 |
 | `guard/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `guard/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
@@ -207,10 +210,13 @@ Tools/
 │   ├── symbols.py / symbols.md / symbols.conf(.example)
 ├── progress/              写作进度追踪
 │   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
-├── maintain/              维护与创建
+├── maintain/              创建与维护
 │   ├── new_note.py       从模板新建一本笔记
 │   ├── note_tools.py     单本笔记的入口（提交 / 习题模式）
-│   └── clean_aux.py      清理编译产物
+│   ├── clean_aux.py      清理编译产物
+│   ├── repo_check.py     仓库体检
+│   ├── search_notes.py   跨笔记全文检索
+│   └── show_memory.py    查看工作记录
 └── guard/                 防护与提交
     ├── git_setup.py       Git 基本信息（环境检测 / 账户 / SSH）
     ├── check_sensitive.py 提交前本机信息扫描
@@ -260,6 +266,43 @@ python maintain/clean_aux.py --area notes    # 只处理某区域：notes / temp
 ```
 
 **默认不动 PDF**（那通常是你真正想留的东西），且只按扩展名匹配编译产物，不会碰到源码。
+
+## repo_check.py — 仓库体检
+
+把「仓库规范」变成可自动核查项，避免搬家 / 改名 / 复制模板后靠肉眼盯：
+
+```bash
+python maintain/repo_check.py              # 巡检全部区域
+python maintain/repo_check.py --area notes # notes / template / tools / all
+```
+
+逐仓库检查：`.gitignore` / `.gitattributes` 是否存在；有没有**被跟踪**的编译产物；
+有没有被跟踪的 `__pycache__`、`*.conf`、`.cwl_source`、`.sensitive-words.txt`、
+运行档案；以及未提交改动数与远程配置。**只读，不改动任何文件。**
+
+## search_notes.py — 跨笔记全文检索
+
+「这个词我在哪本里写过」—— 逐个打开笔记翻太慢，这里直接给文件 + 行号 + 上下文。
+
+```bash
+python maintain/search_notes.py 谱序列                    # 默认搜全部笔记的 .tex
+python maintain/search_notes.py compact --note Algebra    # 限定某本笔记
+python maintain/search_notes.py 定理 --ext tex,md         # 限定扩展名
+python maintain/search_notes.py "R^{n}" --regex            # 按正则匹配
+python maintain/search_notes.py compact -i                # 忽略大小写
+```
+
+## show_memory.py — 查看工作记录
+
+`.workbuddy/memory/` 里按日期归档着工作日志与一份长期记忆。这些记录平时不看，
+但「上次改到哪儿了」「为什么当初这么定」往往只能从这里找。
+
+```bash
+python maintain/show_memory.py            # 列出所有记录
+python maintain/show_memory.py --last 3   # 看最近 3 天
+python maintain/show_memory.py 2026-09-24 # 看某一天
+python maintain/show_memory.py MEMORY     # 看长期记忆
+```
 
 ## 生成的档案（仅在本机）
 
