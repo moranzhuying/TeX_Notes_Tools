@@ -1,0 +1,5 @@
+# 统一使用 LF 换行符，避免 Windows 编辑后产生全文件差异
+*.py text eol=lf
+
+# git 钩子是无扩展名的 shell 脚本，需单独声明
+hooks/pre-commit text eol=lf
