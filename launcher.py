@@ -28,12 +28,13 @@ WORKSPACE = TOOLS_ROOT.parent
 #   后台   = 启动后立即返回（服务类）
 #   参数   = 前台运行并附加命令行参数
 MENU = [
-    ("1", "笔记工作区管理", "manager/manager.py", "面板"),
-    ("2", "符号库管理", "symbols/symbols.py", "面板"),
-    ("3", "写作进度追踪表", "progress/progress.py", "后台"),
-    ("4", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked"),
-    ("5", "配置路径检查与修复", "guard/sync_paths.py", "参数:"),
-    ("6", "提交本工具集到 GitHub", "guard/commit.py", "面板"),
+    ("1", "设置 git 基本信息（环境检测 / 账户 / SSH）", "guard/git_setup.py", "面板"),
+    ("2", "笔记工作区管理（仓库状态 / 批量提交 / 建仓库）", "manager/manager.py", "面板"),
+    ("3", "符号库管理", "symbols/symbols.py", "面板"),
+    ("4", "写作进度追踪表", "progress/progress.py", "后台"),
+    ("5", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked"),
+    ("6", "配置路径检查与修复", "guard/sync_paths.py", "参数:"),
+    ("7", "提交本工具集到 GitHub", "guard/commit.py", "面板"),
 ]
 
 
@@ -53,7 +54,7 @@ def show_menu():
     print(f"  工具根：{TOOLS_ROOT}")
     print("-" * 62)
     for no, title, rel, _ in MENU:
-        mark = "*" if no == "6" else " "
+        mark = "*" if no == "7" else " "
         print(f" {mark}{no}. {title}")
     print("-" * 62)
     print("  0. 退出")
