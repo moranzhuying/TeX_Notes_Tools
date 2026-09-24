@@ -3,15 +3,15 @@
 """
 new_note.py — 从模板创建一本新笔记
 
-把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按录入的章节结构生成
+把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按 Markdown 大纲生成
 `Content/` 骨架 → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
 
 `git init` 之后会自动把 `guard/hooks/pre-commit` 装进新仓库，把「提交前本机信息扫描」
 一并带过去，不必事后手工补装。钩子靠相对路径逐级查找 `guard/check_sensitive.py`，
 找不到时放行，所以不会因为换机器而阻断提交。
 
-**不带参数运行会进入交互式引导**（推荐，从总面板进来就是这条路）：依次询问
-笔记名、是否建远程、用哪个模板，然后让你粘贴章节结构。
+**不带参数运行会进入交互式引导**（推荐，从总面板进来就是这条路）：依次询问笔记名、
+模板、是否建远程、大纲 md 文件，然后给出确认预览。
 
 用法
 ----
@@ -19,27 +19,64 @@ new_note.py — 从模板创建一本新笔记
     python new_note.py <笔记名>                # 只建本地仓库（不生成章节骨架）
     python new_note.py <笔记名> --push         # 同时建 GitHub 仓库并推送
     python new_note.py <笔记名> --template <目录>
-    python new_note.py <笔记名> --outline <文件>   # 从文件读章节结构
+    python new_note.py <笔记名> --outline <大纲.md>  # 按 md 大纲生成骨架
+    python new_note.py <笔记名> --outline <大纲.md> --levels textbook
     python new_note.py <笔记名> --dry-run      # 只显示将要做什么
 
-章节结构格式
-------------
-用**缩进**表示层级，用 `|` 分隔「目录名」与「中译名」（中译名可省，省了就不写标题）：
+大纲 md 的写法
+--------------
+文件头是可省的元信息块（`---` 包围、`键: 值`），随后用 **Markdown 标题的层级**表示
+目录层级：最浅的一层就是最外层，`#` / `##` / `###` … 依次往下，行内用 `|` 分隔
+「目录名」与「中译名」（中译名可省，省了就退用目录名）：
 
-    1_Modules_over_Rings | 环上的模
-      1_Basic_definitions | 基本定义
-        1_Modules | 模
-        2_Homomorphisms | 同态
-      2_Exact_sequences | 正合列
+    ---
+    name: Algebra
+    template: Math-Note
+    levels: part, chapter, section
+    ---
 
-对应生成（遵循本模板系的既有约定）：
+    # Description_of_Formal_Mathematic | 数学的形式化描述
+    ## Terms_and_relations | 项与关系
+    ### Terms | 项
+    ### Formative_constructions | 合式构造
 
-    Content/1_Modules_over_Rings/index.tex              → \\input 各节
-    Content/1_Modules_over_Rings/1_Basic_definitions/index.tex   → \\input 各小节
-    .../1_Basic_definitions/1_Modules.tex               → \\chapter{环上的模} + \\section{模}
-    .../1_Basic_definitions/2_Homomorphisms.tex         → \\section{同态}
+元信息块里可写的键：`name`（笔记名）、`template`（模板目录名）、`levels`（层级命令）。
 
-注意：`\\chapter{}` 只写在该**章第一个节的第一个小节**里，「节」这一层本身不带标题。
+层级命令（levels）
+------------------
+写「一个命令序列」，或写下面某个预设名。命令按**由外到内**排列，必须是 LaTeX 章节
+命令的合法递降，管几个命令就是几层目录；末层是 `.tex` 文件，前面各层是目录：
+
+| 预设名          | 等价于                                | 适用                            |
+|-----------------|---------------------------------------|---------------------------------|
+| `bourbaki`      | `part, chapter, section`              | 层1 目录＝原书章（现有笔记写法）|
+| `textbook`      | `chapter, section, subsection`        | 常见教材：层1 目录＝章          |
+| `textbook-part` | `part, chapter, section, subsection`  | 分「部」的大部头                |
+| `two-level`     | `chapter, section`                    | 两层：讲义 / 小册子             |
+| `article`       | `section, subsection`                 | 文章式：不分章                  |
+| `grouped`       | `chapter, -, section`                 | 中间层只作分组、不产生标题      |
+
+自定义写法就是直接列命令（逗号分隔），其中的 `-` 表示「这一层只作分组、不产生标题」：
+
+    levels: part, chapter, section, subsection
+    levels: chapter, -, section          # ＝ grouped
+
+标题命令的落点（本模板系既有约定）：
+
+    main.tex                          \\part{层1中译} 之类 ＋ 紧跟其 \\input
+    Content/<层1>/index.tex           只有 \\input（指向各层2）
+    Content/<层1>/<层2>/index.tex     只有 \\input（指向各层3）
+    Content/…/<层3>.tex               \\chapter{层2中译} ＋ \\section{层3中译}
+                                      （层2 的标题写在「它第一个子项的第一个叶子」里）
+
+其余规则：
+
+- **最外层的标题命令写在 `main.tex` 里**（`\\part{…}` 与它的 `\\input` 配成一对），
+  与现有笔记的 main.tex 完全一致；层2 及更深层的标题写进内容文件。
+- **编号自动补**：目录名里不用手写 `1_`，脚本按出现顺序补；写了 `3_xxx` 就照用。
+- 目录名限 ASCII（字母/数字/下划线/连字符），中文只出现在 `|` 右侧。
+- 某层节点下面没有更细的标题时，它的标题写进**该层自己的 index.tex**（占位，便于先建骨架）。
+- 标题层级数必须与 levels 的命令数相同，且不能跳级（`#` 之后只能接 `##`）。
 """
 import os
 import re
@@ -68,6 +105,66 @@ SKIP_NAMES = {"__pycache__"}
 SKIP_SUFFIX = {".aux", ".log", ".out", ".toc", ".lof", ".lot", ".fls",
                ".fdb_latexmk", ".synctex.gz", ".xdv", ".listing", ".pdf", ".nav",
                ".snm", ".vrb"}
+
+# ---------------------------------------------------------------- 层级模式
+
+# LaTeX 章节命令，由外到内。levels 必须是它的**保持次序的子序列**，
+# 否则 \\chapter 出现在 \\section 之后这类顺序错误会让编号彻底乱掉。
+SECTION_CMDS = ["part", "chapter", "section", "subsection",
+                "subsubsection", "paragraph", "subparagraph"]
+
+#: 层级预设：(命令序列, 说明)。面板与报错提示都读这里，改预设只动这一处。
+LEVEL_PRESETS = {
+    "bourbaki":      ("part,chapter,section",
+                      "层1 目录＝原书章（现有笔记的写法）"),
+    "textbook":      ("chapter,section,subsection",
+                      "常见教材：层1 目录＝章"),
+    "textbook-part": ("part,chapter,section,subsection",
+                      "分「部」的大部头"),
+    "two-level":     ("chapter,section",
+                      "两层：讲义 / 小册子"),
+    "article":       ("section,subsection",
+                      "文章式：不分章"),
+    "grouped":       ("chapter,-,section",
+                      "中间层只作分组、不产生标题"),
+}
+
+
+class OutlineError(Exception):
+    """大纲文件本身有问题（格式 / 层级 / 目录名），由调用方打印提示。"""
+
+
+def print_level_presets():
+    print("  可选的层级模式（levels）—— 写预设名，或直接列命令：")
+    for name, (seq, desc) in LEVEL_PRESETS.items():
+        print(f"    {name:<14} = {seq:<36} {desc}")
+    print("  自定义：逗号分隔的 LaTeX 章节命令，须按由外到内排列，")
+    print("          如 part, chapter, section；`-` 表示该层只作分组、不产生标题")
+
+
+def resolve_levels(spec):
+    """把 levels 字段（预设名 / 逗号命令序列）解析成命令列表。
+
+    返回 [cmd, ...]，其中 `-` 表示该层不产生标题命令。
+    """
+    raw = (spec or "").strip()
+    if not raw:
+        raise OutlineError("没有指定层级模式 levels")
+    if raw.lower() in LEVEL_PRESETS:
+        raw = LEVEL_PRESETS[raw.lower()][0]
+    cmds = [c.strip().lower() for c in raw.split(",") if c.strip()]
+    if not cmds:
+        raise OutlineError(f"levels 解析为空：{spec!r}")
+    for c in cmds:
+        if c == "-":
+            continue
+        if c not in SECTION_CMDS:
+            raise OutlineError(
+                f"不认识的章节命令 {c!r}；可用：{'、'.join(SECTION_CMDS)}（或用 `-` 表示分组层）")
+    pos = [SECTION_CMDS.index(c) for c in cmds if c != "-"]
+    if pos != sorted(pos) or len(set(pos)) != len(pos):
+        raise OutlineError(f"层级命令顺序不对（应由外到内、不重复）：{', '.join(cmds)}")
+    return cmds
 
 
 def sh(cmd, cwd=None):
@@ -98,24 +195,93 @@ def notes_root():
     return guess if guess.is_dir() else None
 
 
-# ---------------------------------------------------------------- 章节结构
+# ---------------------------------------------------------------- 大纲解析
 
-def parse_outline(text):
-    """把缩进大纲解析成树：[{name, label, children}, ...]"""
-    # 注意：stack[0][1] 本身就是根列表，不要再另建 tree 变量 ——
-    # 那样两者不是同一个对象，往里 append 的内容不会出现在返回值里（踩过）。
+HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*\S)[ \t]*$")
+
+#: 目录/文件名允许的形态：ASCII 开头，不含 Windows 非法字符与空白、反斜杠。
+#: （允许点与逗号 —— 真实笔记里有 `1_K.u,_C` 这类文件名。）
+DIR_NAME_RE = re.compile(r"^[A-Za-z0-9][^\\/:*?\"<>|\s]*$")
+
+#: 旧「缩进 + |」格式的层级语义，等价于 grouped 预设（中间层只作分组）。
+LEGACY_LEVELS = ["chapter", "-", "section"]
+
+
+def parse_front_matter(text):
+    """解析 md 头部的 `---` 元信息块，返回 (meta, 正文)。
+
+    只认 `键: 值` 的单行写法，不引入 YAML 依赖；文件头没有 `---` 就当成没有元信息。
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            meta = {}
+            for ln in lines[1:i]:
+                if ln.strip().startswith("#") or ":" not in ln:
+                    continue
+                k, v = ln.split(":", 1)
+                meta[k.strip().lower()] = v.strip().strip("\"'")
+            return meta, "\n".join(lines[i + 1:])
+    raise OutlineError("开头的 `---` 没有配对的结束 `---`")
+
+
+def make_node(body, where):
+    """`目录名 | 中译名` → 节点。中译名可省，省了退用目录名。"""
+    name, sep, label = body.partition("|")
+    name = re.sub(r"\s+", "_", name.strip())
+    label = label.strip() if sep else ""
+    if not name:
+        raise OutlineError(f"{where}：`|` 左边没写目录名")
+    if not DIR_NAME_RE.match(name):
+        raise OutlineError(
+            f"{where}：目录名 {name!r} 不合规 —— 只能用英文/数字/下划线/连字符/点/逗号，"
+            f"中文请写在 `|` 右边（如 `Terms | 项`）")
+    return {"name": name, "label": label, "children": []}
+
+
+def parse_md_outline(text):
+    """解析 Markdown 大纲。返回 (树, 层级数)。
+
+    `#` 是最外层，逐级往下（不跳级、必须从最浅的一层开始）。
+    """
+    heads = []
+    for line_no, ln in enumerate(text.splitlines(), 1):
+        m = HEADING_RE.match(ln)
+        if m:
+            heads.append((len(m.group(1)), m.group(2), line_no))
+    if not heads:
+        raise OutlineError("没有找到任何 Markdown 标题（形如 `# 标题`）")
+
+    base = min(lv for lv, _, _ in heads)
+    if heads[0][0] != base:
+        raise OutlineError(f"第 {heads[0][2]} 行的标题不是最外层 —— "
+                           f"大纲应从 `{'#' * base}` 开始写")
+    depth = max(lv for lv, _, _ in heads) - base + 1
+
+    root = []
+    stack = [(base - 1, root)]      # stack[0][1] 就是根列表（别另建变量，见旧注释）
+    for lv, body, line_no in heads:
+        while len(stack) > 1 and lv <= stack[-1][0]:
+            stack.pop()
+        if lv > stack[-1][0] + 1:
+            raise OutlineError(f"第 {line_no} 行跳级了：`{'#' * lv}` 前面缺 "
+                               f"`{'#' * (lv - 1)}`")
+        node = make_node(body, f"第 {line_no} 行")
+        stack[-1][1].append(node)
+        stack.append((lv, node["children"]))
+    return root, depth
+
+
+def parse_indent_outline(text):
+    """旧格式（缩进 + `|`）解析成同样的树。"""
     stack = [(-1, [])]
-    for raw in text.splitlines():
+    for line_no, raw in enumerate(text.splitlines(), 1):
         if not raw.strip() or raw.strip().startswith("#"):
             continue
         indent = len(raw) - len(raw.lstrip())
-        body = raw.strip()
-        name, sep, label = body.partition("|")
-        node = {
-            "name": re.sub(r"\s+", "_", name.strip()),
-            "label": label.strip() if sep else "",
-            "children": [],
-        }
+        node = make_node(raw.strip(), f"第 {line_no} 行")
         while len(stack) > 1 and indent <= stack[-1][0]:
             stack.pop()
         stack[-1][1].append(node)
@@ -123,63 +289,132 @@ def parse_outline(text):
     return stack[0][1]
 
 
-def outline_files(tree):
-    """列出结构将产生的文件（用于预览）。"""
-    out = []
-    for chap in tree:
-        for j, sec in enumerate(chap["children"], 1):
-            for k, sub in enumerate(sec["children"], 1):
-                marks = []
-                if j == 1 and k == 1 and chap["label"]:
-                    marks.append("\\chapter")
-                marks.append("\\section")
-                out.append(f"Content/{chap['name']}/{sec['name']}/{sub['name']}.tex"
-                           f"   {'+'.join(marks)}")
+def read_outline_file(path):
+    """读大纲文件并解析。返回 (meta, 树, 层级命令列表)。
+
+    Markdown 标题式与旧的缩进式都认：文件里有 `# 标题` 就是前者。
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    meta, body = parse_front_matter(text)
+    if any(HEADING_RE.match(ln) for ln in text.splitlines()):
+        tree, depth = parse_md_outline(body)
+        spec = meta.get("levels", "")
+        cmds = resolve_levels(spec) if spec else None
+        if cmds is not None and len(cmds) != depth:
+            raise OutlineError(
+                f"标题有 {depth} 层，但 levels 给了 {len(cmds)} 个命令"
+                f"（{', '.join(cmds)}）—— 两者必须相同")
+        return meta, tree, cmds
+
+    tree = parse_indent_outline(body)
+    return meta, tree, list(LEGACY_LEVELS)
+
+
+def numbered_name(node, index):
+    """给目录/文件名补编号前缀：显式写了 `3_xxx` 就照用，否则按层内序号补。"""
+    return node["name"] if re.match(r"^\d+_", node["name"]) else f"{index}_{node['name']}"
+
+
+def title_cmd(level, label):
+    """该层的标题命令；`-`（分组层）或标题为空时返回 None。"""
+    if level == "-" or not label:
+        return None
+    return f"\\{level}{{{label}}}"
+
+
+def content_files(tree, levels):
+    """列出结构将产生的文件（预览用）。"""
+    out, depth = [], len(levels)
+
+    def walk(node, prefix, i, index):
+        name = numbered_name(node, index)
+        here = f"{prefix}/{name}" if prefix else name
+        if i == depth - 1:
+            mark = f"   \\{levels[i]}" if levels[i] != "-" else "   （无标题）"
+            out.append(f"Content/{here}.tex{mark}")
+            return
+        out.append(f"Content/{here}/index.tex")
+        for k, child in enumerate(node["children"], 1):
+            walk(child, here, i + 1, k)
+
+    for j, chap in enumerate(tree, 1):
+        walk(chap, "", 0, j)
     return out
 
 
-def build_content(content_dir, tree):
-    """按树生成章节目录、index.tex 与小节文件。返回章名列表。"""
-    chapters = []
-    for chap in tree:
-        cdir = content_dir / chap["name"]
-        cdir.mkdir(parents=True, exist_ok=True)
-        c_inputs = []
+def top_chapters(tree, levels):
+    """main.tex 里每一组的 (\\input 路径, 中译名)。
 
-        for j, sec in enumerate(chap["children"], 1):
-            sdir = cdir / sec["name"]
-            sdir.mkdir(parents=True, exist_ok=True)
-            s_inputs = []
-
-            for k, sub in enumerate(sec["children"], 1):
-                body = []
-                if j == 1 and k == 1 and chap["label"]:
-                    body.append(f"\\chapter{{{chap['label']}}}")
-                    body.append("")
-                body.append(f"\\section{{{sub['label'] or sub['name']}}}")
-                body.append("")
-                body.append("")
-                (sdir / f"{sub['name']}.tex").write_text(
-                    "\n".join(body), encoding="utf-8", newline="")
-                s_inputs.append(
-                    f"\\input{{./Content/{chap['name']}/{sec['name']}/{sub['name']}}}")
-
-            (sdir / "index.tex").write_text(
-                "\n".join(s_inputs) + "\n", encoding="utf-8", newline="")
-            c_inputs.append(f"\\input{{./Content/{chap['name']}/{sec['name']}/index}}")
-
-        (cdir / "index.tex").write_text(
-            "\n".join(c_inputs) + "\n", encoding="utf-8", newline="")
-        chapters.append(chap["name"])
-    return chapters
+    逐层目录时输入各自目录的 index；只有一层时，顶层节点本身就是叶子文件。
+    """
+    single = len(levels) == 1
+    out = []
+    for j, node in enumerate(tree, 1):
+        name = numbered_name(node, j)
+        path = f"./Content/{name}" if single else f"./Content/{name}/index"
+        out.append((path, node["label"] or name))
+    return out
 
 
-def rewrite_main_tex(main_tex, name, chapters):
-    r"""更新 main.tex：标题、\part，以及各章的 \input。
+def tree_depth(tree):
+    """树的最大层数（顶层算 1 层）。"""
+    if not tree:
+        return 0
+    return 1 + max((tree_depth(n["children"]) for n in tree), default=0)
 
-    `\mainmatter` 与 `\backmatter` 之间是正文主体：其中的 `\part` **保留并改名**成
-    笔记名，其余内容由新的章节 `\input` 链取代。不能把整段直接替换掉 ——
-    那样刚改好名的 `\part` 会被一起吃掉，所以这里分两步处理。
+
+def build_content(content_dir, tree, levels):
+    """按树与层级命令生成章节目录、index.tex 与叶子文件。
+
+    标题命令的落点：层1 的进 main.tex（见 rewrite_main_tex）；层2 及更深层的
+    标题只在**该子树的第一个文件**里出现一次 —— 所以 `pending` 是所有兄弟共用
+    的一个列表，被第一个叶子取走后清空。若某层节点下面没有更细的标题，
+    它自己的标题就落在它自己的 index.tex 里（占位，便于先建骨架）。
+    """
+    depth = len(levels)
+
+    def emit(node, prefix, i, index, pending):
+        name = numbered_name(node, index)
+        label = node["label"] or name
+        here = f"{prefix}/{name}" if prefix else name
+        title = title_cmd(levels[i], label)
+
+        if i == depth - 1:                                    # 叶子：一个 .tex
+            body = pending + ([title] if title else [])
+            pending.clear()
+            path = content_dir / f"{here}.tex"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(("\n".join(body) + "\n\n") if body else "",
+                            encoding="utf-8", newline="")
+            return f"\\input{{./Content/{here}}}"
+
+        cur = content_dir / here                              # 目录
+        cur.mkdir(parents=True, exist_ok=True)
+        if title and i > 0:
+            pending.append(title)
+        inputs = [emit(child, here, i + 1, k, pending)
+                  for k, child in enumerate(node["children"], 1)]
+        if inputs:
+            text = "\n".join(inputs) + "\n"
+        elif pending:                                         # 空节点：就地落标题
+            text = "\n".join(pending) + "\n"
+            pending.clear()
+        else:
+            text = ""
+        (cur / "index.tex").write_text(text, encoding="utf-8", newline="")
+        return f"\\input{{./Content/{here}/index}}"
+
+    for j, chap in enumerate(tree, 1):
+        emit(chap, "", 0, j, [])
+
+
+def rewrite_main_tex(main_tex, name, chapters, top_cmd=None):
+    r"""更新 main.tex：标题，以及正文主体（`\mainmatter` … `\backmatter`）的章节骨架。
+
+    `chapters` 是 [(层1目录名, 层1中译名), ...]，`top_cmd` 是最外层的标题命令
+    （`-` 表示该层不产生标题）。有大纲时正文主体被重写成「标题命令 + `\input`」的
+    成对分组，逐行对应现有笔记的 main.tex；**没有大纲时正文主体原样不动**，
+    只把模板里那行 `\part{测试部分}` 改名成笔记名。
     """
     if not main_tex.is_file():
         return False
@@ -189,18 +424,18 @@ def rewrite_main_tex(main_tex, name, chapters):
                  text, count=1)
     new = new.replace("\\part{测试部分}", f"\\part{{{name}}}")
 
-    inputs = [f"\\input{{./Content/{c}/index}}" for c in chapters]
     m = re.search(r"(\\mainmatter[ \t]*\n)(.*?)(\s*\\backmatter)", new, flags=re.S)
-    if m:
-        seg = []
-        if re.search(r"\\part\{", m.group(2)):     # 正文主体里带 \part
-            seg.append(f"\\part{{{name}}}")
-        if inputs:
-            seg.append("\n".join(inputs))          # 各章 \input 连续成行，同模板写法
-        if seg:
-            # 首行补一个空行，\part 与 \input 块之间空一行；尾部空行由末组自带
-            new = new[:m.start()] + m.group(1) + "\n" + "\n\n".join(seg) \
-                + m.group(3) + new[m.end():]
+    if m and chapters:
+        groups = []
+        for path, label in chapters:
+            block = []
+            if top_cmd and top_cmd != "-":
+                block.append(f"\\{top_cmd}{{{label}}}")
+            block.append(f"\\input{{{path}}}")
+            groups.append("\n\n".join(block))
+        # 首行补一个空行；尾部的空行由末组（含 \backmatter）自带
+        new = new[:m.start()] + m.group(1) + "\n" + "\n\n".join(groups) \
+            + m.group(3) + new[m.end():]
 
     main_tex.write_text(new, encoding="utf-8", newline="")
     return True
@@ -282,12 +517,12 @@ def ask(prompt, default=""):
     return ans or default
 
 
-def read_outline_interactive():
-    print("  粘贴章节结构，用缩进表示层级，`|` 分隔目录名与中译名。")
-    print("  例：")
-    print("      1_Modules_over_Rings | 环上的模")
-    print("        1_Basic_definitions | 基本定义")
-    print("          1_Modules | 模")
+def read_outline_paste():
+    """旧的手动粘贴入口（缩进 + `|`），语义等同 grouped 预设。"""
+    print("  粘贴章节结构，用缩进表示层级，`|` 分隔目录名与中译名：")
+    print("      Modules_over_Rings | 环上的模")
+    print("        Basic_definitions | 基本定义")
+    print("          Modules | 模")
     print("  单独一行 `END` 结束输入（直接回车表示不用结构）。\n")
     lines = []
     while True:
@@ -300,7 +535,32 @@ def read_outline_interactive():
         if not ln.strip() and not lines:
             break
         lines.append(ln)
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    return parse_indent_outline(text) if text.strip() else []
+
+
+def choose_levels(default_spec=""):
+    """让用户挑层级模式。返回命令列表；取消返回 None。"""
+    print()
+    print_level_presets()
+    for _ in range(3):
+        spec = ask("\n层级模式（预设名或命令序列）", default_spec)
+        if not spec:
+            return None
+        try:
+            return resolve_levels(spec)
+        except OutlineError as e:
+            print(f"  ✗ {e}")
+    return None
+
+
+def check_depth(tree, levels):
+    """标题层数必须与层级命令个数相同；不符时返回报错文本。"""
+    depth = tree_depth(tree)
+    if depth != len(levels):
+        return (f"大纲有 {depth} 层，但层级模式给了 {len(levels)} 个命令"
+                f"（{', '.join(levels)}）—— 两者必须相同")
+    return None
 
 
 def interactive():
@@ -309,7 +569,33 @@ def interactive():
     print("=" * 64)
     print()
 
-    name = ask("笔记名（字母开头，可含数字/下划线/连字符）")
+    meta, tree, levels = {}, [], None
+    outline_path = ask("大纲 md 文件路径（回车＝不生成骨架，输入 paste＝手动粘贴大纲）")
+    paste = bool(outline_path) and outline_path.lower() == "paste"
+
+    if outline_path and not paste:
+        try:
+            meta, tree, levels = read_outline_file(outline_path)
+        except OSError as e:
+            print(f"  ✗ 读不到大纲文件：{e}")
+            return 1
+        except OutlineError as e:
+            print(f"  ✗ 大纲有问题：{e}")
+            return 1
+        if tree and not levels:                  # md 里没写 levels → 现场挑
+            print("  md 里没写 levels（层级模式），请挑一个：")
+            levels = choose_levels()
+            if not levels:
+                print("  已取消。")
+                return 1
+        if not tree:
+            print("  ⚠ 大纲里没有任何标题，按「不生成骨架」处理。")
+        else:
+            print(f"  已读入 {len(tree)} 个顶层节点，共 "
+                  f"{len(content_files(tree, levels))} 个文件")
+    levels = levels or []
+
+    name = ask("\n笔记名（字母开头，可含数字/下划线/连字符）", meta.get("name", ""))
     if not name:
         print("  已取消。")
         return 1
@@ -319,7 +605,8 @@ def interactive():
     if tdir.is_dir():
         templates = [d.name for d in sorted(tdir.iterdir())
                      if d.is_dir() and (d / "main.tex").is_file()]
-    default_tpl = "Math-Note" if "Math-Note" in templates else (templates[0] if templates else "")
+    default_tpl = meta.get("template") or ("Math-Note" if "Math-Note" in templates
+                                           else (templates[0] if templates else ""))
     if templates:
         print(f"\n  可用模板：{', '.join(templates)}")
     tpl = ask("模板目录名", default_tpl)
@@ -327,12 +614,23 @@ def interactive():
         print("  已取消。")
         return 1
 
-    print()
-    push = ask("同时建 GitHub 仓库并推送？[y/N]", "N").lower() in ("y", "yes")
+    push = ask("\n同时建 GitHub 仓库并推送？[y/N]", "N").lower() in ("y", "yes")
 
-    print()
-    outline_text = read_outline_interactive()
-    tree = parse_outline(outline_text) if outline_text.strip() else []
+    if paste:
+        print()
+        tree = read_outline_paste()
+        if tree:
+            levels = choose_levels()
+            if not levels:
+                print("  已取消。")
+                return 1
+    levels = levels or []
+
+    if tree:
+        bad = check_depth(tree, levels)
+        if bad:
+            print(f"  ✗ {bad}")
+            return 1
 
     target = notes_root() / name if notes_root() else None
     template = tdir / tpl
@@ -344,8 +642,9 @@ def interactive():
     print(f"  目标     ：{target}")
     print(f"  远程     ：{'创建并推送' if push else '不创建'}")
     if tree:
-        files = outline_files(tree)
-        print(f"  章节结构 ：{len(tree)} 章 / {len(files)} 个小节")
+        files = content_files(tree, levels)
+        print(f"  层级模式 ：{', '.join(levels)}")
+        print(f"  章节结构 ：{len(tree)} 个顶层节点 / {len(files)} 个文件")
         for f in files[:12]:
             print(f"             {f}")
         if len(files) > 12:
@@ -359,12 +658,13 @@ def interactive():
         print("  已取消。")
         return 1
 
-    return run(name, template, target, push, tree, dry=False)
+    return run(name, template, target, push, tree, levels, dry=False)
 
 
 # ---------------------------------------------------------------- 主流程
 
-def run(name, template, target, do_push, tree, dry):
+def run(name, template, target, do_push, tree, levels, dry):
+    levels = levels or []
     if not template.is_dir():
         print(f"✗ 模板目录不存在：{template}")
         return 1
@@ -374,6 +674,11 @@ def run(name, template, target, do_push, tree, dry):
     if not re.fullmatch(r"[A-Za-z][\w\-]*", name):
         print("✗ 笔记名建议用字母开头、仅含字母数字下划线连字符（会作为仓库名）")
         return 1
+    if tree:
+        bad = check_depth(tree, levels)
+        if bad:
+            print(f"✗ {bad}")
+            return 1
 
     if not dry:
         target.mkdir(parents=True)
@@ -393,27 +698,26 @@ def run(name, template, target, do_push, tree, dry):
     print("  （无）" if not removed else "\n".join(f"  已移除 {r}" for r in removed))
 
     print("\n调整 main.tex：")
-    chapters = [c["name"] for c in tree] if tree else []
+    chapters = top_chapters(tree, levels) if tree else []
+    top_cmd = levels[0] if levels else None
     if dry:
-        print(f"  标题 → {name}" + (f"；\\mainmatter 下写入 {len(chapters)} 个章节引用"
-                                  if chapters else ""))
-    elif rewrite_main_tex(target / "main.tex", name, chapters):
-        print(f"  标题 → {name}" + (f"；\\mainmatter 下写入 {len(chapters)} 个章节引用"
-                                  if chapters else ""))
+        print(f"  标题 → {name}" + (f"；正文主体写成 {len(chapters)} 组"
+                                  f"（\\{top_cmd} ＋ \\input）" if chapters else ""))
+    elif rewrite_main_tex(target / "main.tex", name, chapters, top_cmd):
+        print(f"  标题 → {name}" + (f"；正文主体写成 {len(chapters)} 组"
+                                  f"（\\{top_cmd} ＋ \\input）" if chapters else ""))
     else:
         print("  （未找到 main.tex，跳过）")
 
     if tree:
-        print("\n生成章节骨架：")
-        if dry:
-            for f in outline_files(tree):
-                print(f"  {f}")
-        else:
+        files = content_files(tree, levels)
+        print(f"\n生成章节骨架（层级：{', '.join(levels)}）：")
+        if not dry:
             content = target / "Content"
             content.mkdir(parents=True, exist_ok=True)
-            for c in build_content(content, tree):
-                print(f"  Content/{c}/index.tex")
-                print(f"  Content/{c}/…/index.tex")
+            build_content(content, tree, levels)
+        for f in files:
+            print(f"  {f}")
     else:
         print("\n章节骨架：未提供大纲，不生成；模板自带的示例章已删除，"
               "\\mainmatter 下只剩空的 \\part")
@@ -467,45 +771,72 @@ def main():
     argv = sys.argv[1:]
     dry = "--dry-run" in argv
     do_push = "--push" in argv
-    positional = [a for a in argv if not a.startswith("--")]
 
-    template = None
-    if "--template" in argv:
-        i = argv.index("--template")
-        if i + 1 < len(sys.argv):
-            template = Path(sys.argv[i + 1])
-    if template is None:
-        template = WORKSPACE / "Template" / "Math-Note"
+    def opt(name, default=None):
+        if name in argv:
+            i = argv.index(name)
+            if i + 1 < len(argv):
+                return argv[i + 1]
+        return default
 
-    outline_file = None
-    if "--outline" in argv:
-        i = argv.index("--outline")
-        if i + 1 < len(sys.argv):
-            outline_file = argv[i + 1]
+    template = opt("--template")
+    template = Path(template) if template else WORKSPACE / "Template" / "Math-Note"
+    outline_file = opt("--outline")
+    levels_spec = opt("--levels")
 
     # 无参数 → 交互式引导
     if not argv:
         return interactive()
 
-    if not positional:
-        print(__doc__)
-        return 1
-    name = positional[0]
+    positional = [a for a in argv if not a.startswith("--")]
+    # 剔除被 --xxx 消费掉的值，剩下的第一个才是笔记名
+    for opt_name in ("--template", "--outline", "--levels"):
+        val = opt(opt_name)
+        if val in positional:
+            positional.remove(val)
 
-    tree = []
+    meta, tree, levels = {}, [], []
     if outline_file:
         p = Path(outline_file)
         if not p.is_file():
             print(f"✗ 大纲文件不存在：{p}")
             return 1
-        tree = parse_outline(p.read_text(encoding="utf-8"))
+        try:
+            meta, tree, levels = read_outline_file(p)
+        except OutlineError as e:
+            print(f"✗ 大纲有问题：{e}")
+            print_level_presets()
+            return 1
+    if levels_spec:
+        try:
+            levels = resolve_levels(levels_spec)
+        except OutlineError as e:
+            print(f"✗ {e}")
+            print_level_presets()
+            return 1
+
+    name = positional[0] if positional else meta.get("name", "")
+    if not name:
+        print("✗ 没给笔记名 —— 写在命令行（`new_note.py 笔记名 …`）或 md 头部的 `name:` 里")
+        print(__doc__)
+        return 1
+
+    if tree and not levels:
+        print("✗ 大纲里没写 levels（层级模式）——请在 md 头部加一行，或用 --levels 指定：")
+        print_level_presets()
+        return 1
+    if tree:
+        bad = check_depth(tree, levels)
+        if bad:
+            print(f"✗ {bad}")
+            return 1
 
     root = notes_root()
     if not root:
         print("✗ 未找到笔记根目录")
         return 1
 
-    return run(name, template, root / name, do_push, tree, dry)
+    return run(name, template, root / name, do_push, tree, levels, dry)
 
 
 if __name__ == "__main__":

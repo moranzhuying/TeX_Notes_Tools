@@ -214,6 +214,7 @@ Tools/
 │   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
 ├── maintain/              创建与维护
 │   ├── new_note.py       从模板新建一本笔记
+│   ├── outline_example.md  大纲 md 的示例（可复制改写）
 │   ├── note_tools.py     单本笔记的入口（提交 / 习题模式）
 │   ├── clean_aux.py      清理编译产物
 │   ├── repo_check.py     仓库体检
@@ -232,58 +233,98 @@ Tools/
 
 ## new_note.py — 从模板新建笔记
 
-把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按录入的章节结构生成
+把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按 **Markdown 大纲**生成
 `Content/` → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
 
-**不带参数运行会进入交互式引导**（从总面板进来就是这条路）：依次询问笔记名、
-是否建远程、用哪个模板，然后让你粘贴章节结构，最后给出确认预览。
+**不带参数运行会进入交互式引导**（从总面板进来就是这条路）：依次询问大纲 md 文件、
+笔记名、模板、是否建远程，最后给出确认预览。笔记名与模板也能写在大纲 md 的元信息里，
+写了就作为默认值。
 
 ```bash
-python maintain/new_note.py                        # 交互式引导（推荐）
-python maintain/new_note.py <笔记名>                # 只建本地仓库
-python maintain/new_note.py <笔记名> --push         # 同时建 GitHub 仓库并推送
+python maintain/new_note.py                              # 交互式引导（推荐）
+python maintain/new_note.py <笔记名>                      # 只建本地仓库（不生成骨架）
+python maintain/new_note.py <笔记名> --push               # 同时建 GitHub 仓库并推送
+python maintain/new_note.py <笔记名> --outline <大纲.md>   # 按 md 大纲生成骨架
+python maintain/new_note.py <笔记名> --outline <大纲.md> --levels textbook
 python maintain/new_note.py <笔记名> --template <目录>
-python maintain/new_note.py <笔记名> --outline <文件>   # 从文件读章节结构
-python maintain/new_note.py <笔记名> --dry-run      # 预演，不写任何文件
+python maintain/new_note.py <笔记名> --dry-run            # 预演，不写任何文件
 ```
 
-### 章节结构怎么写
+### 大纲 md 怎么写
 
-用**缩进**表示层级，用 `|` 分隔「目录名」与「中译名」（中译名可省，省了就不写标题）：
+文件头是可省的元信息块（`---` 包围、`键: 值`），随后用 **Markdown 标题的层级**表示
+目录层级：最浅的一层就是最外层；行内用 `|` 分隔「目录名」与「中译名」（中译名可省，
+省了就退用目录名）。可直接抄 `maintain/outline_example.md`。
 
+```markdown
+---
+name: Algebra
+template: Math-Note
+levels: part, chapter, section
+---
+
+# Description_of_Formal_Mathematic | 数学的形式化描述
+## Terms_and_relations | 项与关系
+### Terms | 项
+### Formative_constructions | 合式构造
 ```
-1_Modules_over_Rings | 环上的模
-  1_Basic_definitions | 基本定义
-    1_Modules | 模
-    2_Homomorphisms | 同态
-  2_Exact_sequences | 正合列
-```
 
-生成结果遵循本模板系的既有约定：
-
-| 生成物 | 内容 |
+| 规则 | 说明 |
 |---|---|
-| `Content/<章>/index.tex` | 只有 `\input`（指向各节） |
-| `Content/<章>/<节>/index.tex` | 只有 `\input`（指向各小节） |
-| 该**节的第 1 个小节**.tex | `\chapter{章中译}` + `\section{小节中译}` |
-| 其余小节.tex | 只有 `\section{小节中译}` |
+| 元信息键 | `name`（笔记名）、`template`（模板目录名）、`levels`（层级命令），都可省 |
+| 层级 | `#` 最外层、逐级往下；**不能跳级**（`#` 之后只能紧接 `##`） |
+| 标题层级数 | 必须与 `levels` 的命令个数相同 |
+| 目录名 | 英文/数字/下划线/连字符/点/逗号，不得含空白与 `\/:*?"<>\|`；中文写在 `\|` 右边 |
+| 编号 | 不用手写 `1_` 前缀，脚本按出现顺序自动补；写了 `3_xxx` 就照用 |
+| 空节点 | 某层节点下面没有更细的标题时，它的标题落进**该层自己的 `index.tex`**（占位） |
+| 旧格式 | 不带 Markdown 标题的文件仍按旧「缩进 + `\|`」读；交互里输入 `paste` 可手动粘贴 |
 
-> 「节」这一层本身**不带标题** —— 它只作分组。`\chapter` 只出现在该章第一个节的第一个小节里。
->
-> 中译名留空时，会退而使用目录名本身作为标题。
+### 层级模式（levels）
+
+写预设名，或直接列 LaTeX 章节命令（逗号分隔、**由外到内**、不可重复）。
+管几个命令就是几层目录：末层是 `.tex` 文件，前面各层是目录。
+
+| 预设名 | 等价于 | 适用 |
+|---|---|---|
+| `bourbaki` | `part, chapter, section` | 层1 目录＝原书章（现有笔记的写法） |
+| `textbook` | `chapter, section, subsection` | 常见教材：层1 目录＝章 |
+| `textbook-part` | `part, chapter, section, subsection` | 分「部」的大部头 |
+| `two-level` | `chapter, section` | 两层：讲义 / 小册子 |
+| `article` | `section, subsection` | 文章式：不分章 |
+| `grouped` | `chapter, -, section` | 中间层只作分组、不产生标题 |
+
+`-` 表示「这一层只作分组、不产生标题」。自定义就是直接列命令，例如
+`levels: part, chapter, section, subsection`、`levels: chapter, -, section`。
+层级模式没写在 md 里时：命令行会报错并列出上面的清单，交互式会现场让你选。
+
+### 标题命令落在哪
+
+以 `bourbaki`（`part, chapter, section`）为例，与既有笔记逐行一致：
+
+| 位置 | 内容 |
+|---|---|
+| `main.tex` | `\part{层1中译}` ＋ 紧跟其后的 `\input{./Content/<层1>/index}` |
+| `Content/<层1>/index.tex` | 只有 `\input`（指向各层2） |
+| `Content/<层1>/<层2>/index.tex` | 只有 `\input`（指向各层3） |
+| 该层2 的**第一个**叶子 | `\chapter{层2中译}` ＋ `\section{层3中译}` |
+| 该层2 的其余叶子 | 只有 `\section{层3中译}` |
+
+> 每一层的标题命令只在「它子树的第一个文件」里出现一次；换成 `textbook` 时同理，
+> 只是命令依次变成 `\chapter` / `\section` / `\subsection`。
 
 ### 其他说明
 
 - 只复制**源码与配置**（`.gitignore`/`.gitattributes`/`structure.sty`/脚本三件套/`Content`/`Figures` 等），
   跳过编译产物与 `__pycache__`。
 - 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`。
-- `main.tex` 的 `\title` 改成笔记名；`\mainmatter` 段被重写为「改名为笔记名的 `\part` +
-  新的章节 `\input` 链」—— `\part` 是**保留并改名**，不会连同模板的旧内容一起被删掉。
-- **不提供章节结构**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
+- `main.tex` 的 `\title` 改成笔记名；正文主体（`\mainmatter` … `\backmatter`）按大纲重写成
+  「最外层标题命令 ＋ `\input`」的成对分组。
+- **不提供大纲**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
   后续自己补 `Content/` 与 `\input`。
 - `git init` 之后、首次提交之前，会自动把 `guard/hooks/pre-commit` 装进新仓库的 `.git/hooks/`，
   让「提交前本机信息扫描」一并生效（不必事后手工补装）。钩子靠相对路径逐级查找
   `guard/check_sensitive.py`，找不到时放行 —— 所以它不阻断提交，也不含本机路径。
+
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
 
