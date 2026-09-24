@@ -6,6 +6,9 @@
 root =
 # TeXStudio 可执行文件路径。留空则自动探测（先读注册表 .tex 关联，再查常见安装位置）。
 texstudio =
+# pdftotext 可执行文件路径 —— 用于把检索词定位到 PDF 的具体页。
+# 留空则自动探测：先查 PATH，再查 TeXLive 的常见安装位置。
+pdftotext =
 
 [server]
 # 监听地址。127.0.0.1 表示仅本机可访问。

@@ -243,7 +243,43 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
 .tsw.on{background:var(--blue);border-color:var(--blue)}
 .tsw.on i{left:18px;background:#fff}
 
-#toast{position:fixed;right:20px;bottom:20px;max-width:340px;z-index:50;
+/* 搜索结果与预览层 */
+.sres .g{font-size:11px;color:var(--fg3);padding:10px 0 4px}
+.sres .it{padding:8px 10px;border-radius:7px;cursor:pointer;
+  border:.5px solid transparent;margin-bottom:2px}
+.sres .it:hover{background:var(--bg3);border-color:var(--bd)}
+.sres .it .t{font-size:13px;color:var(--fg)}
+.sres .it .sn{font-size:11px;color:var(--fg2);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sres .it .sn b{color:var(--fg3);font-weight:400}
+.cnt.bh{color:var(--blue)}
+#viewer{position:fixed;inset:0;z-index:80;background:var(--bg);
+  display:flex;flex-direction:column}
+#viewer .vbar{display:flex;align-items:center;gap:10px;padding:8px 14px;
+  border-bottom:.5px solid var(--bd);background:var(--bg2)}
+#viewer .vbar .vt{font-size:14px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:34%}
+#viewer .vbar .vpath{font-size:11px;color:var(--fg3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:30%}
+#viewer .vbody{flex:1;display:flex;min-height:0}
+#viewer .vsrc{flex:1;overflow:auto;padding:10px 0;min-width:0;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:12px}
+#viewer .vpdf{flex:1;min-width:0;border-left:.5px solid var(--bd);background:var(--bg2)}
+#viewer .vpdf iframe{width:100%;height:100%;border:0;display:block}
+#viewer[data-layout="src"] .vpdf{display:none}
+#viewer[data-layout="pdf"] .vsrc{display:none}
+#viewer .vfoot{padding:6px 14px;border-top:.5px solid var(--bd);font-size:11px;
+  color:var(--fg3);display:flex;gap:14px;flex-wrap:wrap}
+.srcline{display:flex;gap:12px;padding:0 14px;line-height:1.75;white-space:pre-wrap;
+  word-break:break-word}
+.srcline .n{flex:0 0 42px;text-align:right;color:var(--fg3);user-select:none}
+.srcline.hit{background:#ef9f2722}
+.srcline mark{background:#378add40;border-radius:2px}
+@media(max-width:900px){
+  #viewer .vbody{flex-direction:column}
+  #viewer .vpdf{border-left:0;border-top:.5px solid var(--bd)}
+}
+#toast{position:fixed;right:20px;bottom:20px;max-width:340px;z-index:90;
   background:var(--bg2);border:.5px solid var(--bd2);border-radius:8px;
   padding:10px 16px;font-size:13px;color:var(--fg);
   opacity:0;transition:opacity .18s;pointer-events:none}
@@ -324,6 +360,10 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
           <input id="q" type="text" placeholder="搜索小节（空格分隔多词，按 / 聚焦）">
         </div>
         <span class="hits" id="hits"></span>
+        <span class="sel" id="scopeSel">
+          <button data-scope="title" title="只在标题与文件名里找">仅标题</button>
+          <button data-scope="body" class="on" title="连正文一起找（会读小节文件内容）">标题+正文</button>
+        </span>
         <button id="btnEditRange" class="ico-btn" title="显示行尾复选框，用于调整计入范围">
           <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
             stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -349,6 +389,28 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
   </main>
 </div>
 
+<!-- 全屏预览层：左边源码片段、右边 PDF（定位到命中页） -->
+<div id="viewer" hidden data-layout="both">
+  <div class="vbar">
+    <span class="vt" id="vTitle"></span>
+    <span class="vpath mono" id="vPath"></span>
+    <span class="sp"></span>
+    <span class="sel" id="vLayout">
+      <button data-vl="both" class="on">并排</button>
+      <button data-vl="src">只看源码</button>
+      <button data-vl="pdf">只看 PDF</button>
+    </span>
+    <button class="ico-btn" id="vOpen">用 TeXStudio 打开</button>
+    <button class="ico-btn" id="vTab">新标签打开 PDF</button>
+    <button class="ico-btn" id="vClose">关闭</button>
+  </div>
+  <div class="vbody">
+    <div class="vsrc" id="vSrc"></div>
+    <div class="vpdf"><iframe id="vPdf" title="PDF 预览"></iframe></div>
+  </div>
+  <div class="vfoot" id="vFoot"></div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -368,6 +430,10 @@ const S = {
   orphansOpen: false,
   showUnused: true,        // 树中是否一并显示未启用的章（灰显）；默认值由服务端设置决定
   editMode: false,         // 编辑范围：显示行尾复选框
+  bodySearch: true,        // 搜索是否含正文（默认含；切换后记住）
+  search: null,            // 服务端正文检索结果；null = 没有进行正文检索
+  panelMode: "auto",       // auto = 有结果就先显示结果列表；detail = 用户点了树，看详情
+  viewer: null,            // 预览层当前的目标 {id, note, title, path, page}
 };
 
 const API = {
@@ -380,6 +446,10 @@ const API = {
   settings: "/api/settings",
   marksExport: "/api/marks/export",
   marksImport: "/api/marks/import",
+  search:   "/api/search",
+  source:   "/api/source",
+  pdfPage:  "/api/pdfpage",
+  pdf:      (note) => "/api/pdf?note=" + encodeURIComponent(note),
 };
 
 /* ============================ 数据层 ============================ */
@@ -408,6 +478,8 @@ async function loadAndRender(force) {
     applySettings();
     ensureDefaultOpen();
     refreshAll();
+    /* 刷新（重扫）后正文也可能变了，查过的词重查一遍 */
+    if (S.bodySearch && S.query) scheduleBodySearch();
   } catch (e) {
     setSvc(false, "服务已停止");
   }
@@ -490,8 +562,13 @@ function matchTerms(node, terms) {
 
 function matchQuery(node) { return matchTerms(node, queryTerms()); }
 
+/* 正文命中的小节：来自服务端检索结果（按 id 索引） */
+function bodyHit(id) {
+  return (S.search && S.search.byId && S.search.byId[id]) || null;
+}
+
 function leafVisible(leaf) {
-  return matchFilter(leaf) && matchQuery(leaf);
+  return matchFilter(leaf) && (matchQuery(leaf) || !!bodyHit(leaf.id));
 }
 
 /* 过滤后仍有可见后代的分支才显示 */
@@ -500,7 +577,7 @@ function nodeHasVisible(node) {
   const kids = node.children || [];
   if (!kids.length) {
     /* 内容写在自身 index.tex 里、没有下级文件的目录：以自身为准参与筛选 */
-    if (!matchQuery(node)) return false;
+    if (!matchQuery(node) && !bodyHit(node.id)) return false;
     if (S.filter === "all") return true;
     const st = (node.stats && node.stats.written > 0) ? "written" : "empty";
     if (S.filter === "written") return st === "written";
@@ -755,6 +832,7 @@ function selectNote(idx) {
   S.noteIdx = idx;
   S.selected = null;
   S.open = new Set();
+  S.panelMode = "auto";
   ensureDefaultOpen();
   refreshAll();
 }
@@ -841,6 +919,12 @@ function nodeRowHTML(node, depth, searching) {
       cnt += '<span class="pdot ' + node.hint_level + '" title="'
         + esc((node.hints || []).map((x) => x.text).join("；")) + '"></span>';
     }
+    /* 正文命中的小节：行尾标出命中处数，点行即看源码 / PDF */
+    const bh = bodyHit(node.id);
+    if (bh) {
+      cnt += '<span class="cnt bh" title="正文里有 ' + bh.count
+        + ' 处命中（点开详情面板看片段）">正文 ' + bh.count + '</span>';
+    }
     /* 备注 / 待办的行内小标记 */
     const openTodos = (node.todos || []).filter((t) => !t.done).length;
     if (node.note) {
@@ -918,13 +1002,24 @@ function keepSearchOpen() {
 function updateHits(note, searching) {
   const el = document.getElementById("hits");
   if (!el) return;
-  if (!searching) { el.textContent = ""; return; }
-  let c = 0;
-  (note.tops || []).forEach((t) => {
-    if (!t.decision && !S.showUnused) return;
-    walkLeaves(t).forEach((l) => { if (leafVisible(l)) c++; });
-  });
-  el.textContent = c ? "命中 " + c + " 节" : "无匹配";
+  if (!searching && !S.search) { el.textContent = ""; return; }
+  let c = 0, b = 0;
+  if (note) {
+    (note.tops || []).forEach((t) => {
+      if (!t.decision && !S.showUnused) return;
+      walkLeaves(t).forEach((l) => {
+        if (leafVisible(l)) { c++; if (bodyHit(l.id)) b++; }
+      });
+    });
+  }
+  const total = (S.search && S.search.total) || 0;
+  if (c) {
+    el.textContent = "命中 " + c + " 节" + (b ? "（含正文 " + b + "）" : "");
+  } else if (total) {
+    el.textContent = "本笔记无命中（全库 " + total + " 节）";
+  } else {
+    el.textContent = "无匹配";
+  }
 }
 
 function legendHTML() {
@@ -954,6 +1049,11 @@ function legendHTML() {
 function renderPanel() {
   const box = document.getElementById("panel");
   const n = currentNote();
+  /* 正文检索有结果时，面板优先显示结果列表（点了树上的节点就切回详情） */
+  if (S.search && (S.search.results || []).length && S.panelMode === "auto") {
+    box.innerHTML = panelResultsHTML() + legendHTML();
+    return;
+  }
   if (!n || !S.selected) {
     box.innerHTML = '<div class="p-empty">点击左侧任一章节或小节查看详情</div>'
       + legendHTML();
@@ -969,6 +1069,167 @@ function renderPanel() {
     ? panelLeafHTML(node) : panelDirHTML(node);
   box.innerHTML = body + legendHTML();
 }
+
+/* 正文检索结果列表：按笔记分组，点条目打开源码 / PDF 预览层 */
+function panelResultsHTML() {
+  const r = S.search;
+  const groups = [];
+  const seen = {};
+  (r.results || []).forEach((x) => {
+    if (!seen[x.note]) { seen[x.note] = groups.length; groups.push([x.note, []]); }
+    groups[seen[x.note]][1].push(x);
+  });
+  let h = '<div class="p-title">正文命中</div>'
+    + '<div class="p-path">关键词 ' + r.terms.map(esc).join(" + ")
+    + ' · 命中 ' + r.total + ' 个小节 · 跨 ' + groups.length + ' 本笔记</div>'
+    + '<div class="p-btns"><button class="pri" id="btnFirstHit">'
+    + '打开第一条命中（源码 + PDF）</button></div>';
+  groups.forEach(([note, rows]) => {
+    h += '<div class="sres"><div class="g">' + esc(noteTitle(note))
+      + '（' + rows.length + ' 节）</div>';
+    rows.forEach((x) => {
+      h += '<div class="it" data-hit-id="' + esc(x.id) + '" data-hit-note="'
+        + esc(x.note) + '" data-hit-title="' + esc(x.title) + '">'
+        + '<div class="t">' + esc((x.num ? x.num + " " : "") + x.title)
+        + ' <span class="cnt">' + x.count + ' 处</span></div>'
+        + (x.hits || []).slice(0, 2).map((hh) =>
+            '<div class="sn"><b>L' + hh.line + '</b> '
+            + hiText(hh.text, r.terms) + '</div>').join("")
+        + '</div>';
+    });
+    h += '</div>';
+  });
+  return h;
+}
+
+function noteTitle(name) {
+  const n = (S.data.notes || []).find((x) => x.name === name);
+  return n ? n.title : name;
+}
+
+function findLeafAnywhere(id) {
+  const res = {node: null, note: null};
+  (S.data.notes || []).forEach((n) => {
+    const dig = (x) => {
+      if (res.node) return;
+      if (x.id === id && x.type === "leaf") { res.node = x; res.note = n; return; }
+      (x.children || []).forEach(dig);
+    };
+    (n.tops || []).forEach(dig);
+  });
+  return res;
+}
+
+/* ============================ 预览层：源码 + PDF ============================ */
+
+let viewerSeq = 0;      // 连续点开不同条目时，用来丢弃过期的响应
+
+async function openViewer(id, noteName, title) {
+  const leaf = findLeafAnywhere(id).node;
+  const terms = (S.search && S.search.terms) || queryTerms();
+  S.viewer = {
+    id: id,
+    note: noteName,
+    title: title || (leaf && (leaf.view_title || leaf.name)) || id,
+    path: (leaf && leaf.path) || "",
+    page: 0,
+  };
+  const seq = ++viewerSeq;
+  document.getElementById("vTitle").textContent = S.viewer.title;
+  document.getElementById("vPath").textContent = noteName + " / " + id;
+  document.getElementById("vSrc").innerHTML =
+    '<div class="srcline"><span class="n"></span><span>正在读取源码…</span></div>';
+  document.getElementById("vFoot").textContent = "正在定位 PDF 页码…";
+  document.getElementById("vPdf").src = "about:blank";
+  document.getElementById("viewer").hidden = false;
+
+  /* 源码与 PDF 并行取：PDF 首次要抽页文本（几秒），不必等源码读完再开始 */
+  const q = terms.join(" ");
+  const wantSrc = postJSON(API.source, {id: id, q: q}).then((s) => {
+    if (seq === viewerSeq) {
+      document.getElementById("vSrc").innerHTML = sourceHTML(s, terms);
+    }
+  }).catch(() => {
+    if (seq === viewerSeq) {
+      document.getElementById("vSrc").innerHTML =
+        '<div class="srcline"><span class="n"></span><span>源码读取失败</span></div>';
+    }
+  });
+
+  const wantPdf = postJSON(API.pdfPage, {note: noteName, q: q}).then((p) => {
+    if (seq !== viewerSeq) return;
+    const page = p.first || 0;
+    S.viewer.page = page;
+    let foot = "";
+    if (p.message) foot += '<span>' + esc(p.message) + '</span>';
+    else if (p.matched) {
+      foot += '<span>PDF 里 ' + (p.pages || []).length + ' 页含这些词（共 '
+        + p.total + ' 页）</span>';
+    } else foot += '<span>PDF 文本里没找到这些词</span>';
+    if (page) foot += '<span>已定位到第 ' + page + ' 页</span>';
+    if (p.pdf_mtime) foot += '<span>PDF 编译于 ' + esc(p.pdf_mtime) + '</span>';
+    foot += '<span>PDF 里可用 Ctrl+F 精确定位；源码与 PDF 可能不同步，以源码为准</span>';
+    document.getElementById("vFoot").innerHTML = foot;
+    document.getElementById("vPdf").src =
+      API.pdf(noteName) + (page ? ("#page=" + page) : "");
+  }).catch(() => {
+    if (seq === viewerSeq) {
+      document.getElementById("vFoot").textContent =
+        "PDF 定位失败（pdf 或 pdftotext 不可用）";
+    }
+  });
+
+  await Promise.all([wantSrc, wantPdf]);
+}
+
+function sourceHTML(s, terms) {
+  if (!s || !s.blocks || !s.blocks.length) {
+    return '<div class="srcline"><span class="n"></span>'
+      + '<span>没有取到命中行附近的源码</span></div>';
+  }
+  let h = "";
+  s.blocks.forEach((b) => {
+    h += '<div class="srcblock">';
+    b.lines.forEach((ln) => {
+      const hit = b.hits.indexOf(ln.n) >= 0;
+      h += '<div class="srcline' + (hit ? " hit" : "") + '">'
+        + '<span class="n">' + ln.n + '</span>'
+        + '<span class="tx">' + (hit ? hiText(ln.text, terms) : esc(ln.text))
+        + '</span></div>';
+    });
+    h += '</div>';
+  });
+  h += '<div class="srcline"><span class="n"></span><span>（共 ' + s.total_lines
+    + ' 行，显示命中处附近的 ' + s.blocks.length + ' 段）</span></div>';
+  return h;
+}
+
+function closeViewer() {
+  document.getElementById("viewer").hidden = true;
+  document.getElementById("vPdf").src = "about:blank";
+  S.viewer = null;
+}
+
+document.getElementById("vClose").addEventListener("click", closeViewer);
+
+document.getElementById("vOpen").addEventListener("click", () => {
+  if (S.viewer && S.viewer.path) openFile(S.viewer.path);
+});
+
+document.getElementById("vTab").addEventListener("click", () => {
+  if (!S.viewer) return;
+  window.open(API.pdf(S.viewer.note)
+    + (S.viewer.page ? ("#page=" + S.viewer.page) : ""), "_blank");
+});
+
+document.getElementById("vLayout").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  document.getElementById("viewer").dataset.layout = b.dataset.vl;
+  document.querySelectorAll("#vLayout button").forEach((x) => {
+    x.classList.toggle("on", x === b);
+  });
+});
 
 function panelLeafHTML(leaf) {
   if (leaf.type === "missing") {
@@ -1369,9 +1630,56 @@ document.getElementById("btnEditRange").addEventListener("click", (e) => {
     : "已退出「编辑范围」");
 });
 
+let searchTimer = null;
+
 document.getElementById("q").addEventListener("input", (e) => {
   S.query = e.target.value.trim();
+  S.panelMode = "auto";
   renderTree();
+  scheduleBodySearch();
+});
+
+/* 正文检索要问服务端：等输入停下来再发，免得每敲一个字都请求一次 */
+function scheduleBodySearch() {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (!S.bodySearch || !S.query) {
+    const had = !!S.search;
+    S.search = null;
+    if (had) { renderTree(); renderPanel(); }
+    else { updateHits(currentNote(), queryTerms().length > 0); }
+    return;
+  }
+  searchTimer = setTimeout(runBodySearch, 250);
+}
+
+async function runBodySearch() {
+  const q = S.query;
+  if (!q) return;
+  let r = null;
+  try {
+    r = await postJSON(API.search, {q: q});
+  } catch (err) {
+    return;                       /* 服务没起来时静默降级为「只搜标题」 */
+  }
+  if (q !== S.query) return;      /* 期间输入又变了，这次结果作废 */
+  r.byId = {};
+  (r.results || []).forEach((x) => { r.byId[x.id] = x; });
+  S.search = r;
+  renderTree();
+  renderPanel();
+}
+
+document.getElementById("scopeSel").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  S.bodySearch = (b.dataset.scope === "body");
+  document.querySelectorAll("#scopeSel button").forEach((x) => {
+    x.classList.toggle("on", x === b);
+  });
+  S.panelMode = "auto";
+  scheduleBodySearch();
+  try { localStorage.setItem("wb_progress_bodyscope", S.bodySearch ? "1" : "0"); } catch (err) {}
+  toast(S.bodySearch ? "搜索范围：标题 + 正文" : "搜索范围：仅标题");
 });
 
 document.getElementById("tree").addEventListener("click", (e) => {
@@ -1399,6 +1707,7 @@ document.getElementById("tree").addEventListener("click", (e) => {
   const isLeafRow = (row.dataset.kind === "leaf");
   /* 叶子：点一下选中、再点取消；目录：点一下展开并选中（右侧显示章详情） */
   S.selected = (isLeafRow && S.selected === id) ? null : id;
+  S.panelMode = "detail";          // 点了树就切回详情，不再顶在结果列表上
   if (!isLeafRow) {
     if (S.open.has(id)) S.open.delete(id); else S.open.add(id);
   }
@@ -1584,6 +1893,17 @@ function openFile(path) {
 }
 
 document.getElementById("panel").addEventListener("click", (e) => {
+  /* 正文检索结果：点条目打开源码 + PDF 预览层 */
+  const hit = e.target.closest("[data-hit-id]");
+  if (hit) {
+    openViewer(hit.dataset.hitId, hit.dataset.hitNote, hit.dataset.hitTitle);
+    return;
+  }
+  if (e.target.id === "btnFirstHit") {
+    const x = (S.search && S.search.results || [])[0];
+    if (x) openViewer(x.id, x.note, x.title);
+    return;
+  }
   const t = e.target.closest("[data-todo-toggle]");
   const d = e.target.closest("[data-todo-del]");
   if (t) { toggleTodo(parseInt(t.dataset.todoToggle, 10)); return; }
@@ -1705,6 +2025,8 @@ document.addEventListener("keydown", (e) => {
     q.focus();
     q.select();
   } else if (e.key === "Escape") {
+    const v = document.getElementById("viewer");
+    if (v && !v.hidden) { closeViewer(); return; }
     if (typing) { e.target.blur(); return; }
     if (S.selected) { S.selected = null; renderTree(); renderPanel(); }
   }
@@ -1715,7 +2037,12 @@ document.addEventListener("keydown", (e) => {
   try {
     const t = localStorage.getItem("wb_progress_theme");
     if (t) document.documentElement.dataset.theme = t;
+    const b = localStorage.getItem("wb_progress_bodyscope");
+    if (b !== null) S.bodySearch = (b === "1");
   } catch (err) {}
+  document.querySelectorAll("#scopeSel button").forEach((x) => {
+    x.classList.toggle("on", (x.dataset.scope === "body") === S.bodySearch);
+  });
   loadAndRender(false);
 })();
 </script>

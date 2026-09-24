@@ -18,8 +18,10 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -184,6 +186,9 @@ DEFAULT_CONF_TEXT = """\
 root =
 # TeXStudio 可执行文件路径。留空则自动探测。
 texstudio =
+# pdftotext 可执行文件路径（用于把 PDF 定位到关键词所在页）。
+# 留空则自动探测：先查 PATH，再查 TeXLive 的常见安装位置。
+pdftotext =
 
 [server]
 # 监听地址。127.0.0.1 表示仅本机可访问。
@@ -231,6 +236,7 @@ def load_conf():
     return {
         "root": root,
         "texstudio": ((paths.get("texstudio") or "").strip() if paths else ""),
+        "pdftotext": ((paths.get("pdftotext") or "").strip() if paths else ""),
         "host": ((server.get("host") or "127.0.0.1").strip() if server else "127.0.0.1"),
         "port": _int(server, "port", 8765),
         "auto_open": ((server.get("auto_open") or "true").strip().lower()
@@ -764,12 +770,16 @@ def note_title(note_dir):
     return note_dir.name
 
 
-def build_tree(note_dir, target, seen, cfg, depth=0, included=True):
+def build_tree(note_dir, target, seen, cfg, depth=0, included=True,
+               texts=None):
     r"""从一个 \input 目标出发递归构建子树。层级不硬编码。
 
     included 表示该节点是否纳入编译：main.tex 与各 index.tex 里被 `%` 注释掉的
     \input 同样是一棵子树的入口，必须照常建树（否则界面上那部分**整块消失**），
     只是往下传的 included 为 False，交由四象限规则决定计不计入进度。
+
+    texts 传入一个 dict 时，顺手把读到的文本按相对路径存进去 —— 供正文全文
+    检索使用，免得搜索时再读一遍盘（反正这里的读取已经发生了）。
     """
     path = resolve_target(note_dir, target)
     try:
@@ -796,6 +806,8 @@ def build_tree(note_dir, target, seen, cfg, depth=0, included=True):
     seen.add(path)
 
     text = path.read_text(encoding="utf-8", errors="ignore")
+    if texts is not None:
+        texts[rel] = text
     subs = []                      # [(目标路径, 该条引用是否纳入编译)]
     for ln in text.splitlines():
         s = ln.strip()
@@ -831,7 +843,8 @@ def build_tree(note_dir, target, seen, cfg, depth=0, included=True):
     else:
         node["type"] = "dir"
         for t, inc in subs:
-            child = build_tree(note_dir, t, seen, cfg, depth + 1, inc)
+            child = build_tree(note_dir, t, seen, cfg, depth + 1, inc,
+                               texts=texts)
             if child is not None:
                 node["children"].append(child)
         self_m = file_metrics(path, cfg["min_chars"], text=text)
@@ -1109,16 +1122,18 @@ def detect_note_levels(note_dir, entries, tops, settings):
     return levels, "auto", f"自动识别（{how} → {', '.join(levels)}）"
 
 
-def scan_note(note_dir, cfg, settings=None):
+def scan_note(note_dir, cfg, settings=None, texts=None):
     """扫描一本笔记，返回含顶层节点与汇总的 dict。
 
     三步：先建树（层级模式要按树层数定），再定层级模式并套标题与编号。
+    texts 见 build_tree。
     """
     entries = scan_main(note_dir, cfg)
     tops = []
     seen = set()
     for e in entries:
-        node = build_tree(note_dir, e["target"], seen, cfg, 0, e["included"])
+        node = build_tree(note_dir, e["target"], seen, cfg, 0, e["included"],
+                          texts=texts)
         if node is None:
             continue
         node["part"] = e["part"]
@@ -1151,11 +1166,11 @@ def scan_note(note_dir, cfg, settings=None):
     }
 
 
-def scan_all(cfg, settings=None):
+def scan_all(cfg, settings=None, texts=None):
     """扫描全部笔记。"""
     notes = []
     for d in list_notes(cfg):
-        notes.append(scan_note(d, cfg, settings))
+        notes.append(scan_note(d, cfg, settings, texts=texts))
     g = {
         "planned": 0, "written": 0, "empty": 0, "missing": 0, "envs": 0,
         "chars": 0, "body_chars": 0, "proofs": 0, "leaves": 0,
@@ -1610,6 +1625,198 @@ def merge_marks(local, incoming):
     return out
 
 
+# ---------------------------------------------------------------- 全文检索
+
+SNIPPET_MAX = 5            # 每个文件最多返回几条命中片段
+SNIPPET_PAD = 60           # 片段里命中词前后各留多少字符
+
+
+def make_snippet(line, term):
+    """以命中词为中心截取片段（前后各 SNIPPET_PAD 字符）。"""
+    low = line.lower()
+    i = low.find(term)
+    if i < 0:
+        return line[:SNIPPET_PAD * 2]
+    a = max(0, i - SNIPPET_PAD)
+    b = min(len(line), i + len(term) + SNIPPET_PAD)
+    s = line[a:b]
+    return ("…" if a > 0 else "") + s + ("…" if b < len(line) else "")
+
+
+def body_hit_rows(lows, terms):
+    """在（已转小写的）行列表里找命中行下标。
+
+    优先「同一行内全部命中」的行；没有这样的行时退回含第一个词的行。
+    """
+    rows = [i for i, ln in enumerate(lows) if all(t in ln for t in terms)]
+    if not rows:
+        rows = [i for i, ln in enumerate(lows) if terms and terms[0] in ln]
+    return rows
+
+
+def search_body(texts, notes, terms, note_name=None, limit=300):
+    """在缓存的 tex 文本里做正文检索。
+
+    terms 之间是 AND：同一个文件里**都出现过**才算命中（可以在不同行）。
+    只搜树上的文件 —— 游离文件不属于笔记结构，不进结果。
+    """
+    if not terms:
+        return []
+    index = {}                      # 相对路径 -> (笔记名, 叶子节点)
+    for n in notes:
+        if note_name and n["name"] != note_name:
+            continue
+        for t in n["tops"]:
+            for leaf in collect_leaves(t):
+                index[leaf["id"]] = (n["name"], leaf)
+
+    out = []
+    for rel, text in texts.items():
+        info = index.get(rel)
+        if info is None:
+            continue
+        note, leaf = info
+        lines = text.splitlines()
+        lows = [ln.lower() for ln in lines]
+        if not all(t in text.lower() for t in terms):
+            continue
+        rows = body_hit_rows(lows, terms)
+        count = sum(ln.count(t) for ln in lows for t in terms)
+        hits = []
+        for i in rows[:SNIPPET_MAX]:
+            term = next((t for t in terms if t in lows[i]), terms[0])
+            hits.append({"line": i + 1,
+                         "text": make_snippet(lines[i], term),
+                         "raw": lines[i][:400]})
+        out.append({
+            "id": rel,
+            "note": note,
+            "title": leaf.get("view_title") or leaf["name"],
+            "num": leaf.get("num", ""),
+            "path": leaf.get("path", ""),
+            "count": count,
+            "hits": hits,
+        })
+    out.sort(key=lambda x: (-x["count"], x["id"]))
+    return out[:limit]
+
+
+def source_blocks(text, terms, span=14, max_blocks=6):
+    """取命中行附近若干行源码，供预览层显示。
+
+    命中行相距太近时合并成一个块，避免重复显示同一段。
+    """
+    lines = text.splitlines()
+    lows = [ln.lower() for ln in lines]
+    rows = body_hit_rows(lows, terms)
+    if not rows:
+        return [], len(lines)
+    blocks = []
+    used = set()
+    for i in rows:
+        if len(blocks) >= max_blocks:
+            break
+        lo, hi = max(0, i - span), min(len(lines), i + span + 1)
+        if any(x in used for x in range(lo, hi)):
+            continue
+        used.update(range(lo, hi))
+        blocks.append({
+            "from": lo + 1,
+            "hits": [n + 1 for n in rows if lo <= n < hi],
+            "lines": [{"n": n + 1, "text": lines[n]} for n in range(lo, hi)],
+        })
+    return blocks, len(lines)
+
+
+# ---- PDF：抽出各页文本，把关键词定位到具体页（用 TeXLive 自带的 pdftotext）
+
+PDF_TXT_CACHE = {}          # pdf 路径 -> (mtime, [每页文本])
+PDF_EXE_CANDIDATES = (
+    r"C:\texlive\2025\bin\windows\pdftotext.exe",
+    r"C:\texlive\2024\bin\windows\pdftotext.exe",
+    r"C:\Program Files\poppler\Library\bin\pdftotext.exe",
+)
+
+
+def find_pdftotext(cfg=None):
+    """定位 pdftotext：先 conf 指定，再 PATH，最后几个常见安装位置。"""
+    want = (cfg or {}).get("pdftotext") or ""
+    if want and Path(want).exists():
+        return want
+    hit = shutil.which("pdftotext")
+    if hit:
+        return hit
+    for cand in PDF_EXE_CANDIDATES:
+        if Path(cand).exists():
+            return cand
+    return ""
+
+
+def pdf_page_texts(pdf_path, exe):
+    """抽取 PDF 的每页文本（按换页符切分），按 (路径, mtime) 缓存。"""
+    key = str(pdf_path)
+    try:
+        stamp = pdf_path.stat().st_mtime
+    except OSError:
+        return None
+    rec = PDF_TXT_CACHE.get(key)
+    if rec and rec[0] == stamp:
+        return rec[1]
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(suffix=".pdftext.txt")
+        os.close(fd)
+        proc = subprocess.run([exe, "-enc", "UTF-8", str(pdf_path), tmp],
+                              capture_output=True, timeout=300)
+        if proc.returncode != 0:
+            return None
+        raw = Path(tmp).read_text(encoding="utf-8", errors="ignore")
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    pages = raw.split("\f")
+    if pages and not pages[-1].strip():
+        pages.pop()
+    PDF_TXT_CACHE[key] = (stamp, pages)
+    return pages
+
+
+def locate_in_pdf(pdf_path, terms, exe):
+    """在 PDF 页文本里定位关键词，返回 {pages, runs, first, total, matched}。
+
+    PDF 文本层里的中文常被插入空格或换行，所以两边都先去空白再比。
+    目录页也会命中（那里有小节标题），所以默认跳转页取**最长连续段的第一页** ——
+    正文里讨论某个主题通常连着好几页，目录则是孤立的一两页。
+    """
+    pages = pdf_page_texts(pdf_path, exe)
+    if pages is None:
+        return {"pages": [], "runs": [], "first": 0, "total": 0,
+                "matched": False}
+    want = [re.sub(r"\s+", "", t).lower() for t in terms if t]
+    flat = [re.sub(r"\s+", "", p).lower() for p in pages]
+    hits = [i + 1 for i, p in enumerate(flat) if all(t in p for t in want)]
+    if not hits:
+        hits = [i + 1 for i, p in enumerate(flat) if want and want[0] in p]
+
+    runs = []                       # 连续页段 [(起页, 止页)]
+    for p in hits:
+        if runs and p == runs[-1][1] + 1:
+            runs[-1][1] = p
+        else:
+            runs.append([p, p])
+    first = 0
+    if runs:
+        best = max(runs, key=lambda r: (r[1] - r[0], -r[0]))
+        first = best[0]
+    return {"pages": hits[:40], "runs": [tuple(r) for r in runs[:20]],
+            "first": first, "total": len(pages), "matched": bool(hits)}
+
+
 # ---------------------------------------------------------------- 导出层
 
 DIM_NAME = {"env": "环境", "body": "正文", "proof": "证明"}
@@ -1739,6 +1946,8 @@ STATE = {
     "data": None,
     "marks": None,
     "settings": None,
+    # 扫描时顺手留下的 tex 原文（相对路径 -> 文本），供正文全文检索使用
+    "texts": {},
     "lock": threading.Lock(),
 }
 
@@ -1799,7 +2008,9 @@ def ensure_view(force=False):
         if STATE["settings"] is None:
             STATE["settings"] = load_settings()
         if STATE["data"] is None or force:
-            data = scan_all(STATE["cfg"], STATE["settings"])
+            texts = {}
+            data = scan_all(STATE["cfg"], STATE["settings"], texts=texts)
+            STATE["texts"] = texts
             marks = load_marks()
             moved = migrate_marks(marks, data)
             if moved:
@@ -1876,6 +2087,8 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_report()
         elif path == "/api/marks/export":
             self._serve_marks_export()
+        elif path == "/api/pdf":
+            self._serve_pdf(qs)
         elif path == "/api/ping":
             self._json({"ok": True, "app": "progress", "version": VERSION})
         else:
@@ -1890,6 +2103,12 @@ class Handler(BaseHTTPRequestHandler):
             self._api_chapter(body)
         elif path == "/api/marks/import":
             self._api_marks_import(body)
+        elif path == "/api/search":
+            self._api_search(body)
+        elif path == "/api/source":
+            self._api_source(body)
+        elif path == "/api/pdfpage":
+            self._api_pdfpage(body)
         elif path == "/api/open":
             ok, msg = open_in_texstudio(self._cfg(), body.get("path", ""))
             self._json({"ok": ok, "message": msg})
@@ -1940,6 +2159,133 @@ class Handler(BaseHTTPRequestHandler):
             slot["planned"] = bool(body["planned"])
         return bool(slot.get("marks") or slot.get("note")
                     or slot.get("todos") or slot.get("planned"))
+
+    # -- 全文检索与预览
+
+    def _note_dir(self, name):
+        """按笔记名取目录。"""
+        data = STATE["data"] or {}
+        for n in data.get("notes", []):
+            if n["name"] == name:
+                return Path(n["path"])
+        return None
+
+    def _api_search(self, body):
+        """正文检索：词间 AND，返回每个命中文件的片段与命中数。"""
+        terms = [t for t in str(body.get("q") or "").lower().split() if t]
+        if not terms:
+            self._json({"ok": True, "terms": [], "total": 0, "results": [],
+                        "scanned": 0})
+            return
+        ensure_view()
+        with STATE["lock"]:
+            texts = dict(STATE.get("texts") or {})
+            notes = STATE["data"]["notes"]
+            note_name = body.get("note") or None
+        res = search_body(texts, notes, terms, note_name)
+        self._json({"ok": True, "terms": terms, "total": len(res),
+                    "results": res, "scanned": len(texts)})
+
+    def _api_source(self, body):
+        """取某文件里命中行附近的源码，供预览层显示。"""
+        node_id = str(body.get("id") or "")
+        terms = [t for t in str(body.get("q") or "").lower().split() if t]
+        ensure_view()
+        with STATE["lock"]:
+            text = (STATE.get("texts") or {}).get(node_id)
+        if text is None:
+            self._json({"ok": False, "message": "找不到该文件的缓存文本",
+                        "blocks": []}, status=404)
+            return
+        blocks, total = source_blocks(text, terms)
+        self._json({"ok": True, "id": node_id, "total_lines": total,
+                    "terms": terms, "blocks": blocks})
+
+    def _serve_pdf(self, qs):
+        """把笔记的 main.pdf 发给浏览器（支持 Range，供内嵌查看与跳页）。"""
+        name = (qs.get("note") or [""])[0]
+        note_dir = self._note_dir(name)
+        if note_dir is None:
+            self._json({"ok": False, "message": "未知笔记"}, status=404)
+            return
+        pdf = note_dir / "main.pdf"
+        if not pdf.exists():
+            self._json({"ok": False, "message": "该笔记目录下没有 main.pdf"},
+                       status=404)
+            return
+        self._send_file(pdf, "application/pdf")
+
+    def _api_pdfpage(self, body):
+        """把关键词定位到 PDF 的具体页（靠 pdftotext 抽出的每页文本）。"""
+        note_name = str(body.get("note") or "")
+        terms = [t for t in str(body.get("q") or "").lower().split() if t]
+        note_dir = self._note_dir(note_name)
+        if note_dir is None:
+            self._json({"ok": False, "message": "未知笔记", "pages": [],
+                        "matched": False, "total": 0}, status=404)
+            return
+        pdf = note_dir / "main.pdf"
+        exe = find_pdftotext(STATE["cfg"])
+        if not pdf.exists() or not exe:
+            self._json({
+                "ok": False, "pages": [], "matched": False, "total": 0,
+                "message": ("该笔记目录下没有 main.pdf" if not pdf.exists()
+                            else "未找到 pdftotext，无法定位页码")})
+            return
+        info = locate_in_pdf(pdf, terms, exe)
+        info["ok"] = True
+        info["exe"] = Path(exe).name
+        try:
+            info["pdf_mtime"] = datetime.fromtimestamp(
+                pdf.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        except OSError:
+            info["pdf_mtime"] = ""
+        self._json(info)
+
+    def _send_file(self, path, ctype):
+        """发送文件，支持 Range 请求 —— 浏览器内嵌 PDF 会先发 Range 探测。"""
+        try:
+            size = path.stat().st_size
+        except OSError:
+            self._json({"ok": False, "message": "文件读不到"}, status=404)
+            return
+        start, end = 0, size - 1
+        partial = False
+        m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range") or "")
+        if m:
+            if m.group(1):
+                start = int(m.group(1))
+                if m.group(2):
+                    end = min(int(m.group(2)), size - 1)
+            elif m.group(2):                      # bytes=-N：末尾 N 字节
+                start = max(size - int(m.group(2)), 0)
+            if start >= size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            partial = True
+        length = end - start + 1
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Accept-Ranges", "bytes")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            with open(path, "rb") as f:
+                f.seek(start)
+                left = length
+                while left > 0:
+                    chunk = f.read(min(262144, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (OSError, ConnectionError):
+            pass
 
     def _api_entry(self, body):
         """写小节的标记 / 备注 / 待办 / 计划。
