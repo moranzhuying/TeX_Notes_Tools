@@ -238,8 +238,9 @@ Tools/
 把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按 **Markdown 大纲**生成
 `Content/` → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
 
-**不带参数运行会进入交互式引导**（从总面板进来就是这条路）：依次询问大纲 md 文件、
-笔记名、模板、是否建远程，最后给出确认预览。笔记名与模板也能写在大纲 md 的元信息里，
+**不带参数运行会进入交互式引导**（从总面板进来就是这条路）：先问大纲 md 文件
+（层级模式就从这份 md 里读，读不到会按结构推断并问你要不要代写进 md），再问笔记名、
+模板、是否建远程，最后给出确认预览。笔记名与模板也能写在大纲 md 的元信息里，
 写了就作为默认值。
 
 ```bash
@@ -247,9 +248,9 @@ python maintain/new_note.py                              # 交互式引导（推
 python maintain/new_note.py <笔记名>                      # 只建本地仓库（不生成骨架）
 python maintain/new_note.py <笔记名> --push               # 同时建 GitHub 仓库并推送
 python maintain/new_note.py <笔记名> --outline <大纲.md>   # 按 md 大纲生成骨架
-python maintain/new_note.py <笔记名> --outline <大纲.md> --levels textbook
 python maintain/new_note.py <笔记名> --template <目录>
 python maintain/new_note.py <笔记名> --dry-run            # 预演，不写任何文件
+python maintain/new_note.py <笔记名> --outline <大纲.md> --levels textbook   # 覆盖 md 里的设置
 ```
 
 ### 大纲 md 怎么写
@@ -283,10 +284,14 @@ levels: part, chapter, section
 
 ### 层级模式（levels）
 
-写预设名，或直接列 LaTeX 章节命令（逗号分隔、**由外到内**、不可重复）。
-管几个命令就是几层目录：末层是 `.tex` 文件，前面各层是目录。
+**写在 md 头部**（`levels: …`），工具不会另外问你 —— 一层一个 LaTeX 章节命令，
+按**由外到内**排列、不可重复。管几个命令就是几层目录：末层是 `.tex` 文件，前面各层是目录。
 
-| 预设名 | 等价于 | 适用 |
+```markdown
+levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \section
+```
+
+| 简写名 | 等价于 | 适用 |
 |---|---|---|
 | `bourbaki` | `part, chapter, section` | 层1 目录＝原书章（现有笔记的写法） |
 | `textbook` | `chapter, section, subsection` | 常见教材：层1 目录＝章 |
@@ -297,7 +302,17 @@ levels: part, chapter, section
 
 `-` 表示「这一层只作分组、不产生标题」。自定义就是直接列命令，例如
 `levels: part, chapter, section, subsection`、`levels: chapter, -, section`。
-层级模式没写在 md 里时：命令行会报错并列出上面的清单，交互式会现场让你选。
+
+**不写也能跑**：脚本按标题层数推一个最接近的 —— 1 层→`section`；2 层→`chapter, section`；
+3 层及以上→从 `part` 起按 `part → chapter → section → subsection` 顺延（3 层正好是
+现有笔记的 `part, chapter, section`）。此时：
+
+- 交互式会问一句：**[Y] 用推断的 / [w] 把推断的 levels 写进 md 再用 / [n] 先去改 md**；
+- 命令行只打印推断值与依据，并提示「想固定就在 md 头部加一行」，不弹提问。
+
+**写了但与结构层数不符**同样处理：报出「按结构应该是 X」，交互式让你决定
+（`[w]` 会把 md 里那行改成 X），命令行则给出改法并用 `--levels` 兜底。
+只有层数实在凑不出合法序列（超过 LaTeX 的 7 级）时，才请你先改 md。
 
 ### 标题命令落在哪
 
@@ -336,13 +351,15 @@ levels: part, chapter, section
 
 ```bash
 python maintain/outline_tool.py                       # 面板
-python maintain/outline_tool.py --check <大纲.md>      # 只校验（并预览会生成哪些文件）
+python maintain/outline_tool.py --check <大纲.md>      # 只校验（不弹提问，并预览会生成哪些文件）
+python maintain/outline_tool.py --check <大纲.md> --write-levels   # 顺手把推断的 levels 写进 md
 python maintain/outline_tool.py --export <笔记目录> [输出.md]
-python maintain/outline_tool.py --from-text <清单.txt> --levels bourbaki [输出.md]
+python maintain/outline_tool.py --from-text <清单.txt> [输出.md]   # 层级按层数自动推断
 ```
 
-**1. 新建大纲**：选层级模式 → 粘一份「缩进清单」（`目录名 | 中译名`，缩进表示层级，
-`END` 结束）→ 写成规范的大纲 md。适合先在草稿里把结构列出来，再转成规范文件。
+**1. 新建大纲**：粘一份「缩进清单」（`目录名 | 中译名`，缩进表示层级，`END` 结束）
+→ 写成规范的大纲 md，层级模式按清单层数自动推断并写进头部。适合先在草稿里把结构
+列出来，再转成规范文件；事后想换层级，直接改 md 里那行 `levels:` 即可。
 
 **2. 从现有笔记导出大纲**：读 `main.tex` 的正文主体与各级 `index.tex` 链，
 把现有笔记的结构 + 中译名反推成大纲 md —— 既能给旧笔记留一份大纲，也能当新笔记的蓝本。
@@ -361,8 +378,10 @@ python maintain/outline_tool.py --from-text <清单.txt> --levels bourbaki [输�
   的编号规则，不是导出丢信息。
 - 写完会**回读校验**：重新解析这份 md，确认能还原出同一棵树。
 
-**3. 校验大纲**：读一份 md，报格式错误（跳级、层数不符、命令乱序、目录名非法……），
+**3. 校验大纲**：读一份 md，报格式错误（跳级、命令乱序、目录名非法……），
 通过则打印它会生成的完整文件清单 —— 相当于 `new_note.py --dry-run` 的只读版。
+md 没写 `levels:` 或写的与结构不符时，按结构推断并给出「改 md 里的哪一行」；
+面板里还会问你要不要代写（命令行加 `--write-levels` 即代写）。
 
 ## note_tools.py — 单本笔记的入口
 
@@ -423,7 +442,7 @@ python maintain/show_memory.py 2026-09-24 # 看某一天
 python maintain/show_memory.py MEMORY     # 看长期记忆
 ```
 
-## 生成的档案（仅在本机）
+## 生成的档案
 
 | 文件 | 说明 |
 |---|---|
@@ -432,7 +451,7 @@ python maintain/show_memory.py MEMORY     # 看长期记忆
 | `notes_tree.json` | 笔记目录结构快照 |
 | `progress_marks.json` | 进度标记数据（三维标记、备注、待办、计划、章统计覆盖），原子写入并在每次写入前留一份 `.bak` |
 
-想重置全部进度标记，删掉 `progress_marks.json` 即可。以上文件均已在 `.gitignore` 中。
+想重置全部进度标记，删掉 `progress_marks.json` 即可。
 
 ## 环境要求
 

@@ -12,12 +12,13 @@ outline_tool.py — 大纲 md 的创建 / 导出 / 校验
 
 用法：
     python outline_tool.py                      # 面板
-    python outline_tool.py --check <大纲.md>     # 只校验
+    python outline_tool.py --check <大纲.md>     # 只校验（不弹提问）
+    python outline_tool.py --check <大纲.md> --write-levels   # 顺手把推断的 levels 写进 md
     python outline_tool.py --export <笔记目录> [输出.md]
-    python outline_tool.py --from-text <清单.txt> [输出.md]
+    python outline_tool.py --from-text <清单.txt> [输出.md]    # 层级按层数自动推断
 
-大纲 md 的规范见 new_note.py 的模块文档与 Tools/README.md；本工具不重复实现
-解析逻辑，而是直接 `import new_note` 复用（同一目录，两个脚本共享一套规则）。
+大纲 md 里 `levels:` 怎么写的规范，见 new_note.py 的模块文档与 Tools/README.md；
+本工具不重复实现解析，直接 `import new_note` 复用（同一目录，两个脚本共享一套规则）。
 """
 import os
 import re
@@ -373,17 +374,8 @@ def entry_new():
     print("  新建大纲（缩进清单 → 规范 md）")
     print("=" * 64)
     print()
-    nn.print_level_presets()
-    spec = ask("\n层级模式（预设名或命令序列）", "bourbaki")
-    if not spec:
-        return
-    try:
-        levels = nn.resolve_levels(spec)
-    except nn.OutlineError as e:
-        print(f"  ✗ {e}")
-        return
-
-    print(f"\n  这份大纲有 {len(levels)} 层：{' → '.join(levels)}")
+    print("  先把大纲列出来（下一步）。层级模式不用你记，脚本会按清单的层数推断，")
+    print("  连同 `levels:` 一起写进 md 头部 —— 事后想改，直接编辑那一行即可。")
     print()
     text = read_skeleton()
     if not text.strip():
@@ -395,10 +387,13 @@ def entry_new():
         print(f"  ✗ {e}")
         return
 
-    bad = nn.check_depth(tree, levels)
-    if bad:
-        print(f"  ✗ {bad}")
+    levels, why = nn.infer_levels(tree)
+    if levels is None:
+        print(f"  ✗ {why}")
+        print("    调整清单的层数后重试，或直接手写 md 并在头部写一行 levels: …")
         return
+    print(f"\n  按结构（{nn.tree_depth(tree)} 层）推断层级：{nn.describe_levels(levels)}")
+    print(f"  依据：{why}")
 
     name = ask("\n笔记名（写进 md 的 name，可回车跳过）", "")
     out = ask("输出路径", str(WORKSPACE / f"{name or 'outline'}.md"))
@@ -409,6 +404,9 @@ def entry_new():
     if not path:
         return
     print(f"\n  ✓ 已写入 {path}")
+    print(f"    头部已写上 `levels: {', '.join(levels)}`；要换层级就改这一行")
+    print("    （可用简写名 bourbaki / textbook / two-level / article / grouped，")
+    print("      或按由外到内列命令、用 `-` 表示该层只作分组）")
     files = nn.content_files(tree, levels)
     print(f"  它会生成 {len(files)} 个文件：")
     for f in files[:12]:
@@ -478,41 +476,75 @@ def entry_export():
         print(f"  回读校验失败：{e}")
 
 
-def entry_check(path=None):
+def entry_check(path=None, interact=True, fix=False):
+    """校验一份大纲 md。返回 0 = 完全没问题；1 = 有需要你处理的地方。
+
+    `interact`：面板里为真（缺 levels / 层数不符时会问「用不用推断值、要不要写回 md」）；
+    命令行里一律为假 —— 只给结论与改法，不弹提问。
+    `fix`：命令行加 `--write-levels` 时为真，直接把推断/修正后的 levels 写进 md。
+    """
     if not path:
         path = ask("大纲 md 路径")
     if not path:
-        return
+        return 1
     p = Path(path)
     print("=" * 64)
     print(f"  校验 {p}")
     print("=" * 64)
     try:
         meta, tree, levels = nn.read_outline_file(p)
+        text = Path(p).read_text(encoding="utf-8")
     except OSError as e:
         print(f"  ✗ 读不到：{e}")
-        return
+        return 1
     except nn.OutlineError as e:
         print(f"  ✗ {e}")
-        return
+        return 1
     if not tree:
         print("  ✗ 大纲里没有任何标题")
-        return
-    if not levels:
-        print("  ⚠ md 里没写 levels（层级模式），请补一行或用 --levels 指定；")
-        nn.print_level_presets()
-        return
+        return 1
+
+    todo = 0
+    depth = nn.tree_depth(tree)
+    if not levels or len(levels) != depth:
+        if interact:
+            levels = nn.resolve_levels_for_md(p, meta, tree, interact=True)
+            if not levels:
+                print("  （改好 md 后再校验一次即可）")
+                return 1
+        else:
+            cand, why = nn.infer_levels(tree, text)
+            if cand is None:
+                print(f"  ✗ {why}")
+                return 1
+            print(f"  ⚠ {'md 里没写 levels' if not levels else 'md 写的 levels 与结构不符'}")
+            print(f"    按结构（{depth} 层）推断为：{nn.describe_levels(cand)}")
+            print(f"    依据：{why}")
+            if fix:
+                ok, info = nn.set_levels_in_md(p, cand)
+                print(f"    {'✓' if ok else '✗'} {info}")
+                todo = 0 if ok else 1
+            else:
+                print(f"    要固定就改 md 头部那行为：levels: {', '.join(cand)}")
+                print("    （也可以加 --write-levels 让脚本代写）")
+                todo = 1
+            levels = cand
     bad = nn.check_depth(tree, levels)
     if bad:
         print(f"  ✗ {bad}")
-        return
-    print(f"  ✓ 格式正确")
+        return 1
+
+    if not todo:
+        print("  ✓ 格式正确")
+    else:
+        print("  —— 以下预览按推断的层级给出 ——")
     print(f"  元信息   ：{meta if meta else '（无）'}")
-    print(f"  层级模式 ：{', '.join(levels)}")
+    print(f"  层级模式 ：{nn.describe_levels(levels)}")
     print(f"  结构     ：{len(tree)} 个顶层节点 / {len(nn.content_files(tree, levels))} 个文件")
     print()
     for f in nn.content_files(tree, levels):
         print(f"    {f}")
+    return todo
 
 
 # ---------------------------------------------------------------- 面板
@@ -536,8 +568,9 @@ def main():
         return [a for a in argv if not a.startswith("--") and a not in consumed]
 
     if "--check" in argv:
-        entry_check(opt("--check"))
-        return 0
+        # 命令行一律不弹提问：只给结论与改法；加 --write-levels 才动 md
+        return entry_check(opt("--check"), interact=False,
+                           fix="--write-levels" in argv)
     if "--export" in argv:
         note = opt("--export")
         try:
@@ -569,9 +602,13 @@ def main():
             print(f"✗ {e}")
             return 1
         if levels is None:
-            print("✗ 需要 --levels（或改用交互式，会列清单让你选）：")
-            nn.print_level_presets()
-            return 1
+            levels, why = nn.infer_levels(tree)
+            if levels is None:
+                print(f"✗ {why}")
+                print("  先调整清单的层数，或直接手写 md 并在头部写一行 levels: …")
+                return 1
+            print(f"按结构（{nn.tree_depth(tree)} 层）推断层级："
+                  f"{nn.describe_levels(levels)}（{why}）")
         bad = nn.check_depth(tree, levels)
         if bad:
             print(f"✗ {bad}")

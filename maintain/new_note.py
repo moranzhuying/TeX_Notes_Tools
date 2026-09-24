@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+r"""
 new_note.py — 从模板创建一本新笔记
 
 把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按 Markdown 大纲生成
@@ -44,10 +44,15 @@ new_note.py — 从模板创建一本新笔记
 
 层级命令（levels）
 ------------------
-写「一个命令序列」，或写下面某个预设名。命令按**由外到内**排列，必须是 LaTeX 章节
-命令的合法递降，管几个命令就是几层目录；末层是 `.tex` 文件，前面各层是目录：
+**写在 md 头部**（`levels: …`），工具不会另外问你。它决定每层目录用哪个 LaTeX 标题
+命令：命令按**由外到内**排列，必须是 LaTeX 章节命令的合法递降，管几个命令就是几层
+目录；末层是 `.tex` 文件，前面各层是目录。
 
-| 预设名          | 等价于                                | 适用                            |
+    levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \section
+
+也可以写下面这些简写名：
+
+| 简写名          | 等价于                                | 适用                            |
 |-----------------|---------------------------------------|---------------------------------|
 | `bourbaki`      | `part, chapter, section`              | 层1 目录＝原书章（现有笔记写法）|
 | `textbook`      | `chapter, section, subsection`        | 常见教材：层1 目录＝章          |
@@ -56,22 +61,28 @@ new_note.py — 从模板创建一本新笔记
 | `article`       | `section, subsection`                 | 文章式：不分章                  |
 | `grouped`       | `chapter, -, section`                 | 中间层只作分组、不产生标题      |
 
-自定义写法就是直接列命令（逗号分隔），其中的 `-` 表示「这一层只作分组、不产生标题」：
+`-` 表示「这一层只作分组、不产生标题」：
 
     levels: part, chapter, section, subsection
     levels: chapter, -, section          # ＝ grouped
 
+**不写 levels 也能跑**：脚本按标题层数推一个最接近的（1 层→`section`、2 层→`chapter,
+section`、3 层及以上→`part` 起顺延），交互式会问一句「用不用 / 要不要代写进 md」，
+命令行则打印推断值并提示怎么写进 md。**写了但与结构层数不符**时同理：会告诉你按结构
+应该是什么，让你决定改 md 还是照推断走。层数实在凑不出合法序列时，才会请你改 md。
+（`--levels` 可以命令行覆盖，一般用不着。）
+
 标题命令的落点（本模板系既有约定）：
 
-    main.tex                          \\part{层1中译} 之类 ＋ 紧跟其 \\input
-    Content/<层1>/index.tex           只有 \\input（指向各层2）
-    Content/<层1>/<层2>/index.tex     只有 \\input（指向各层3）
-    Content/…/<层3>.tex               \\chapter{层2中译} ＋ \\section{层3中译}
+    main.tex                          \part{层1中译} 之类 ＋ 紧跟其 \input
+    Content/<层1>/index.tex           只有 \input（指向各层2）
+    Content/<层1>/<层2>/index.tex     只有 \input（指向各层3）
+    Content/…/<层3>.tex               \chapter{层2中译} ＋ \section{层3中译}
                                       （层2 的标题写在「它第一个子项的第一个叶子」里）
 
 其余规则：
 
-- **最外层的标题命令写在 `main.tex` 里**（`\\part{…}` 与它的 `\\input` 配成一对），
+- **最外层的标题命令写在 `main.tex` 里**（`\part{…}` 与它的 `\input` 配成一对），
   与现有笔记的 main.tex 完全一致；层2 及更深层的标题写进内容文件。
 - **编号自动补**：目录名里不用手写 `1_`，脚本按出现顺序补；写了 `3_xxx` 就照用。
 - 目录名限 ASCII（字母/数字/下划线/连字符），中文只出现在 `|` 右侧。
@@ -135,11 +146,16 @@ class OutlineError(Exception):
 
 
 def print_level_presets():
-    print("  可选的层级模式（levels）—— 写预设名，或直接列命令：")
+    print("  层级模式（levels）写在 md 头部，它决定每层目录用哪个 LaTeX 标题命令。")
+    print("  写法是「由外到内」列命令，或写下面的简写名：")
+    print()
     for name, (seq, desc) in LEVEL_PRESETS.items():
         print(f"    {name:<14} = {seq:<36} {desc}")
-    print("  自定义：逗号分隔的 LaTeX 章节命令，须按由外到内排列，")
-    print("          如 part, chapter, section；`-` 表示该层只作分组、不产生标题")
+    print()
+    print("  例：md 头部加一行 `levels: part, chapter, section`（＝ bourbaki），")
+    print("      意思是一级目录 \\part、二级 \\chapter、三级 \\section。")
+    print("      `-` 表示该层只作分组、不产生标题命令。")
+    print("  不写也行：脚本会按标题层数推一个最接近的，推不出才要你补。")
 
 
 def resolve_levels(spec):
@@ -165,6 +181,178 @@ def resolve_levels(spec):
     if pos != sorted(pos) or len(set(pos)) != len(pos):
         raise OutlineError(f"层级命令顺序不对（应由外到内、不重复）：{', '.join(cmds)}")
     return cmds
+
+
+# ------------------------------------------- 层级模式的「读懂 / 推断 / 写回 md」
+
+#: 按层数套用惯例起点：1 层→section，2 层→chapter，3 层及以上→part 起顺延。
+#: 3 层给 part/chapter/section 是照现有笔记的写法（Bourbaki 式）。
+LEVEL_START_BY_DEPTH = {1: 2, 2: 1, 3: 0}
+
+
+def describe_levels(levels):
+    """`part, chapter, section` → 带人话说明的一行。"""
+    named = "、".join(f"{i} 级 \\{c}" for i, c in enumerate(levels, 1) if c != "-")
+    dash = [str(i) for i, c in enumerate(levels, 1) if c == "-"]
+    out = ", ".join(levels) + (f"（{named}）" if named else "")
+    if dash:
+        out += f"；第 {'、'.join(dash)} 层只作分组、不产生标题"
+    return out
+
+
+def levels_mentioned(text):
+    """md 文本里**字面提到**的章节命令（如注释里写了 `\\chapter`），由外到内去重。"""
+    names = {("chapter" if m.group(1) == "appendixchapter" else m.group(1))
+             for m in re.finditer(r"\\(part|chapter|appendixchapter|section"
+                                  r"|subsection|subsubsection)\b", text)}
+    return [c for c in SECTION_CMDS if c in names]
+
+
+def infer_levels(tree, text=""):
+    """按结构推一个「尽量匹配」的层级模式。返回 (levels 或 None, 依据说明)。
+
+    None 表示确实推不出来（层数超出 LaTeX 章节层级上限），只能请用户改 md。
+    """
+    depth = tree_depth(tree)
+    if not depth:
+        return None, "大纲里没有任何标题"
+    if depth > len(SECTION_CMDS):
+        return None, f"标题有 {depth} 层，超过 LaTeX 章节层级上限（{len(SECTION_CMDS)} 个）"
+
+    mentioned = levels_mentioned(text)
+    if len(mentioned) == depth:
+        return mentioned, f"md 文本里正好提到这 {depth} 个命令"
+
+    start = LEVEL_START_BY_DEPTH.get(depth, 0)
+    levels = SECTION_CMDS[start:start + depth]
+    if len(levels) != depth:
+        return None, f"标题有 {depth} 层，凑不出合法的层级命令序列"
+    how = "与现有笔记的写法一致" if levels == ["part", "chapter", "section"] else "按层数套用"
+    return levels, f"按结构（{depth} 层）推断，{how}"
+
+
+def set_levels_in_md(path, levels):
+    """把 `levels:` 写进 md 头部（没有元信息块就补一个）。返回 (是否成功, 说明)。"""
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as e:
+        return False, f"读不到：{e}"
+    line = "levels: " + ", ".join(levels)
+    lines = text.splitlines()
+
+    if lines and lines[0].strip() == "---":
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if end is None:
+            return False, "md 头部的 `---` 没有配对的结束标记，先手工补上"
+        for k in range(1, end):
+            if re.match(r"^\s*levels\s*:", lines[k]):
+                lines[k] = line
+                break
+        else:
+            lines.insert(end, line)
+    else:
+        lines = ["---", line, "---", ""] + lines
+
+    try:
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
+    except OSError as e:
+        return False, f"写不进去：{e}"
+    return True, f"已把 `{line}` 写进 {p.name}"
+
+
+def ask_levels_choice():
+    """采用推断值 / 写回 md / 先去改 md。返回 'use' / 'write' / 'skip'。"""
+    while True:
+        try:
+            ans = input("  采用这个层级？[Y] 用 / [w] 写进 md 再用 / [n] 先去改 md"
+                        "（回车＝Y）：")
+        except (EOFError, KeyboardInterrupt):
+            return "skip"
+        a = ans.strip().lower()
+        if a in ("", "y", "yes"):
+            return "use"
+        if a in ("w", "write"):
+            return "write"
+        if a in ("n", "no"):
+            return "skip"
+        print("  请回答 Y / w / n。")
+
+
+def resolve_levels_for_md(path, meta, tree, interact=True):
+    """确定这份大纲 md 用哪个层级模式。返回 levels；None 表示需要用户先改 md。
+
+    顺序：md 里写的 levels → 结构推断。两者冲突或推断不出时，交互式交给人选
+    （可以代写回 md），命令行则给出明确的改法。
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+
+    def need_fix(msg):
+        print(f"  ✗ {msg}")
+        print("    请在 md 头部（`---` 之间）补一行，例如：")
+        print("        levels: part, chapter, section")
+        print("    含义：一级目录用 \\part、二级用 \\chapter、三级用 \\section。")
+        print("    也可写简写名（bourbaki / textbook / two-level / article / grouped），")
+        print("    或 `-` 表示某层只作分组。完整清单见 new_note.py 的模块文档。")
+        return None
+
+    written = (meta.get("levels") or "").strip()
+    cand, why = infer_levels(tree, text)
+    depth = tree_depth(tree)
+
+    if written:
+        try:
+            levels = resolve_levels(written)
+        except OutlineError as e:
+            if interact:
+                return need_fix(f"md 里的 levels 有问题：{e}")
+            print(f"✗ md 里的 levels 有问题：{e}")
+            return None
+        if len(levels) == depth:
+            print(f"  层级模式：{describe_levels(levels)}（写在 md 头部）")
+            return levels
+        msg = (f"md 写了 {len(levels)} 个命令（{', '.join(levels)}），"
+               f"但标题有 {depth} 层，两者必须一致")
+        if not interact:
+            print(f"✗ {msg}")
+            if cand:
+                print(f"  按结构应为：{', '.join(cand)}（{why}）")
+            print("  请改 md 的 levels 行，或用 --levels 指定。")
+            return None
+        print(f"  ⚠ {msg}")
+        if cand is None:
+            return need_fix(f"{msg}；而且{why}")
+        print(f"  按结构推断应为：{describe_levels(cand)}")
+        print(f"  依据：{why}")
+        choice = ask_levels_choice()
+        if choice == "use":
+            return cand
+        if choice == "write":
+            ok, info = set_levels_in_md(path, cand)
+            print(f"  {'✓' if ok else '✗'} {info}")
+            return cand if ok else None
+        return need_fix("你选择先去改 md")
+
+    # md 里没写 levels
+    if cand is None:
+        return need_fix(f"md 里没写 levels，而且{why}")
+    print("  md 里没写 levels（层级模式）——")
+    print(f"    按结构推断为：{describe_levels(cand)}")
+    print(f"    依据：{why}")
+    if not interact:
+        print(f"    （想固定下来就在 md 头部加一行：levels: {', '.join(cand)}）")
+        return cand
+    choice = ask_levels_choice()
+    if choice == "use":
+        return cand
+    if choice == "write":
+        ok, info = set_levels_in_md(path, cand)
+        print(f"  {'✓' if ok else '✗'} {info}")
+        return cand if ok else None
+    return need_fix("你选择先去改 md")
 
 
 def sh(cmd, cwd=None):
@@ -290,21 +478,18 @@ def parse_indent_outline(text):
 
 
 def read_outline_file(path):
-    """读大纲文件并解析。返回 (meta, 树, 层级命令列表)。
+    """读大纲文件并解析。返回 (meta, 树, 层级命令列表 或 None)。
 
     Markdown 标题式与旧的缩进式都认：文件里有 `# 标题` 就是前者。
+    md 里写了 levels 就直接解析出来返回（**层数是否与结构相符留给调用方判定** ——
+    那里能给出「按结构应为 X」的建议，比在这里硬报错有用）；没写则返回 None。
     """
     text = Path(path).read_text(encoding="utf-8")
     meta, body = parse_front_matter(text)
     if any(HEADING_RE.match(ln) for ln in text.splitlines()):
-        tree, depth = parse_md_outline(body)
+        tree, _depth = parse_md_outline(body)
         spec = meta.get("levels", "")
-        cmds = resolve_levels(spec) if spec else None
-        if cmds is not None and len(cmds) != depth:
-            raise OutlineError(
-                f"标题有 {depth} 层，但 levels 给了 {len(cmds)} 个命令"
-                f"（{', '.join(cmds)}）—— 两者必须相同")
-        return meta, tree, cmds
+        return meta, tree, (resolve_levels(spec) if spec else None)
 
     tree = parse_indent_outline(body)
     return meta, tree, list(LEGACY_LEVELS)
@@ -540,11 +725,11 @@ def read_outline_paste():
 
 
 def choose_levels(default_spec=""):
-    """让用户挑层级模式。返回命令列表；取消返回 None。"""
+    """手工挑层级模式（只在「手动粘贴大纲」这条路上用）。返回命令列表；取消返回 None。"""
     print()
     print_level_presets()
     for _ in range(3):
-        spec = ask("\n层级模式（预设名或命令序列）", default_spec)
+        spec = ask("\n写哪个层级模式（简写名或命令序列）", default_spec)
         if not spec:
             return None
         try:
@@ -582,17 +767,16 @@ def interactive():
         except OutlineError as e:
             print(f"  ✗ 大纲有问题：{e}")
             return 1
-        if tree and not levels:                  # md 里没写 levels → 现场挑
-            print("  md 里没写 levels（层级模式），请挑一个：")
-            levels = choose_levels()
-            if not levels:
-                print("  已取消。")
-                return 1
-        if not tree:
-            print("  ⚠ 大纲里没有任何标题，按「不生成骨架」处理。")
-        else:
+        if tree:
+            # md 里没写 levels、或写的与结构不符 → 推断 + 让用户定
+            if not levels or len(levels) != tree_depth(tree):
+                levels = resolve_levels_for_md(outline_path, meta, tree, interact=True)
+                if not levels:
+                    return 1
             print(f"  已读入 {len(tree)} 个顶层节点，共 "
                   f"{len(content_files(tree, levels))} 个文件")
+        else:
+            print("  ⚠ 大纲里没有任何标题，按「不生成骨架」处理。")
     levels = levels or []
 
     name = ask("\n笔记名（字母开头，可含数字/下划线/连字符）", meta.get("name", ""))
@@ -620,7 +804,18 @@ def interactive():
         print()
         tree = read_outline_paste()
         if tree:
-            levels = choose_levels()
+            cand, why = infer_levels(tree)
+            if cand:
+                print(f"  按结构（{tree_depth(tree)} 层）推断层级为：{describe_levels(cand)}")
+                print(f"  依据：{why}")
+                try:
+                    a = input("  采用？[Y/n]（选 n 就手工挑）：").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    a = "n"
+                levels = cand if a in ("", "y", "yes") else choose_levels()
+            else:
+                print(f"  ⚠ {why}")
+                levels = choose_levels()
             if not levels:
                 print("  已取消。")
                 return 1
@@ -821,10 +1016,13 @@ def main():
         print(__doc__)
         return 1
 
-    if tree and not levels:
-        print("✗ 大纲里没写 levels（层级模式）——请在 md 头部加一行，或用 --levels 指定：")
-        print_level_presets()
-        return 1
+    # 层级模式：md 里写的 → 没写就按结构推；写了但与结构不符也交给它给建议
+    # （只有 --levels 是用户显式指定，直接生效，冲突时由下面的 check_depth 兜底）
+    if tree and not levels_spec:
+        if not levels or len(levels) != tree_depth(tree):
+            levels = resolve_levels_for_md(outline_file, meta, tree, interact=False)
+            if not levels:
+                return 1
     if tree:
         bad = check_depth(tree, levels)
         if bad:
