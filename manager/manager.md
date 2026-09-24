@@ -1,11 +1,8 @@
 # manager.py
 
-笔记工作区管理面板：统一管理**工作区**内各仓库 —— 查看状态、批量提交推送、为尚未入版本控制的文件夹创建仓库。
+笔记工作区管理面板，统一管理**工作区**内各仓库 —— 查看状态、批量提交推送、为尚未入版本控制的文件夹创建仓库。
 
-> **作用域是整个工作区，不只是笔记区**：状态总览与批量提交会覆盖「笔记区」（`manager.conf` 的 `root`）、「模板区」与「工具区」，按区域分组显示。
-
-> 环境检测、Git 账户与 SSH 配置属于「换机器时配置一次」的事，已剥离为 `../guard/git_setup.py`
-> （总面板选项 1）；符号库、写作进度等子工具入口统一由 `../launcher.py` 提供，本面板不再重复。
+**作用域是整个工作区，不只是笔记区**：状态总览与批量提交会覆盖「笔记区」（`manager.conf` 的 `root`）、「模板区」与「工具区」，按区域分组显示。
 
 ## 运行
 
@@ -14,7 +11,7 @@ python manager.py          # 进入交互式面板
 python manager.py --help   # 显示用法
 ```
 
-配置保存在脚本同目录的 `manager.conf`（含本机路径，已列入 `.gitignore`）。
+配置保存在脚本同目录的 `manager.conf`。
 
 ## 面板选项
 
@@ -52,21 +49,21 @@ python manager.py --help   # 显示用法
 ```
 【二】各仓库状态
 
-  【笔记区】D:\你的工作区\LaTeX_Notes
+  【笔记区】D:\你的工作区\你的笔记区
     文件夹                                分支         改动      领先/落后  远程
     ------------------------------------------------------------------------------------
-    Algebra                            master      0       0/0  Algebra ✓
-    General_Topology                   master      2       0/0  General_Topology !
+    Note_A                             master      0       0/0  Note_A ✓
+    Note_B                             master      2       0/0  Note_B !
 
-  【Template】D:\你的工作区\Template
+  【Template】D:\你的工作区\模板区
     文件夹                                分支         改动      领先/落后  远程
     ------------------------------------------------------------------------------------
-    Math-Note                          main        0       0/0  Math-Note-Template ✓
+    My-Template                        main        0       0/0  My-Template ✓
 
-  【工具区】D:\你的工作区\Tools
+  【工具区】D:\你的工作区\工具区
     文件夹                                分支         改动      领先/落后  远程
     ------------------------------------------------------------------------------------
-    Tools                              main        0       0/0  TeX_Notes_Tools ✓
+    My-Tools                           main        0       0/0  My-Tools ✓
 
   合计 12 个仓库
 ```
@@ -77,8 +74,8 @@ python manager.py --help   # 显示用法
 
 ```
   可操作的仓库：
-     1. Algebra                                12 项改动
-     2. General_Topology                        3 项改动
+     1. Note_A                                  12 项改动
+     2. Note_B                                  3 项改动
 
   输入编号（英文逗号分隔，回车＝全选，0＝取消）：
   > 1,2
@@ -87,10 +84,10 @@ python manager.py --help   # 显示用法
   统一提交说明（回车＝「更新笔记」）：
   只推送、不提交？[y/N]
 
-  ▶ Algebra
+  ▶ Note_A
     ✓ 已提交
     ✓ 已推送
-  ▶ General_Topology
+  ▶ Note_B
     ✓ 已提交
     ⚠ 推送失败：unable to access ...
 
@@ -111,8 +108,8 @@ python manager.py --help   # 显示用法
 
 ```
 root = D:/笔记目录
-account = moranzhuying
-ignore = BasicAlgebraExercises
+account = <你的 GitHub 账户>
+ignore = Some_Ignored_Dir
 ```
 
 > 名称中含 `Archieved` 的文件夹（归档）与以下划线开头的文件夹会被自动忽略。
@@ -129,34 +126,7 @@ ignore = BasicAlgebraExercises
 选项 3 的推送失败时，按下列顺序自动处理：
 
 1. **重试两次**（间隔 3 秒、6 秒）；
-2. **尝试备选通道**——远程是 SSH 地址时，改用 **22 端口**再试一次（本机默认走 `ssh.github.com:443`，两端口互补；若 22 端口成功，脚本会提示可把 `~/.ssh/config` 的 `Port` 改为 22）；
+2. **尝试备选通道**——远程是 SSH 地址时，改用 **22 端口**再试一次（两个端口互补；若 22 端口成功，脚本会提示可把 `~/.ssh/config` 的 `Port` 改为 22）；
 3. **归类报错**——区分认证失败、域名解析、连接超时、未配置远程、仓库不存在、需先 pull 等情形，给出对应的检查方向。
 
 全部失败时，汇总里会标注该仓库「本地提交已成功」。
-
-## 与各脚本的分工
-
-同一个工作区里有多个脚本，作用域与职责各不相同：
-
-| 脚本 | 位置 | 作用域 | 职责 |
-|---|---|---|---|
-| **`manager.py`** | `Tools/manager/` | 全部笔记 | 批量提交、建仓库、查看各仓库状态 |
-| `symbols.py` | `Tools/symbols/` | 全部笔记 | 符号库的提取 / 回填 / 刷新补全 / 分发 |
-| `progress.py` | `Tools/progress/` | 全部笔记 | 写作进度统计与浏览器视图 |
-| `git_setup.py` | `Tools/guard/` | 全局环境 | 环境检测、Git 账户、SSH 配置 |
-| `commit.py` | 各笔记目录内 | **当前一本笔记** | 提交并推送（支持 `--log` 联动 CHANGELOG） |
-| `setup_mode.py` | 各笔记目录内 | **当前一本笔记** | 切换习题编排模式 |
-
-**为什么不全合并**：`commit.py` 与 `setup_mode.py` **必须在具体的笔记目录内运行** —— 前者依赖同目录的 `.git`，后者读写同目录的 `Content/` 与 `ExerciseBook/`。这使它们可以「就地运行」：
-
-```bash
-cd <笔记根目录>/Algebra          # 正在写这本
-python commit.py "补充第 3 章"    # 直接提交，无需切换目录
-```
-
-若把它们并入 `manager.py`，每次提交都要先切到工作区、再从菜单里选笔记，反而多两步。因此保留两个层次：
-
-- **写笔记时**：在笔记目录里直接运行 `commit.py`（最顺）；
-- **换机器、加新笔记、批量同步时**：运行 `launcher.py`，从总面板进入对应工具。
-
-**入口只有一个**：`Tools/launcher.py`。本面板只管笔记区的仓库管理，其它工具（符号库、进度表、环境配置）都从总面板进入，不在本面板重复挂入口 —— 这也是把原先的选项 9、10 移除的原因。

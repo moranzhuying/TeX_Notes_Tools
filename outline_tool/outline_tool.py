@@ -49,7 +49,7 @@ def find_title(tex_path, want):
 
     两个判断都不能少：
       · 遇到比 want **更深**的命令就放弃 —— 说明本层标题不在这个文件里，
-        否则会把正文里的 `\\subsection{...}` 当成标题（导出 Algebra 时踩过）；
+        否则会把正文里的 `\\subsection{...}` 当成标题（导出真实笔记时踩过）；
       · 不因「正文行」而停 —— 真实笔记里有把节引言写在标题之前的写法。
     """
     if not tex_path or not tex_path.is_file():

@@ -11,7 +11,7 @@ search_notes.py — 在笔记里搜索
 
     python search_notes.py                           # 交互面板
     python search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
-    python search_notes.py compact -n Algebra         # 限定某本笔记
+    python search_notes.py compact -n MyNote          # 限定某本笔记
     python search_notes.py 定理 -e tex,md             # 限定扩展名
     python search_notes.py "R^{n}" -r                 # 按正则匹配
     python search_notes.py 模 -i                      # 忽略大小写
@@ -154,8 +154,8 @@ def interactive():
     print(f"  现有笔记  ：{'、'.join(names)}")
     print()
     print("  直接输入关键字即可（默认搜全部笔记的 .tex，区分大小写）。")
-    print("  也可以跟选项：-i 忽略大小写／-r 正则／-n Algebra 限定笔记／-e tex,md 扩展名")
-    print("  例：谱序列 -i      或      compact -n Algebra")
+    print("  也可以跟选项：-i 忽略大小写／-r 正则／-n MyNote 限定笔记／-e tex,md 扩展名")
+    print("  例：紧算子 -i      或      compact -n MyNote")
     print("  回车（或 q）退出。")
     print()
 

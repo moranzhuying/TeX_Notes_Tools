@@ -267,7 +267,7 @@ python new_note/new_note.py <笔记名> --outline <大纲.md> --levels textbook 
 
 ```markdown
 ---
-name: Algebra
+name: MyNote
 template: Math-Note
 levels: part, chapter, section
 ---
@@ -432,12 +432,12 @@ python repo_check/repo_check.py --area notes # notes / template / tools / all
 「这个词我在哪本里写过」—— 逐个打开笔记翻太慢，这里直接给文件 + 行号 + 上下文。
 
 **不带参数运行就是交互面板**：每行输入一个关键字就出结果，可以连着搜，
-选项直接跟在关键字后面（`谱序列 -i`、`compact -n Algebra`），回车或 `q` 退出。
+选项直接跟在关键字后面（`紧算子 -i`、`compact -n MyNote`），回车或 `q` 退出。
 
 ```bash
 python search_notes/search_notes.py                           # 交互面板
 python search_notes/search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
-python search_notes/search_notes.py compact -n Algebra         # 限定某本笔记
+python search_notes/search_notes.py compact -n MyNote         # 限定某本笔记
 python search_notes/search_notes.py 定理 -e tex,md             # 限定扩展名
 python search_notes/search_notes.py "R^{n}" -r                 # 按正则匹配
 python search_notes/search_notes.py compact -i                 # 忽略大小写

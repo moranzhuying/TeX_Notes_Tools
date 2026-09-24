@@ -30,7 +30,7 @@ new_note.py — 从模板创建一本新笔记
 「目录名」与「中译名」（中译名可省，省了就退用目录名）：
 
     ---
-    name: Algebra
+    name: MyNote
     template: Math-Note
     levels: part, chapter, section
     ---

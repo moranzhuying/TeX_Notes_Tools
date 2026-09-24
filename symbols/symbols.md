@@ -43,14 +43,14 @@ python symbols.py                   # 进入交互式面板
   请输入笔记文件夹路径（回车保持 D:\笔记目录）：  笔记根目录保持：D:\笔记目录
 
   目录结构（11 个子文件夹）：
-    [笔记] Algebra
-        顶层文件 12 个，子目录 1 个，合计 978 个文件
-        Content(969)
-    [笔记] Algebraic_Topology
-        顶层文件 12 个，子目录 1 个，合计 35 个文件
-        Content(26)
+    [笔记] Note_A
+        顶层文件 12 个，子目录 1 个，合计 120 个文件
+        Content(110)
+    [笔记] Note_B
+        顶层文件 12 个，子目录 1 个，合计 40 个文件
+        Content(28)
     …
-    [非笔记] Topology(Archieved)
+    [非笔记] Archived_Note
         顶层文件 1 个，子目录 1 个，合计 3 个文件
         Content(2)
 
@@ -60,7 +60,7 @@ python symbols.py                   # 进入交互式面板
 
 - 直接回车保持当前根目录；填入新路径则同时写回 `symbols.conf`。
 - `[笔记]` / `[非笔记]` 的判据是该目录下**有没有 `structure.sty`**。
-- 统计会跳过隐藏目录（`.git`）、下划线开头的目录（`__pycache__`、`_template_apply_backup_*`）、`ignore` 中列出的名字（当前为 `tex_note_manager`）、备份文件与 LaTeX 编译产物，因此**编译前后不会误报结构变化**。
+- 统计会跳过隐藏目录（`.git`）、下划线开头的目录（`__pycache__`、`_template_apply_backup_*`）、`ignore` 中列出的名字、备份文件与 LaTeX 编译产物，因此**编译前后不会误报结构变化**。
 - 有差异时逐条列出 `[新增]` / `[消失]` / `[变化]`（含文件数增减与具体文件名），并只重写这部分记录。
 - 若发现各笔记里有模板还没有的符号，末尾追加一行提示：
 
@@ -75,27 +75,20 @@ python symbols.py                   # 进入交互式面板
 ```
 [2] 显示子文件夹结构
   笔记根目录：D:\笔记目录
-    【1】Algebra    [笔记]
-    【2】Algebraic_Topology    [笔记]
+    【1】Note_A    [笔记]
+    【2】Note_B    [笔记]
     …
-    【11】Topology(Archieved)    [非笔记]
+    【11】Archived_Note    [非笔记]
   请输入编号（可多选，英文逗号分隔；直接回车返回）：
-  ══ Algebra ══
+  ══ Note_A ══
     顶层文件 9 个：
-      CHANGELOG.md  (1,533 B)
-      commit.md  (4,872 B)
-      commit.py  (10,740 B)
-      main.tex  (1,415 B)
-      quiver.sty  (2,044 B)
-      README.md  (7,942 B)
-      setup_mode.md  (1,052 B)
-      setup_mode.py  (17,108 B)
-      structure.sty  (28,365 B)
+      CHANGELOG.md / commit.md / commit.py / main.tex / quiver.sty
+      README.md / setup_mode.md / setup_mode.py / structure.sty
     （另有 1 个编译产物已忽略：main.pdf）
     子文件夹树：
-└─ Content/  （969 个文件）
-    ├─ 10_Modules_over_Principal_Ideal_Domains/  （33 个文件）
-    ├─ 12_Sesquilinear_Forms_and_Quadratic_Forms/  （52 个文件）
+└─ Content/  （110 个文件）
+    ├─ 1_Some_Chapter/  （30 个文件）
+    ├─ 2_Another_Chapter/  （52 个文件）
     …
 ```
 
@@ -111,7 +104,7 @@ python symbols.py                   # 进入交互式面板
 
 ```
 [3] 提取各子文件夹的符号
-  [Algebra] 2026-09-21 提取 1 个符号
+  [Note_A] 2026-09-21 提取 1 个符号
   已写入提取档案：symbols_extract.json（本次合计 1 条）
 ```
 
@@ -134,8 +127,8 @@ python symbols.py                   # 进入交互式面板
 ```
 [4] 回填提取的符号
   已写入模板 structure.sty：新增 1 个，补注来源 0 个
-  [已同步] Algebra
-  [已同步] General_Topology
+  [已同步] Note_A
+  [已同步] Note_C
   已刷新补全：148 个符号 -> %APPDATA%\texstudio\completion\user\custom.cwl
 ```
 
@@ -159,13 +152,13 @@ python symbols.py                   # 进入交互式面板
 ```
 [5] 检验并删除未使用的符号
   各子文件夹正文未引用的符号：
-    [Algebra] 36 个：
+    [Note_A] 36 个：
         \B
         \BProduit
         \BSomme
         \CP
         …
-    [General_Topology] 12 个：
+    [Note_C] 12 个：
         …
 
   可安全删除的符号（所有子文件夹正文均未引用）：22 个
