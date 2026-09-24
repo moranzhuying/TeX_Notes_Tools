@@ -12,10 +12,9 @@
 | `maintain/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
 | `maintain/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
 | `maintain/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
-| `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …） | 见下 |
+| `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
 | `maintain/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
-| `maintain/search_notes.py` | 跨笔记全文检索 | 见下 |
-| `maintain/show_memory.py` | 查看工作记录（.workbuddy/memory） | 见下 |
+| `maintain/search_notes.py` | 跨笔记全文检索，无参数即交互面板 | 见下 |
 | `guard/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `guard/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
@@ -221,7 +220,7 @@ Tools/
 │   ├── clean_aux.py      清理编译产物
 │   ├── repo_check.py     仓库体检
 │   ├── search_notes.py   跨笔记全文检索
-│   └── show_memory.py    查看工作记录
+│   └── show_memory.py    （已从面板移除；需要时单独运行）
 └── guard/                 防护与提交
     ├── git_setup.py       Git 基本信息（环境检测 / 账户 / SSH）
     ├── check_sensitive.py 提交前本机信息扫描
@@ -395,11 +394,15 @@ md 没写 `levels:` 或写的与结构不符时，按结构推断并给出「改
 编译一次就会留下 `.aux/.log/.xdv/.fls/...` 一堆中间文件，它们被 `.gitignore` 忽略、
 但会一直堆积。本工具按仓库分组列出占用，确认后再删。
 
+**不带参数运行就是交互面板**：列出各仓库占用后，直接填序号选要清的 ——
+`a` 全部、`1,3` 或 `2-4` 选几个、`p` 连 PDF 一起看、`notes`/`template`/`tools`/`all` 换区域，
+回车则不删退出。删除前还会再确认一次。
+
 ```bash
-python maintain/clean_aux.py                 # 只列出（默认）
-python maintain/clean_aux.py --write         # 删除（先确认）
-python maintain/clean_aux.py --write --yes   # 删除且不确认
-python maintain/clean_aux.py --with-pdf      # 连同 PDF 一起清
+python maintain/clean_aux.py                 # 交互面板
+python maintain/clean_aux.py --write         # 删除全部（先确认）
+python maintain/clean_aux.py --write --yes   # 删除全部且不确认（脚本用）
+python maintain/clean_aux.py --with-pdf      # 连 PDF 一起
 python maintain/clean_aux.py --area notes    # 只处理某区域：notes / template / tools / all
 ```
 
@@ -422,15 +425,23 @@ python maintain/repo_check.py --area notes # notes / template / tools / all
 
 「这个词我在哪本里写过」—— 逐个打开笔记翻太慢，这里直接给文件 + 行号 + 上下文。
 
+**不带参数运行就是交互面板**：每行输入一个关键字就出结果，可以连着搜，
+选项直接跟在关键字后面（`谱序列 -i`、`compact -n Algebra`），回车或 `q` 退出。
+
 ```bash
-python maintain/search_notes.py 谱序列                    # 默认搜全部笔记的 .tex
-python maintain/search_notes.py compact --note Algebra    # 限定某本笔记
-python maintain/search_notes.py 定理 --ext tex,md         # 限定扩展名
-python maintain/search_notes.py "R^{n}" --regex            # 按正则匹配
-python maintain/search_notes.py compact -i                # 忽略大小写
+python maintain/search_notes.py                           # 交互面板
+python maintain/search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
+python maintain/search_notes.py compact -n Algebra         # 限定某本笔记
+python maintain/search_notes.py 定理 -e tex,md             # 限定扩展名
+python maintain/search_notes.py "R^{n}" -r                 # 按正则匹配
+python maintain/search_notes.py compact -i                 # 忽略大小写
 ```
 
+参数：`-n/--note` 笔记名、`-e/--ext` 扩展名（默认 tex）、`-r/--regex`、`-i/--ignore-case`。
+
 ## show_memory.py — 查看工作记录
+
+> 已从总面板移除（2026-09-24）。脚本仍在，需要时直接 `python maintain/show_memory.py`。
 
 `.workbuddy/memory/` 里按日期归档着工作日志与一份长期记忆。这些记录平时不看，
 但「上次改到哪儿了」「为什么当初这么定」往往只能从这里找。
