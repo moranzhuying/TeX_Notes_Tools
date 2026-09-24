@@ -15,7 +15,6 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
 | `outline_tool/`    | 大纲的创建 / 导出 / 校验                              |
 | `note_tools/`      | 单本笔记的入口（提交 / 习题模式）                     |
 | `clean_aux/`       | 清理编译产物                                         |
-| `search_notes/`    | 跨笔记全文检索                                       |
 | `repo_check/`      | 仓库体检                                             |
 | `check_sensitive/` | 提交前本机信息扫描（`pre-commit` 钩子模板也在这里）   |
 | `sync_paths/`      | 配置路径检查与修复                                   |
@@ -50,15 +49,14 @@ MENU = [
     ("6", "大纲工具（创建 / 导出 / 校验）", "outline_tool/outline_tool.py", "面板", "创建与维护"),
     ("7", "笔记工具（提交 / 切换习题编排模式）", "note_tools/note_tools.py", "面板", "创建与维护"),
     ("8", "清理编译产物（aux / log / xdv …）", "clean_aux/clean_aux.py", "面板", "创建与维护"),
-    ("9", "本地全文检索", "search_notes/search_notes.py", "面板", "创建与维护"),
 
-    ("10", "仓库体检（规范 / 误跟踪 / 未提交）", "repo_check/repo_check.py", "面板", "信息安全与提交"),
-    ("11", "提交前本机信息扫描（全量体检）", "check_sensitive/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
-    ("12", "配置路径检查与修复", "sync_paths/sync_paths.py", "参数:", "信息安全与提交"),
-    ("13", "提交本工具集到 GitHub", "commit/commit.py", "面板", "信息安全与提交"),
+    ("9", "仓库体检（规范 / 误跟踪 / 未提交）", "repo_check/repo_check.py", "面板", "信息安全与提交"),
+    ("10", "提交前本机信息扫描（全量体检）", "check_sensitive/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
+    ("11", "配置路径检查与修复", "sync_paths/sync_paths.py", "参数:", "信息安全与提交"),
+    ("12", "提交本工具集到 GitHub", "commit/commit.py", "面板", "信息安全与提交"),
 ]
 
-SUBMIT_NO = "13"          # 打 * 标记的那一项
+SUBMIT_NO = "12"          # 打 * 标记的那一项
 
 
 def clear():

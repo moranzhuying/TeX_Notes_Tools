@@ -14,7 +14,7 @@
 | `note_tools/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
 | `clean_aux/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
 | `repo_check/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
-| `search_notes/search_notes.py` | 跨笔记全文检索，无参数即交互面板 | 见下 |
+| `search_notes/search_notes.py` | 跨笔记全文检索，无参数即交互面板（**已从总面板移除**，需要时单独运行） | 见下 |
 | `check_sensitive/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `commit/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
@@ -231,7 +231,7 @@ Tools/
 │   └── note_tools.py
 ├── clean_aux/             清理编译产物
 │   └── clean_aux.py
-├── search_notes/          跨笔记全文检索
+├── search_notes/          （已从面板移除；需要时单独运行）
 │   └── search_notes.py
 ├── repo_check/            仓库体检
 │   └── repo_check.py
@@ -438,6 +438,9 @@ python repo_check/repo_check.py --area notes # notes / template / tools / all
 运行档案；以及未提交改动数与远程配置。**只读，不改动任何文件。**
 
 ## search_notes.py — 跨笔记全文检索
+
+> 已从总面板移除（2026-09-24）。进度表（`progress/`）的明细页现在自带正文搜索，
+> 还能直接看命中处的源码与 PDF；这个独立脚本仍保留，需要时单独运行。
 
 「这个词我在哪本里写过」—— 逐个打开笔记翻太慢，这里直接给文件 + 行号 + 上下文。
 
