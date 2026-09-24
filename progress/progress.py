@@ -910,6 +910,16 @@ def collect_paths_from_tops(tops):
     return acc
 
 
+def merge_counts(dst, src):
+    """把「名字 → 个数」的计数字典并入 dst（目前只有 env_names 用）。
+
+    env_names 是环境构成，不参与任何判定；它不在 STAT_KEYS 里，所以
+    counted / overall / 导出报告的数字不受影响。
+    """
+    for k, v in (src or {}).items():
+        dst[k] = dst.get(k, 0) + v
+
+
 def aggregate(node):
     """自下而上汇总统计。"""
     if node["type"] == "leaf":
@@ -926,6 +936,8 @@ def aggregate(node):
             "empty_envs": node.get("empty_envs", 0),
             "unpaired": 1 if node.get("unpaired") else 0,
             "leaves": 1,
+            # 环境构成（名字 → 个数）。叶子取自身 file_metrics 的结果。
+            "env_names": dict(node.get("env_names") or {}),
         }
         node["last_mtime"] = node.get("mtime") or 0.0
         return node["stats"]
@@ -934,7 +946,7 @@ def aggregate(node):
         node["stats"] = {
             "planned": 1, "written": 0, "empty": 0, "missing": 1, "envs": 0,
             "chars": 0, "body_chars": 0, "proofs": 0, "empty_envs": 0,
-            "unpaired": 0, "leaves": 1,
+            "unpaired": 0, "leaves": 1, "env_names": {},
         }
         return node["stats"]
 
@@ -942,12 +954,16 @@ def aggregate(node):
         "planned": 0, "written": 0, "empty": 0, "missing": 0, "envs": 0,
         "chars": 0, "body_chars": 0, "proofs": 0, "empty_envs": 0,
         "unpaired": 0, "leaves": 0,
+        "env_names": {},
     }
     newest = 0.0
     for c in node["children"]:
         cs = aggregate(c)
         for k in total:
-            total[k] += cs[k]
+            if k == "env_names":
+                merge_counts(total[k], cs[k])
+            else:
+                total[k] += cs[k]
         newest = max(newest, c.get("last_mtime") or 0.0)
 
     # 内容直接写在 index.tex 里的章：把自身算作一个内容单元
@@ -959,6 +975,7 @@ def aggregate(node):
         total["chars"] += sm["chars"]
         total["body_chars"] += sm["body_chars"]
         total["empty_envs"] += sm["empty_envs"]
+        merge_counts(total["env_names"], sm.get("env_names"))
         if sm["unpaired"]:
             total["unpaired"] += 1
         if sm["has_proof"] or sm["has_sketch"]:
@@ -1550,6 +1567,9 @@ def apply_marks(data, marks, cfg):
     data["hint_count"] = sum(n["hint_count"] for n in data["notes"])
     data["suspects"] = suspects
     data["chapter_pending"] = chapter_pending
+    # 前端要用它算「停滞天数」的显示阈值 —— 沿用 progress.conf 的值，
+    # 不另造第二套阈值。
+    data["stagnant_days"] = cfg["stagnant_days"]
     return data
 
 

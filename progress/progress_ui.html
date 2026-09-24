@@ -279,6 +279,61 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
   #viewer .vbody{flex-direction:column}
   #viewer .vpdf{border-left:0;border-top:.5px solid var(--bd)}
 }
+/* 欠账页 */
+.toolbar .sp{flex:1}
+.lrow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px}
+.lrow:hover{background:var(--bg3)}
+.lsrc{flex:0 0 auto;font-size:11px;line-height:1.7;padding:0 6px;border-radius:4px;
+  background:var(--bg3);color:var(--orange);border:.5px solid var(--bd2);white-space:nowrap}
+.lsrc.s-plan{color:var(--blue)}
+.lmain{flex:1;min-width:0;cursor:pointer}
+.lcrumb{display:block;font-size:11px;color:var(--fg3);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ltext{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lmeta{flex:0 0 auto;font-size:11px;color:var(--fg3);white-space:nowrap}
+.lmeta.over{color:var(--orange)}
+.ldims{display:flex;gap:7px;flex:0 0 auto;align-items:center}
+#ledgerBox .card{padding:6px}
+#resume .row.led{border:.5px solid var(--bd);margin-bottom:8px}
+#resume .row.led .rnote{color:var(--orange)}
+.mark-dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;background:var(--orange)}
+
+/* 统计页 */
+.statsUnit{display:flex;align-items:center;gap:10px;padding:5px 0}
+.statsUnit .sun{flex:0 0 132px;font-size:12px;color:var(--fg2);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.statsUnit .sbar{flex:1;height:10px}
+.statsUnit .snum{flex:0 0 120px;font-size:11px;color:var(--fg3);text-align:right}
+.bar span.d-mark{background:var(--orange)}
+.bar span.d-todo{background:var(--orange);opacity:.7}
+.bar span.d-chapter{background:var(--orange);opacity:.45}
+.bar span.d-plan{background:var(--blue)}
+.statLeg{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--fg3);margin-bottom:10px}
+.statLeg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;
+  vertical-align:-1px}
+.chartCap{font-size:11px;color:var(--fg3);margin-top:8px;line-height:1.7}
+.chartWrap{overflow-x:auto}
+.donutWrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.envLeg{flex:1;min-width:190px}
+.envLeg .li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg2);padding:2px 0}
+.envLeg .li i{display:inline-block;width:10px;height:10px;border-radius:2px;flex:0 0 10px}
+.envLeg .li .v{margin-left:auto;color:var(--fg3);font-size:11px}
+.dn0{stroke:var(--blue)}
+.dn1{stroke:var(--blue);opacity:.76}
+.dn2{stroke:var(--blue);opacity:.54}
+.dn3{stroke:var(--gray-mid)}
+.dn4{stroke:var(--gray-dark)}
+.dn5{stroke:var(--fg3)}
+.axis{stroke:var(--bd);stroke-width:.5}
+.axisT{font-size:10px;fill:var(--fg3)}
+.gridL{stroke:var(--bd);stroke-width:.5;stroke-dasharray:2 3}
+.lineDot{fill:var(--blue)}
+.dnChip0{background:var(--blue)}
+.dnChip1{background:var(--blue);opacity:.76}
+.dnChip2{background:var(--blue);opacity:.54}
+.dnChip3{background:var(--gray-mid)}
+.dnChip4{background:var(--gray-dark)}
+.dnChip5{background:var(--fg3)}
 #toast{position:fixed;right:20px;bottom:20px;max-width:340px;z-index:90;
   background:var(--bg2);border:.5px solid var(--bd2);border-radius:8px;
   padding:10px 16px;font-size:13px;color:var(--fg);
@@ -328,6 +383,8 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
   <nav>
     <div class="item on" data-view="overview">总览</div>
     <div class="item" data-view="detail">明细</div>
+    <div class="item" data-view="ledger">欠账</div>
+    <div class="item" data-view="stats">统计</div>
     <div class="item" data-view="settings">设置</div>
   </nav>
   <main>
@@ -383,6 +440,35 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
       <div id="unused"></div>
       <div id="orphans"></div>
     </section>
+    <section id="view-ledger" hidden>
+      <div class="toolbar">
+        <span class="hint">来源</span>
+        <span class="sel" id="ledgerSrc">
+          <button data-src="mark" class="on">待补</button>
+          <button data-src="todo" class="on">待办</button>
+          <button data-src="plan" class="on">下一步</button>
+          <button data-src="chapter" class="on">整章待补</button>
+        </span>
+        <span id="ledgerNote"></span>
+        <span class="hint">排序</span>
+        <span class="sel" id="ledgerSort">
+          <button data-lsort="stale" class="on">最久未动在前</button>
+          <button data-lsort="order">章节顺序</button>
+        </span>
+        <span class="sp"></span>
+        <span class="hits" id="ledgerCount"></span>
+      </div>
+      <div id="ledgerBox"></div>
+    </section>
+    <section id="view-stats" hidden>
+      <div class="toolbar">
+        <span class="hint">范围</span>
+        <span id="statsScope"></span>
+        <span class="sp"></span>
+        <span class="hits" id="statsHint"></span>
+      </div>
+      <div id="statsBox"></div>
+    </section>
     <section id="view-settings" hidden>
       <div id="settingsBox"></div>
     </section>
@@ -434,6 +520,13 @@ const S = {
   search: null,            // 服务端正文检索结果；null = 没有进行正文检索
   panelMode: "auto",       // auto = 有结果就先显示结果列表；detail = 用户点了树，看详情
   viewer: null,            // 预览层当前的目标 {id, note, title, path, page}
+  /* 欠账页 */
+  ledgerSrc: new Set(["mark", "todo", "plan", "chapter"]),  // 来源筛选（默认全选）
+  ledgerNote: "__all__",   // 笔记筛选
+  ledgerSort: "stale",     // stale = 最久未动在前；order = 章节顺序
+  /* 统计页 */
+  statsScope: "__all__",   // "__all__" 或某本笔记的目录名
+  statsSeries: "envs",     // 折线图当前显示的序列
 };
 
 const API = {
@@ -686,6 +779,14 @@ const ENV_CN = {
   sketch: "分析",
 };
 
+/* 三维标记的维度与中文名（与设计 5.1 一致） */
+const MARK_DIMS = ["env", "body", "proof"];
+const DIM_CN = {env: "环境", body: "正文", proof: "证明"};
+
+/* 欠账四源。「欠账」是伞形概念，涵盖这四类但不等同于其中任何一类 ——
+   「待补」特指三维标记中的某一项为 todo，它只是四类之一。 */
+const LEDGER_CN = {mark: "待补", todo: "待办", plan: "下一步", chapter: "整章待补"};
+
 /* ============================ 渲染层（互不调用） ============================ */
 function setSvc(ok, text) {
   const el = document.getElementById("svc");
@@ -703,6 +804,14 @@ function renderResume() {
   const box = document.getElementById("resume");
   if (!d) { box.innerHTML = ""; return; }
   let h = '<div class="card"><p class="sec-h">续写入口</p>';
+
+  /* 欠账的聚合入口：本页只做速览，精细清单在「欠账」页。
+     徽标数与欠账页的「共 N 条」由同一个 collectPending() 算出，免得两处不等。 */
+  const pendAll = collectPending(d).length;
+  h += '<div class="row led" data-goto-ledger="1">'
+    + '<span class="mark-dot"></span>'
+    + '<span class="rname">欠账清单</span>'
+    + '<span class="rnote">共 ' + pendAll + ' 条 →</span></div>';
 
   const nexts = [];
   (d.notes || []).forEach((n) => (n.planned_next || []).forEach((p) => nexts.push(p)));
@@ -1511,6 +1620,474 @@ function renderSettings() {
   box.innerHTML = h;
 }
 
+/* ============================ 欠账页 ============================ */
+/* 清单由前端直接从树里汇总 —— 四类来源的字段本来就都在 /api/data 里，
+   范围口径与服务端一致：node.excluded 为真的一律不进清单。 */
+
+function nodeLabel(node) {
+  const raw = node.view_title || node.name || "";
+  return (node.num ? node.num + " " : "") + raw;
+}
+
+/* 停滞天数的参照时刻取「扫描时刻」，不取 Date.now() ——
+   同一份数据算出来的数字应当稳定，不随页面开着多久而漂。 */
+function scanRefMs() {
+  const t = S.data && S.data.scanned_at ? Date.parse(S.data.scanned_at) : NaN;
+  return isNaN(t) ? Date.now() : t;
+}
+
+function daysSince(sec) {
+  if (!sec) return null;
+  return Math.max(0, Math.floor((scanRefMs() - sec * 1000) / 86400000));
+}
+
+function fmtDay(sec) {
+  if (!sec) return "—";
+  const dt = new Date(sec * 1000);
+  const p = (x) => (x < 10 ? "0" : "") + x;
+  return dt.getFullYear() + "-" + p(dt.getMonth() + 1) + "-" + p(dt.getDate());
+}
+
+/* 欠账四源。返回的每条都带 note / node / crumbs / topId ——
+   crumbs 用于面包屑，topId 用于统计页按章分组。 */
+function collectPending(d) {
+  const out = [];
+  if (!d) return out;
+  (d.notes || []).forEach((n) => {
+    (n.tops || []).forEach((top) => {
+      const dig = (node, crumbs) => {
+        if (node.excluded) return;                 // 只统计计入范围内的
+        const here = crumbs.concat([nodeLabel(node)]);
+        if (node.type === "leaf") {
+          const mk = node.marks || {};
+          const dims = MARK_DIMS.filter((k) => mk[k] === "todo");
+          if (dims.length) {
+            out.push({src: "mark", note: n, node: node, dims: dims,
+                      crumbs: here, topId: top.id});
+          }
+          (node.todos || []).forEach((t, i) => {
+            if (!t.done) {
+              out.push({src: "todo", note: n, node: node, idx: i, text: t.text,
+                        crumbs: here, topId: top.id});
+            }
+          });
+          if (node.planned) {
+            out.push({src: "plan", note: n, node: node, crumbs: here, topId: top.id});
+          }
+        } else if (node.type === "dir") {
+          if (node.chapter_mark) {
+            out.push({src: "chapter", note: n, node: node, crumbs: here,
+                      topId: top.id});
+          }
+          (node.children || []).forEach((c) => dig(c, here));
+        }
+      };
+      dig(top, []);
+    });
+  });
+  return out;
+}
+
+function ledgerItems() {
+  const rows = collectPending(S.data).filter((x) => S.ledgerSrc.has(x.src)
+    && (S.ledgerNote === "__all__" || x.note.name === S.ledgerNote));
+  if (S.ledgerSort === "stale") {
+    rows.sort((a, b) => (a.node.last_mtime || 0) - (b.node.last_mtime || 0));
+  }
+  return rows;
+}
+
+let ledgerRows = [];      // 与当前渲染的 DOM 一一对应，行内动作按序号取回原始条目
+
+function renderLedgerNoteSel() {
+  const box = document.getElementById("ledgerNote");
+  if (!box) return;
+  if (!S.data) { box.innerHTML = ""; return; }
+  let opts = '<option value="__all__"'
+    + (S.ledgerNote === "__all__" ? " selected" : "") + '>全部笔记</option>';
+  (S.data.notes || []).forEach((n) => {
+    opts += '<option value="' + esc(n.name) + '"'
+      + (S.ledgerNote === n.name ? " selected" : "") + '>' + esc(n.title) + '</option>';
+  });
+  box.innerHTML = '<span class="note-pick"><select data-lnote="1" title="只看某一本">'
+    + opts + '</select></span>';
+}
+
+function ledgerRowHTML(x, i) {
+  const d = daysSince(x.node.last_mtime);
+  const limit = S.data.stagnant_days || 14;
+  const over = (d !== null && d >= limit) ? " over" : "";
+  let text = "", act = "";
+  if (x.src === "mark") {
+    text = x.dims.map((k) => DIM_CN[k]).join(" · ") + " 待补";
+    act = '<span class="ldims">' + MARK_DIMS.map((k) => {
+      const todo = x.dims.indexOf(k) >= 0;
+      return '<span class="mk" data-lmark="' + k + '" data-li="' + i + '" title="'
+        + DIM_CN[k] + (todo ? "：待补，点一下标为已完成" : "：已完成") + '">'
+        + (todo ? SVG_CIRCLE : SVG_CHECK) + '</span>';
+    }).join("") + '</span>';
+  } else if (x.src === "todo") {
+    text = "待办：" + x.text;
+    act = '<span class="tbox" data-ltodo="' + i + '" title="勾选完成"></span>';
+  } else if (x.src === "plan") {
+    text = "已设为下一步";
+    act = '<span class="tbtn" data-lplan="' + i + '">取消下一步</span>';
+  } else {
+    text = "整章待补";
+    act = '<span class="tbtn" data-lchapter="' + i + '">取消整章待补</span>';
+  }
+  return '<div class="lrow" data-lid="' + esc(x.node.id) + '" data-lsrc="' + x.src + '">'
+    + '<span class="lsrc s-' + x.src + '">' + LEDGER_CN[x.src] + '</span>'
+    + '<span class="lmain" data-lgoto="' + i + '" title="跳到明细页并定位到这一节">'
+    + '<span class="lcrumb">' + esc(x.note.title) + " › "
+    + x.crumbs.map(esc).join(" › ") + '</span>'
+    + '<span class="ltext">' + esc(text) + '</span></span>'
+    + '<span class="lmeta mono' + over + '" title="最后修改 ' + fmtDay(x.node.last_mtime)
+    + '">' + (d === null ? "无记录" : d + " 天未动") + '</span>'
+    + act + '</div>';
+}
+
+function renderLedger() {
+  const box = document.getElementById("ledgerBox");
+  const cnt = document.getElementById("ledgerCount");
+  if (!box) return;
+  if (!S.data) { box.innerHTML = ""; if (cnt) cnt.textContent = ""; return; }
+  renderLedgerNoteSel();
+  const total = collectPending(S.data).length;
+  ledgerRows = ledgerItems();
+  if (cnt) {
+    cnt.textContent = "共 " + ledgerRows.length + " 条"
+      + (ledgerRows.length === total ? "" : "（全部 " + total + " 条）");
+  }
+  if (!ledgerRows.length) {
+    box.innerHTML = '<div class="card"><div class="empty">'
+      + (total ? "当前筛选下没有条目" : "全库无欠账") + '</div></div>';
+    return;
+  }
+  let h = '<div class="card">';
+  ledgerRows.forEach((x, i) => { h += ledgerRowHTML(x, i); });
+  box.innerHTML = h + '</div>';
+}
+
+function ledgerToggleMark(i, dim) {
+  const x = ledgerRows[i];
+  if (!x) return;
+  const cur = (x.node.marks || {})[dim] || "done";
+  postJSON(API.entry, {id: x.node.id, marks: {[dim]: cur === "done" ? "todo" : "done"}})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function ledgerDoneTodo(i) {
+  const x = ledgerRows[i];
+  if (!x) return;
+  const todos = (x.node.todos || []).map((t, k) => ({
+    text: t.text, done: (k === x.idx) ? true : !!t.done,
+  }));
+  postJSON(API.entry, {id: x.node.id, todos: todos})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function ledgerUnplan(i) {
+  const x = ledgerRows[i];
+  if (!x) return;
+  postJSON(API.entry, {id: x.node.id, planned: false})
+    .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+function ledgerCancelChapter(i) {
+  const x = ledgerRows[i];
+  if (!x) return;
+  postJSON(API.chapter, {id: x.node.id, mark: false})
+    .then((d) => { S.data = d; refreshAll(); toast("已取消整章待补"); })
+    .catch(() => setSvc(false));
+}
+
+/* 跳到明细页并展开定位 —— 欠账页一半的价值在这里：从欠账直接回到结构位置 */
+function gotoNode(noteName, id) {
+  const ns = (S.data && S.data.notes) || [];
+  const idx = ns.findIndex((n) => n.name === noteName);
+  if (idx >= 0) S.noteIdx = idx;
+  S.open = new Set();
+  S.selected = null;
+  S.panelMode = "detail";
+  S.filter = "all";
+  S.query = "";
+  S.search = null;
+  const qi = document.getElementById("q");
+  if (qi) qi.value = "";
+  document.querySelectorAll("#filterSel button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.f === "all");
+  });
+  const n = currentNote();
+  let hit = false;
+  const dig = (node, path) => {
+    if (hit) return;
+    const here = path.concat([node.id]);
+    if (node.id === id) { path.forEach((p) => S.open.add(p)); hit = true; return; }
+    (node.children || []).forEach((c) => dig(c, here));
+  };
+  ((n && n.tops) || []).forEach((t) => dig(t, []));
+  if (hit) S.selected = id;
+  switchView("detail");
+  refreshAll();
+}
+
+/* ============================ 统计页 ============================ */
+/* 不引图表库（本工具对外的承诺是「不联网、不上传」，前端零外链）：
+   长条类图直接用 HTML/CSS，折线与环形手写 SVG。 */
+
+const STATS_SERIES = [
+  {k: "envs", label: "平均每节环境数",
+   calc: (s) => (s.written ? s.envs / s.written : null),
+   fmt: (v) => v.toFixed(2)},
+  {k: "body", label: "正文占比",
+   calc: (s) => (s.chars ? s.body_chars / s.chars * 100 : null),
+   fmt: (v) => v.toFixed(1) + "%"},
+  {k: "chars", label: "平均每节字数",
+   calc: (s) => (s.written ? s.chars / s.written : null),
+   fmt: (v) => fmtInt(Math.round(v))},
+];
+
+function mergeEnvNames(list) {
+  const out = {};
+  (list || []).forEach((e) => {
+    Object.keys(e || {}).forEach((k) => { out[k] = (out[k] || 0) + e[k]; });
+  });
+  return out;
+}
+
+/* 范围 → x 轴单位：全库时是笔记，单本时是该笔记的章（顶层节点）。
+   三张对比图共用这个单位，口径一处定义、三处复用。 */
+function statsUnits() {
+  const d = S.data;
+  if (!d) return [];
+  if (S.statsScope === "__all__") {
+    return (d.notes || []).map((n) => ({
+      key: n.name, label: n.title, noteName: n.name,
+      stats: n.counted || {},
+      /* 环境构成也只看计入范围内的章 —— 与图 1 / 图 3（以及单本范围）同口径，
+         否则未启用章的环境会被算进来，和别的图对不上。 */
+      envNames: mergeEnvNames((n.tops || []).filter((t) => t.decision)
+        .map((t) => (t.stats || {}).env_names)),
+    }));
+  }
+  const n = (d.notes || []).find((x) => x.name === S.statsScope);
+  if (!n) return [];
+  return (n.tops || []).filter((t) => t.decision).map((t) => ({
+    key: t.id, label: nodeLabel(t), noteName: n.name,
+    stats: t.stats || {},
+    envNames: (t.stats || {}).env_names || {},
+  }));
+}
+
+/* 顶层的「第1章：集合论」太长，坐标轴上只留标题本身 */
+function shortLabel(s, n) {
+  const t = String(s == null ? "" : s)
+    .replace(/^第[\d一二三四五六七八九十]+\s*(章|部分|节)[：:]\s*/, "");
+  return t.length > n ? t.slice(0, n) + "…" : t;
+}
+
+function renderStatsScope() {
+  const box = document.getElementById("statsScope");
+  if (!box || !S.data) return;
+  let h = '<span class="sel" style="flex-wrap:wrap">'
+    + '<button data-sscope="__all__" class="'
+    + (S.statsScope === "__all__" ? "on" : "") + '">全库</button>';
+  (S.data.notes || []).forEach((n) => {
+    h += '<button data-sscope="' + esc(n.name) + '" class="'
+      + (S.statsScope === n.name ? "on" : "") + '">' + esc(n.title) + '</button>';
+  });
+  box.innerHTML = h + '</span>';
+}
+
+function chartStatusHTML(units) {
+  let h = '<div class="card"><p class="sec-h">状态构成'
+    + '<span class="hint" style="font-weight:400">　每条 = '
+    + (S.statsScope === "__all__" ? "一本笔记" : "一章")
+    + '，按规划小节数归一</span></p>'
+    + '<div class="statLeg">'
+    + '<span><i style="background:var(--blue)"></i>已写</span>'
+    + '<span><i style="background:var(--gray-mid)"></i>空壳：文件已建、内容为空</span>'
+    + '<span><i style="background:var(--gray-dark)"></i>未建：索引已规划、文件未创建</span>'
+    + '</div>';
+  units.forEach((u) => {
+    const s = u.stats || {};
+    const tot = Math.max(s.planned || 0, 1);
+    const pc = s.planned ? Math.round((s.written || 0) / s.planned * 1000) / 10 : 0;
+    h += '<div class="statsUnit">'
+      + '<span class="sun" title="' + esc(u.label) + '">' + esc(u.label) + '</span>'
+      + '<span class="sbar bar">'
+      + '<span class="sw" style="width:' + ((s.written || 0) / tot * 100) + '%"></span>'
+      + '<span class="se" style="width:' + ((s.empty || 0) / tot * 100) + '%"></span>'
+      + '<span class="sm" style="width:' + ((s.missing || 0) / tot * 100) + '%"></span>'
+      + '</span>'
+      + '<span class="snum mono">' + fmtInt(s.written) + " / " + fmtInt(s.planned)
+      + '　' + pc + '%</span></div>';
+  });
+  return h + '</div>';
+}
+
+function chartLineSVG(units) {
+  const ser = STATS_SERIES.filter((x) => x.k === S.statsSeries)[0] || STATS_SERIES[0];
+  const pts = [];
+  units.forEach((u, i) => {
+    const v = ser.calc(u.stats || {});
+    if (v !== null && isFinite(v)) pts.push({i: i, v: v});
+  });
+  let h = '<div class="card"><p class="sec-h">' + esc(ser.label) + '</p>'
+    + '<div class="statLeg">'
+    + STATS_SERIES.map((x) => '<span class="tbtn" data-serie="' + x.k + '"'
+        + (x.k === ser.k ? ' style="background:var(--bg3);color:var(--fg)"' : '')
+        + '>' + esc(x.label) + '</span>').join("")
+    + '</div>';
+  if (!pts.length) {
+    return h + '<div class="empty">没有可画的数据（分母为 0 的单位已跳过）</div></div>';
+  }
+  const W = 900, H = 200, PL = 58, PR = 18, PT = 16, PB = 34;
+  const vs = pts.map((p) => p.v);
+  let mx = Math.max.apply(null, vs), mn = Math.min.apply(null, vs);
+  if (mx === mn) mx = mn + (mn === 0 ? 1 : Math.abs(mn) * 0.2);
+  if (mn > 0 && mn / mx > 0.5) mn = 0;      // 差异很小时从 0 起，免得把噪声放大
+  const n = units.length;
+  const xAt = (i) => (n === 1 ? (PL + (W - PL - PR) / 2)
+                              : PL + i * (W - PL - PR) / (n - 1));
+  const yAt = (v) => PT + (1 - (v - mn) / (mx - mn || 1)) * (H - PT - PB);
+  let g = "";
+  [mx, (mx + mn) / 2, mn].forEach((v) => {
+    const y = yAt(v);
+    g += '<line class="gridL" x1="' + PL + '" y1="' + y + '" x2="' + (W - PR)
+      + '" y2="' + y + '"></line>'
+      + '<text class="axisT" x="' + (PL - 8) + '" y="' + (y + 3.5)
+      + '" text-anchor="end">' + esc(ser.fmt(v)) + '</text>';
+  });
+  g += '<polyline fill="none" stroke="var(--blue)" stroke-width="1.6" points="'
+    + pts.map((p) => xAt(p.i).toFixed(1) + "," + yAt(p.v).toFixed(1)).join(" ")
+    + '"></polyline>';
+  pts.forEach((p) => {
+    g += '<circle class="lineDot" cx="' + xAt(p.i).toFixed(1) + '" cy="'
+      + yAt(p.v).toFixed(1) + '" r="2.6"><title>'
+      + esc(shortLabel(units[p.i].label, 12)) + "：" + esc(ser.fmt(p.v))
+      + '</title></circle>';
+  });
+  g += '<line class="axis" x1="' + PL + '" y1="' + (H - PB) + '" x2="' + (W - PR)
+    + '" y2="' + (H - PB) + '"></line>';
+  const step = Math.max(1, Math.ceil(n / 12));
+  units.forEach((u, i) => {
+    if (i % step) return;
+    g += '<text class="axisT" x="' + xAt(i).toFixed(1) + '" y="' + (H - PB + 15)
+      + '" text-anchor="middle">' + esc(shortLabel(u.label, 7)) + '</text>';
+  });
+  h += '<div class="chartWrap"><svg viewBox="0 0 ' + W + " " + H
+    + '" width="100%" style="display:block;height:auto" role="img">' + g + '</svg></div>'
+    + '<div class="chartCap">分母是「已写小节数」—— 用规划数会把未建的章拉低，'
+    + '看不出这一章的内容性质。分母为 0 的单位已跳过。</div>';
+  return h + '</div>';
+}
+
+function chartDebtHTML(units) {
+  const by = {};
+  collectPending(S.data).forEach((x) => {
+    const key = (S.statsScope === "__all__") ? x.note.name : x.topId;
+    const o = by[key] || (by[key] = {mark: 0, todo: 0, plan: 0, chapter: 0});
+    o[x.src] += 1;
+  });
+  const keys = ["mark", "todo", "chapter", "plan"];
+  let mx = 1;
+  units.forEach((u) => {
+    const o = by[u.key] || {};
+    mx = Math.max(mx, keys.reduce((a, k) => a + (o[k] || 0), 0));
+  });
+  let h = '<div class="card"><p class="sec-h">欠账来源</p>'
+    + '<div class="statLeg">'
+    + '<span><i style="background:var(--orange)"></i>待补</span>'
+    + '<span><i style="background:var(--orange);opacity:.7"></i>待办</span>'
+    + '<span><i style="background:var(--orange);opacity:.45"></i>整章待补</span>'
+    + '<span><i style="background:var(--blue)"></i>下一步（是计划，不是欠账）</span>'
+    + '</div>';
+  units.forEach((u) => {
+    const o = by[u.key] || {mark: 0, todo: 0, plan: 0, chapter: 0};
+    const total = keys.reduce((a, k) => a + (o[k] || 0), 0);
+    let bar = "";
+    keys.forEach((k) => {
+      if (!o[k]) return;
+      bar += '<span class="d-' + k + '" style="width:' + (o[k] / mx * 100) + '%"></span>';
+    });
+    const detail = keys.filter((k) => o[k])
+      .map((k) => LEDGER_CN[k] + " " + o[k]).join(" · ");
+    h += '<div class="statsUnit">'
+      + '<span class="sun" title="' + esc(u.label) + '">' + esc(u.label) + '</span>'
+      + '<span class="sbar bar">' + bar + '</span>'
+      + '<span class="snum mono" title="' + esc(detail) + '">' + total + ' 条</span></div>';
+  });
+  h += '<div class="chartCap">只统计计入范围内的条目，与「欠账」页同源（同一个汇总函数）。'
+    + '「下一步」用蓝色另列 —— 它是主动计划，不是欠账。</div>';
+  return h + '</div>';
+}
+
+function chartEnvSVG(units) {
+  const merged = mergeEnvNames(units.map((u) => u.envNames));
+  const ent = Object.keys(merged).filter((k) => merged[k] > 0)
+    .map((k) => ({k: k, v: merged[k]})).sort((a, b) => b.v - a.v);
+  let h = '<div class="card"><p class="sec-h">定理环境构成</p>';
+  if (!ent.length) return h + '<div class="empty">没有环境数据</div></div>';
+  const restV = ent.slice(5).reduce((a, x) => a + x.v, 0);
+  const items = ent.slice(0, 5).concat(restV ? [{k: "__other__", v: restV}] : []);
+  const tot = items.reduce((a, x) => a + x.v, 0);
+  const R = 54, C = 2 * Math.PI * R;
+  let off = 0, rings = "";
+  items.forEach((x, i) => {
+    const frac = x.v / tot;
+    rings += '<circle class="dn' + Math.min(i, 5) + '" cx="70" cy="70" r="' + R
+      + '" fill="none" stroke-width="20" stroke-dasharray="'
+      + (frac * C).toFixed(2) + " " + (C - frac * C).toFixed(2)
+      + '" stroke-dashoffset="' + (-off * C).toFixed(2)
+      + '" transform="rotate(-90 70 70)"></circle>';
+    off += frac;
+  });
+  const svg = '<svg viewBox="0 0 140 140" width="140" height="140" role="img">'
+    + rings
+    + '<text x="70" y="67" text-anchor="middle" style="font-size:18px;fill:var(--fg)">'
+    + fmtInt(tot) + '</text>'
+    + '<text x="70" y="85" text-anchor="middle" style="font-size:10px;fill:var(--fg3)">'
+    + '个环境</text></svg>';
+  let leg = '<div class="envLeg">';
+  items.forEach((x, i) => {
+    leg += '<div class="li"><i class="dnChip' + Math.min(i, 5) + '"></i>'
+      + '<span>' + esc(x.k === "__other__" ? "其他" : (ENV_CN[x.k] || x.k)) + '</span>'
+      + '<span class="v mono">' + fmtInt(x.v) + "　" + (x.v / tot * 100).toFixed(1)
+      + '%</span></div>';
+  });
+  h += '<div class="donutWrap">' + svg + leg + '</div>'
+    + '<div class="chartCap">只标前 5 类，其余并入「其他」。'
+    + (S.statsScope === "__all__" ? "范围是全部笔记。" : "范围是当前这本笔记。")
+    + '</div>';
+  return h + '</div>';
+}
+
+function renderStats() {
+  const box = document.getElementById("statsBox");
+  const hint = document.getElementById("statsHint");
+  if (!box) return;
+  if (!S.data) { box.innerHTML = ""; if (hint) hint.textContent = ""; return; }
+  renderStatsScope();
+  const units = statsUnits();
+  if (hint) {
+    const sn = (S.data.notes || []).filter((x) => x.name === S.statsScope)[0];
+    hint.textContent = S.statsScope === "__all__"
+      ? "x 轴单位：笔记（" + units.length + " 本）"
+      : "x 轴单位：" + ((sn && sn.top_name) || "章") + "（" + units.length + " 个）";
+  }
+  if (!units.length) {
+    box.innerHTML = '<div class="empty">没有可统计的单元</div>';
+    return;
+  }
+  box.innerHTML = chartStatusHTML(units) + chartLineSVG(units)
+    + chartDebtHTML(units) + chartEnvSVG(units);
+}
+
 /* ============================ 调度层（唯一刷新入口） ============================ */
 function refreshAll() {
   renderHeader();
@@ -1523,6 +2100,8 @@ function refreshAll() {
   renderPanel();
   renderUnused();
   renderOrphans();
+  renderLedger();
+  renderStats();
   renderSettings();
 }
 
@@ -1545,9 +2124,10 @@ function switchView(v) {
   document.querySelectorAll("nav .item").forEach((el) => {
     el.classList.toggle("on", el.dataset.view === v);
   });
-  document.getElementById("view-overview").hidden = (v !== "overview");
-  document.getElementById("view-detail").hidden = (v !== "detail");
-  document.getElementById("view-settings").hidden = (v !== "settings");
+  /* 按 data-view 与 section 的 id 对应显示，新增导航项不必再改这里 */
+  document.querySelectorAll("main > section").forEach((el) => {
+    el.hidden = (el.id !== "view-" + v);
+  });
 }
 
 document.getElementById("topbar").addEventListener("click", (e) => {
@@ -1729,6 +2309,52 @@ document.getElementById("orphans").addEventListener("click", (e) => {
   if (op) openFile(op.dataset.openPath);
 });
 
+/* 欠账页：本页是欠账的唯一写入口（写入仍走 entry / chapter 两个既有接口） */
+document.getElementById("view-ledger").addEventListener("click", (e) => {
+  const go = e.target.closest("[data-lgoto]");
+  if (go) {
+    const x = ledgerRows[parseInt(go.dataset.lgoto, 10)];
+    if (x) gotoNode(x.note.name, x.node.id);
+    return;
+  }
+  const mk = e.target.closest("[data-lmark]");
+  if (mk) { ledgerToggleMark(parseInt(mk.dataset.li, 10), mk.dataset.lmark); return; }
+  const td = e.target.closest("[data-ltodo]");
+  if (td) { ledgerDoneTodo(parseInt(td.dataset.ltodo, 10)); return; }
+  const pl = e.target.closest("[data-lplan]");
+  if (pl) { ledgerUnplan(parseInt(pl.dataset.lplan, 10)); return; }
+  const cm = e.target.closest("[data-lchapter]");
+  if (cm) { ledgerCancelChapter(parseInt(cm.dataset.lchapter, 10)); return; }
+  const sb = e.target.closest("#ledgerSrc button");
+  if (sb) {
+    const k = sb.dataset.src;
+    if (S.ledgerSrc.has(k)) S.ledgerSrc.delete(k); else S.ledgerSrc.add(k);
+    sb.classList.toggle("on", S.ledgerSrc.has(k));
+    renderLedger();
+    return;
+  }
+  const so = e.target.closest("#ledgerSort button");
+  if (so) {
+    S.ledgerSort = so.dataset.lsort;
+    document.querySelectorAll("#ledgerSort button").forEach((b) => {
+      b.classList.toggle("on", b === so);
+    });
+    renderLedger();
+  }
+});
+
+document.getElementById("view-ledger").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-lnote]");
+  if (sel) { S.ledgerNote = sel.value; renderLedger(); }
+});
+
+document.getElementById("view-stats").addEventListener("click", (e) => {
+  const sc = e.target.closest("[data-sscope]");
+  if (sc) { S.statsScope = sc.dataset.sscope; renderStats(); return; }
+  const se = e.target.closest("[data-serie]");
+  if (se) { S.statsSeries = se.dataset.serie; renderStats(); }
+});
+
 document.getElementById("btnUnusedToggle").addEventListener("click", (e) => {
   setShowUnused(!S.showUnused);
 });
@@ -1823,6 +2449,7 @@ function setAllAuto() {
 }
 
 document.getElementById("resume").addEventListener("click", (e) => {
+  if (e.target.closest("[data-goto-ledger]")) { switchView("ledger"); return; }
   const row = e.target.closest("[data-open-path]");
   if (!row) return;
   openFile(row.dataset.openPath);
