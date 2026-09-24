@@ -145,11 +145,19 @@ python progress.py --no-browser    启动但不打开浏览器
 
 **总览页**：顶部是续写入口（已标记「设为下一步」的节、最近改动的文件、停滞提醒），其下是全库合计卡片与各笔记卡片。点卡片进入该笔记的明细页。
 
-**明细页**：左侧是可按需展开的层级树，右侧是详情面板。树支持按状态筛选（已写 / 未写 / 未建 / 待补）与关键字搜索。底部有可展开的「未启用章节」分组。
+**明细页**：左侧是可按需展开的层级树，右侧是详情面板。顶部可切换笔记（笔记少时平铺成一排按钮，多了自动收成一个下拉 ＋ 前后切换），树支持按状态筛选（已写 / 未写 / 未建 / 待补 / 可疑）与关键字搜索。底部有可展开的「未启用章节」分组。点小节看它的详情；点章 / 节行除展开外，还会在右侧给出该层的详情与整章级操作。
 
-每个小节有三个可点击的标记（**环境 / 正文 / 证明**），默认视为已完成，发现没弄利索时点一下标为待补；另有备注（自由文本）与待办（可勾选条目）两块独立区域。
+每个小节有三个可点击的标记（**环境 / 正文 / 证明**），默认视为已完成，发现没弄利索时点一下标为待补；另有备注（自由文本）与待办（可勾选条目）两块独立区域。章 / 节行上另有一个独立的「整章待补」标记（用于不好归到某一节的问题），章详情面板里还能把该层下「已写、但既无 proof 也无 sketch」的小节一次标为证明待补。
+
+有欠账的地方会在行尾给出提示：红点＝编译层面确定的问题（`\begin` 未配对、空环境），琥珀点＝与同一节的其他小节相比明显偏少，悬停可看具体原因。总览页并列显示**结构进度**与**确认完成率**——后者扣掉你标过待补的小节，用来区分「写完了」与「写完但还欠着」。
 
 点击「用 TeXStudio 打开」可直接在编辑器中打开该小节的 tex 文件。
+
+**设置页**：三块。
+
+- **显示** —— 「明细页默认显示未启用的章」开关。开着时树上把未启用的顶层节点一并列出（灰显、不计入统计），其下小节照常可展开、可标记；关掉则只看计入范围内的条目。
+- **笔记层级模式** —— **按笔记分别设置**：每本笔记一个下拉，决定树上每一层对应哪个 LaTeX 标题命令。这决定了标题从哪个命令里取（`\chapter` / `\section` / `\subsection`）与怎么编号（`1.1`、`1.1.2`、`附录 A`、`A.1`）。下拉里的选项与「新建大纲」是同一套（直接读 `new_note.py` 的预设），另有以 `\part` 开头的「部分-章-节」序列。默认「自动识别」：最外层命令取自 `main.tex`，其余按 LaTeX 章节命令的次序顺延到树的层数。改动后立即重扫（约 2 秒），可随时「恢复自动识别」。
+- **数据文件** —— 说明设置与标记数据各存在哪个文件，并提供「导出标记数据 / 导入标记数据」（导入按 `updated` 时间戳合并：较新的一份覆盖冲突项，只有一侧有的记录一律保留）。
 
 配色只有一套语义：**蓝色 = 已写，中灰 = 已建空壳，深灰 = 规划未建**，橙色是全屏唯一的暖色，只用于待补标记。
 
@@ -294,24 +302,24 @@ levels: part, chapter, section
 按**由外到内**排列、不可重复。管几个命令就是几层目录：末层是 `.tex` 文件，前面各层是目录。
 
 ```markdown
-levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \section
+levels: chapter, section, subsection   # 1 级 \chapter、2 级 \section、3 级 \subsection
 ```
 
 | 简写名 | 等价于 | 适用 |
 |---|---|---|
-| `bourbaki` | `part, chapter, section` | 层1 目录＝原书章（现有笔记的写法） |
-| `textbook` | `chapter, section, subsection` | 常见教材：层1 目录＝章 |
+| `textbook` | `chapter, section, subsection` | 常见教材：层1 目录＝章（默认写法） |
 | `textbook-part` | `part, chapter, section, subsection` | 分「部」的大部头 |
 | `two-level` | `chapter, section` | 两层：讲义 / 小册子 |
 | `article` | `section, subsection` | 文章式：不分章 |
 | `grouped` | `chapter, -, section` | 中间层只作分组、不产生标题 |
 
 `-` 表示「这一层只作分组、不产生标题」。自定义就是直接列命令，例如
-`levels: part, chapter, section, subsection`、`levels: chapter, -, section`。
+`levels: part, chapter, section`（部分-章-节）、`levels: chapter, -, section`。
+以 `\part` 开头的序列不设简写名，直接写命令即可。
 
 **不写也能跑**：脚本按标题层数推一个最接近的 —— 1 层→`section`；2 层→`chapter, section`；
-3 层及以上→从 `part` 起按 `part → chapter → section → subsection` 顺延（3 层正好是
-现有笔记的 `part, chapter, section`）。此时：
+3 层→`chapter, section, subsection`；4 层及以上→从 `part` 起按
+`part → chapter → section → subsection` 顺延。此时：
 
 - 交互式会问一句：**[Y] 用推断的 / [w] 把推断的 levels 写进 md 再用 / [n] 先去改 md**；
 - 命令行只打印推断值与依据，并提示「想固定就在 md 头部加一行」，不弹提问。
@@ -322,18 +330,18 @@ levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \sect
 
 ### 标题命令落在哪
 
-以 `bourbaki`（`part, chapter, section`）为例，与既有笔记逐行一致：
+以 `textbook`（`chapter, section, subsection`）为例：
 
 | 位置 | 内容 |
 |---|---|
-| `main.tex` | `\part{层1中译}` ＋ 紧跟其后的 `\input{./Content/<层1>/index}` |
+| `main.tex` | `\chapter{层1中译}` ＋ 紧跟其后的 `\input{./Content/<层1>/index}` |
 | `Content/<层1>/index.tex` | 只有 `\input`（指向各层2） |
 | `Content/<层1>/<层2>/index.tex` | 只有 `\input`（指向各层3） |
-| 该层2 的**第一个**叶子 | `\chapter{层2中译}` ＋ `\section{层3中译}` |
-| 该层2 的其余叶子 | 只有 `\section{层3中译}` |
+| 该层2 的**第一个**叶子 | `\section{层2中译}` ＋ `\subsection{层3中译}` |
+| 该层2 的其余叶子 | 只有 `\subsection{层3中译}` |
 
-> 每一层的标题命令只在「它子树的第一个文件」里出现一次；换成 `textbook` 时同理，
-> 只是命令依次变成 `\chapter` / `\section` / `\subsection`。
+> 每一层的标题命令只在「它子树的第一个文件」里出现一次；换成
+> `part, chapter, section` 时同理，只是命令依次变成 `\part` / `\chapter` / `\section`。
 
 ### 其他说明
 
@@ -466,9 +474,10 @@ python show_memory/show_memory.py MEMORY     # 看长期记忆
 | `manager.conf` / `symbols.conf` / `progress.conf` | 工具配置，含绝对路径 |
 | `symbols_extract.json` | 符号提取记录，`{文件夹: {日期: {命令名: 定义行}}}` |
 | `notes_tree.json` | 笔记目录结构快照 |
-| `progress_marks.json` | 进度标记数据（三维标记、备注、待办、计划、章统计覆盖），原子写入并在每次写入前留一份 `.bak` |
+| `progress_marks.json` | 进度标记数据（三维标记、备注、待办、计划、章统计覆盖、章级标记），原子写入并在每次写入前留一份 `.bak` |
+| `progress_settings.json` | 进度工具的设置（每本笔记的层级模式、显示开关），同样原子写入 + `.bak` |
 
-想重置全部进度标记，删掉 `progress_marks.json` 即可。
+想重置全部进度标记，删掉 `progress_marks.json` 即可；想恢复默认设置（全部层级模式回到「自动识别」），删掉 `progress_settings.json`。
 
 ## 环境要求
 

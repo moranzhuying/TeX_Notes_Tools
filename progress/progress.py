@@ -14,6 +14,7 @@
 
 import configparser
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -30,6 +31,7 @@ from urllib.parse import parse_qs, urlparse
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONF_PATH = SCRIPT_DIR / "progress.conf"
 MARKS_PATH = SCRIPT_DIR / "progress_marks.json"
+SETTINGS_PATH = SCRIPT_DIR / "progress_settings.json"
 UI_PATH = SCRIPT_DIR / "progress_ui.html"
 
 VERSION = "0.1.0"
@@ -50,15 +52,125 @@ MIN_CHARS = 50
 # 空环境的判定阈值
 EMPTY_ENV_CHARS = 20
 
-TITLE_RE = re.compile(r"^\s*\\(part|chapter|section|subsection|subsubsection)\b")
+TITLE_RE = re.compile(r"^\s*\\(part|chapter|section|subsection|subsubsection"
+                      r"|appendixchapter|appendixsubsection)\b")
 COMMENT_RE = re.compile(r"^\s*%")
 BEGIN_RE = re.compile(r"\\begin\{([^}]*)\}")
 END_RE = re.compile(r"\\end\{([^}]*)\}")
-PART_RE = re.compile(r"\\part\{(.*)\}\s*$")
-CHAPTER_RE = re.compile(r"\\chapter\{(.*)\}\s*$")
-SECTION_RE = re.compile(r"\\section\{(.*)\}\s*$")
 TITLE_CMD_RE = re.compile(r"\\title\{(.*)\}\s*$")
 INPUT_PREFIX = "\\input{"
+
+# ---------------------------------------------------------------- 层级模式
+
+#: LaTeX 章节命令，由外到内。层级模式必须是它的**保持次序的子序列**。
+SECTION_CMDS = ["part", "chapter", "section", "subsection",
+                "subsubsection", "paragraph", "subparagraph"]
+
+#: 各层的层名，用于界面文案（「未启用章」还是「未启用部分」）。
+LEVEL_CN = {"part": "部分", "chapter": "章", "section": "节",
+            "subsection": "小节", "subsubsection": "小小节",
+            "paragraph": "段", "subparagraph": "子段"}
+
+#: 模板自定义的附录命令。按**目录结构里的位置**归属，而不按它在正文里的渲染层级：
+#: 附录目录本身就是章下的一个子目录，所以 `\appendixchapter` 写在「节位」、
+#: 它下面的 `\appendixsubsection` 写在「小节位」（与 outline_tool 的 ALIAS 同一口径）。
+APX_FOR = {"section": "appendixchapter", "subsection": "appendixsubsection"}
+
+#: 会被识别为标题的命令（含附录命令）。键是命令名，值是标题文本。
+TITLE_KEYS = ("part", "chapter", "section", "subsection", "subsubsection",
+              "appendixchapter", "appendixsubsection")
+
+#: 标题命令的层级次序，由外到内；附录命令按它所在的**结构位置**排
+#: （`\appendixchapter` 在节位、`\appendixsubsection` 在小节位）。
+TITLE_ORDER = ["part", "chapter", "section", "appendixchapter",
+               "subsection", "appendixsubsection", "subsubsection"]
+
+#: 各标题命令的匹配式：贪婪匹配到行尾的 `}`，
+#: 这样标题里嵌 `\texorpdfstring{$\R^{n}$}{Rn}` 这类花括号也不会截断。
+_TITLE_RES = {k: re.compile(r"\\" + k + r"\*?\{(.*)\}\s*$") for k in TITLE_KEYS}
+
+#: 「新建大纲」（new_note.py）里的层级模式，运行时读它，保证两处是同一套。
+NEW_NOTE_PATH = SCRIPT_DIR.parent / "new_note" / "new_note.py"
+
+#: 读不到 new_note.py 时的兜底（本目录被单独拷走也能跑），内容与它保持一致。
+FALLBACK_LEVEL_PRESETS = {
+    "textbook":      ("chapter,section,subsection", "常见教材：层1 目录＝章"),
+    "textbook-part": ("part,chapter,section,subsection", "分「部」的大部头"),
+    "two-level":     ("chapter,section", "两层：讲义 / 小册子"),
+    "article":       ("section,subsection", "文章式：不分章"),
+    "grouped":       ("chapter,-,section", "中间层只作分组、不产生标题"),
+}
+
+#: 以 `\part` 开头的序列在「新建大纲」里没有简写名（直接写命令即可），
+#: 但设置页需要能选到 —— 「部分-章-节」这类显示需求是真实存在的。
+EXTRA_LEVEL_MODES = [
+    ("part,chapter,section", "部分-章-节：以 \\part 归组，部分不占章号"),
+    ("part,chapter", "部分-章：两层"),
+]
+
+
+def load_level_presets():
+    """层级模式清单 —— 直接读 new_note.py 的 LEVEL_PRESETS，与「新建大纲」一套。"""
+    if NEW_NOTE_PATH.is_file():
+        try:
+            spec = importlib.util.spec_from_file_location("_nn_levels", NEW_NOTE_PATH)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            presets = getattr(mod, "LEVEL_PRESETS", None)
+            if presets:
+                return dict(presets)
+        except Exception:
+            pass
+    return dict(FALLBACK_LEVEL_PRESETS)
+
+
+def parse_levels(spec):
+    """命令序列字符串 -> 命令列表（含 `-` 表示分组层）。非法返回 []。"""
+    cmds = [c.strip().lower() for c in (spec or "").split(",") if c.strip()]
+    if not cmds:
+        return []
+    pos = []
+    for c in cmds:
+        if c == "-":
+            continue
+        if c not in SECTION_CMDS:
+            return []
+        pos.append(SECTION_CMDS.index(c))
+    if not pos or pos != sorted(pos) or len(set(pos)) != len(pos):
+        return []
+    return cmds
+
+
+def level_cmd(levels, depth):
+    """树里第 depth 层对应的 LaTeX 命令。
+
+    depth 超出已声明的层数时（层次比模式更深）按 LaTeX 次序继续往下顺延，
+    而不是硬套末一层 —— 这样把三层的笔记临时设成两层模式，深出来的那层仍能取到标题。
+    """
+    if not levels:
+        return ""
+    if depth < len(levels):
+        return levels[depth]
+    base = next((SECTION_CMDS.index(c) for c in levels if c != "-"),
+                len(SECTION_CMDS))
+    i = min(base + depth, len(SECTION_CMDS) - 1)
+    return SECTION_CMDS[i]
+
+
+def level_names(levels):
+    """`chapter,section,subsection` -> `章-节-小节`（界面上用的短名）。"""
+    out = []
+    for c in levels or []:
+        out.append("分组" if c == "-" else LEVEL_CN.get(c, c))
+    return "-".join(out)
+
+
+def title_candidates(cmd):
+    """该层标题可能写在哪些命令里 —— 附录目录的标题用 `\\appendixchapter` 写在节位上。"""
+    if not cmd or cmd == "-":
+        return ()
+    alt = APX_FOR.get(cmd)
+    return (cmd,) if not alt else (cmd, alt)
 
 
 # ---------------------------------------------------------------- 配置层
@@ -128,6 +240,91 @@ def load_conf():
         "stagnant_days": _int(scan, "stagnant_days", 14),
         "recent_count": _int(scan, "recent_count", 6),
     }
+
+
+# ---------------------------------------------------------------- 设置层
+
+DEFAULT_SETTINGS = {
+    "version": 1,
+    "updated": "",
+    #: 明细页默认是否把未启用的章一并显示在树里（灰显、不计入统计）。
+    "show_unused": True,
+    #: 每本笔记的层级模式：{笔记目录名: "chapter,section,subsection"}。
+    #: 没写的笔记按结构自动识别；写 `auto` 或删掉该项即恢复自动。
+    "note_levels": {},
+}
+
+
+def settings_bak_path():
+    return SETTINGS_PATH.parent / (SETTINGS_PATH.name + ".bak")
+
+
+def load_settings():
+    """读取设置。文件不存在返回默认值；损坏时尝试从 .bak 恢复。"""
+    if not SETTINGS_PATH.exists():
+        return dict(DEFAULT_SETTINGS)
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("结构不是对象")
+    except Exception:
+        try:
+            data = json.loads(settings_bak_path().read_text(encoding="utf-8"))
+            print("  [提示] 设置文件损坏，已从 .bak 恢复。")
+        except Exception:
+            print("  [提示] 设置文件损坏且无备份，已用默认设置。")
+            return dict(DEFAULT_SETTINGS)
+    out = dict(DEFAULT_SETTINGS)
+    for k in DEFAULT_SETTINGS:
+        if k in data:
+            out[k] = data[k]
+    if not isinstance(out.get("note_levels"), dict):
+        out["note_levels"] = {}
+    return out
+
+
+def save_settings(data):
+    """原子写入设置：先写临时文件再替换；旧文件留作 .bak。"""
+    data["updated"] = datetime.now().isoformat(timespec="seconds")
+    tmp = SETTINGS_PATH.parent / (SETTINGS_PATH.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        f.write(json.dumps(data, ensure_ascii=False, indent=2))
+    if SETTINGS_PATH.exists():
+        try:
+            os.replace(SETTINGS_PATH, settings_bak_path())
+        except OSError:
+            pass
+    os.replace(tmp, SETTINGS_PATH)
+
+
+def public_settings(settings):
+    """下发到页面的设置。"""
+    return {
+        "show_unused": bool(settings.get("show_unused", True)),
+        "note_levels": dict(settings.get("note_levels") or {}),
+    }
+
+
+def level_mode_choices():
+    """设置页的下拉项：自动识别 ＋ 各层级模式。
+
+    各预设直接来自「新建大纲」（new_note.py 的 LEVEL_PRESETS），两处同一套；
+    以 `\\part` 开头的序列在那边没有简写名，这里另列（EXTRA_LEVEL_MODES）。
+    """
+    out = [{"id": "auto", "cmds": "", "names": "自动识别", "name": "auto",
+            "desc": "按 main.tex 最外层的标题命令与树的层数推断"}]
+    seen = set()
+    groups = [(n, v[0], v[1]) for n, v in load_level_presets().items()]
+    groups += [(m, m, d) for m, d in EXTRA_LEVEL_MODES]
+    for name, seq, desc in groups:
+        cmds = parse_levels(seq)
+        key = ",".join(cmds)
+        if not cmds or key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": key, "cmds": key, "names": level_names(cmds),
+                    "name": name, "desc": desc})
+    return out
 
 
 # ---------------------------------------------------------------- 解析层
@@ -251,39 +448,143 @@ def pretty_name(path):
     return strip_num_prefix(base).replace("_", " ")
 
 
-def find_first_chapter(node):
-    r"""取该节点（含自身）中第一个非空的 \chapter 标题。
+def tree_depth(node):
+    """节点所在子树的层数（叶子记 1 层）。"""
+    kids = node.get("children") or []
+    if node.get("type") == "leaf" or not kids:
+        return 1
+    return 1 + max(tree_depth(c) for c in kids)
 
-    本笔记体系有两种写法，都要覆盖：
-      ① \chapter 写在小节文件里，代表其所属的节目录；
-      ② 内容直接写在节目录自己的 index.tex 里（此时 index.tex 自身带 \chapter）。
+
+def find_node_title(node, cmds):
+    r"""按顺序在节点自身及其子树里找第一个属于 cmds 的标题。
+
+    返回 (标题文本, 实际命令)；找不到返回 ("", "")。
+    标题的落点在本笔记体系里有约定：**每一层的标题只写在「它子树里的第一个文件」里**
+    （`\section` 写在节目录第一个叶子中、`\appendixchapter` 同此），所以目录的标题
+    必须往子树里找，而叶子自己的标题只看自己 —— 两者用同一函数，区别只在有没有子节点。
+
+    ⚠️ 判据是**命令出现过**（`titles` 里有没有这个键），不是标题文本非空 ——
+    `\appendixchapter{}` 这种「留空标题」（模板会只渲染「附录 A」）同样要认出来，
+    否则那个附录会被当成普通节、编号也跟着错。
+
+    模式与实际命令对不上时（例如把 `chapter,section,subsection` 的笔记显示成
+    `part,chapter,section`）退回 fallback_title，仍能取出可读的标题。
     """
-    if node.get("chapter_title"):
-        return node["chapter_title"]
-    if node.get("type") == "leaf":
-        return ""
-    for c in node.get("children", []):
-        t = find_first_chapter(c)
-        if t:
+    own = node.get("titles") or {}
+    for c in cmds:
+        if c in own:
+            return own[c], c
+    for ch in node.get("children", []):
+        t, c = find_node_title(ch, cmds)
+        if c:
+            return t, c
+    return "", ""
+
+
+def _own_pick(node, keys):
+    """在节点**自己**那个文件里按 keys 顺序取第一个标题（同样以「命令出现过」为准）。"""
+    own = node.get("titles") or {}
+    for c in keys:
+        if c in own:
+            return own[c], c
+    return "", ""
+
+
+def fallback_title(node):
+    r"""标题命令与层级模式对不上时的兜底：按「叶子取最深、目录取最浅」取。
+
+    一个文件里可能出现多个标题命令（节目录的标题 `\section` 写在它第一个叶子中，
+    该叶子自己的标题是 `\subsection`）。所以：
+      · 叶子 —— 它的标题是文件里**最深**的那个命令；
+      · 目录 —— 它的标题是子树里第一个文件**最浅**的那个命令。
+    """
+    if node.get("type") == "leaf" or not node.get("children"):
+        return _own_pick(node, list(reversed(TITLE_ORDER)))
+    t = _own_pick(node, TITLE_ORDER)
+    if t[1]:
+        return t
+    for ch in node.get("children", []):
+        if ch.get("type") == "leaf" or not ch.get("children"):
+            t = _own_pick(ch, TITLE_ORDER)      # 子树里的文件：取最浅的那个命令
+        else:
+            t = fallback_title(ch)
+        if t[1]:
             return t
+    return "", ""
+
+
+def detect_outer_cmd(entries):
+    r"""main.tex 里最外层的标题命令：part / chapter / section（取不到返回空串）。
+
+    `\part` 名只对应一个 `\input` 时，顶层才是「部分」；先 `\part` 再并列多个 `\input`
+    的写法里，那些 `\input` 各自是章 —— 与编号口径保持一致。
+    """
+    parts = {}
+    for e in entries:
+        if e.get("part"):
+            parts[e["part"]] = parts.get(e["part"], 0) + 1
+    if parts and len(parts) == len(entries) and all(v == 1 for v in parts.values()):
+        return "part"
+    for e in entries:
+        if e.get("chapter"):
+            return "chapter"
+    for e in entries:
+        if e.get("section"):
+            return "section"
     return ""
 
 
-def node_level(node):
-    r"""判定节点在 LaTeX 语义中的层级：part / chapter / section。
+def detect_levels(entries, tops):
+    """按结构自动识别层级模式：最外层命令取自 main.tex，其余按 SECTION_CMDS 顺延。
 
-    判据是「\chapter 命令是否存在」而非标题是否非空 ——
-    很多笔记的 \chapter{} 还是空壳（标题未填），但它们结构上就是章。
-    与树深度无关，故能同时适配两层与三层结构。
+    顺延的层数取「树的层数」而非各层实际读到什么命令 —— 后者会被「某层没有自己的
+    标题」这类写法带偏（与 outline_tool 导出大纲的口径一致）。
     """
-    if node.get("type") == "leaf":
-        return "section"
-    if node.get("has_chapter"):
-        return "chapter"
-    for c in node.get("children", []):
-        if c.get("type") == "leaf" and c.get("has_chapter"):
-            return "chapter"
-    return "part"
+    depth = max([tree_depth(t) for t in tops] or [1])
+    outer = detect_outer_cmd(entries)
+    if outer:
+        idx = SECTION_CMDS.index(outer)
+    else:
+        # main.tex 里没有标题命令：两层以上按「章」起算，只有一层时当「节」
+        idx = 1 if depth >= 2 else 2
+    idx = max(0, min(idx, len(SECTION_CMDS) - depth))
+    return SECTION_CMDS[idx: idx + depth]
+
+
+def apply_levels(tops, levels, headings):
+    r"""按层级模式给每个节点定「层名 + 标题 + 显示名」。
+
+    headings：main.tex 里「\input 目标 → {命令: 标题}」。顶层（部分 / 章）的标题
+    写在 main.tex 里而非目录中的文件，只能从这里取；取不到才退回往子树里找。
+    """
+    def walk(node, depth):
+        cmd = level_cmd(levels, depth)
+        cmds = title_candidates(cmd)
+        h = headings.get(node["id"]) or {}
+        title = cmd_t = ""
+        for c in cmds:                       # ① 该层命令（main.tex 里的顶层标题优先）
+            if h.get(c):
+                title, cmd_t = h[c], c
+                break
+        if not title and h:                  # ② main.tex 里就是标题的来源，命令对不上也照用
+            for c in TITLE_ORDER:
+                if h.get(c):
+                    title, cmd_t = h[c], c
+                    break
+        if not title and cmds:               # ③ 往子树里找该层的标题（目录 / 叶子各按约定）
+            title, cmd_t = find_node_title(node, cmds)
+        if not title and cmds:               # ④ 层级模式与实际命令对不上时的兜底
+            title, cmd_t = fallback_title(node)
+        node["title"], node["title_cmd"] = title, cmd_t
+        node["level"] = cmd
+        node["level_cn"] = LEVEL_CN.get(cmd, "")
+        node["view_title"] = title or node["name"]
+        for c in node.get("children", []):
+            walk(c, depth + 1)
+
+    for t in tops:
+        walk(t, 0)
 
 
 def resolve_target(note_dir, target):
@@ -321,10 +622,10 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
         "has_proof": False,
         "has_sketch": False,
         "unpaired": False,
-        "chapter_title": "",
-        "section_title": "",
-        "has_chapter": False,
-        "has_section": False,
+        #: 本文件里各标题命令的第一次出现（命令名 → 标题文本），
+        #: 供上层按「这本笔记的层级模式」取用：`\section` 写在某个目录的第一个叶子里
+        #: 时，那个叶子自己的标题是 `\subsection`，两者不能混为一谈。
+        "titles": {},
     }
     if text is None:
         try:
@@ -375,18 +676,16 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
         if not stripped or stripped[:1] == "%":
             continue
 
-        # 标题行：提取中文标题后跳过，不计入正文字数
+        # 标题行：先收集各命令的标题（每本笔记按自己的层级模式取用），再跳过不计字数
+        # 「命令出现过」本身是有用信息（`\appendixchapter{}` 留空标题也是附录），
+        # 所以只要匹配到就记下来，哪怕标题文本是空串。
         if stripped[:1] == "\\":
-            if not m["has_chapter"]:
-                mt = CHAPTER_RE.search(raw)
-                if mt:
-                    m["has_chapter"] = True
-                    m["chapter_title"] = clean_label(mt.group(1))
-            if not m["has_section"]:
-                mt = SECTION_RE.search(raw)
-                if mt:
-                    m["has_section"] = True
-                    m["section_title"] = clean_label(mt.group(1))
+            for _k, _rx in _TITLE_RES.items():
+                if _k in m["titles"]:
+                    continue
+                _mt = _rx.search(raw)
+                if _mt:
+                    m["titles"][_k] = clean_label(_mt.group(1))
             if TITLE_RE.match(stripped):
                 continue
 
@@ -521,42 +820,24 @@ def build_tree(note_dir, target, seen, cfg, depth=0, included=True):
                 for f in peers]
 
     # 节点形态判定：
-    #   · 普通 .tex 文件        -> 叶子（小节）
-    #   · index.tex 且有子项    -> 目录（章 / 部分）
-    #   · index.tex 且无子项    -> 看它自己带的是 \chapter 还是 \section：
-    #        带 \chapter 的仍是「章」（其内容直接写在 index.tex 里）；
-    #        只带 \section 的，它本身就是一个小节，按叶子处理。
-    if path.stem != "index":
-        is_container = False
-    elif subs:
-        is_container = True
+    #   · 普通 .tex 文件              -> 叶子（就是一层内容单元）
+    #   · index.tex 且引到了子项      -> 目录（章 / 节 …）
+    #   · index.tex 且子项为空        -> 它自己就是这一层的内容单元，按叶子处理
+    #       （「内容直接写在节目录自己的 index.tex 里」的写法；按叶子处理才能像小节
+    #        一样展开三维标记与备注。目录的标题仍按层级模式从它自己文件里取。）
+    if path.stem != "index" or not subs:
+        node["type"] = "leaf"
+        node.update(file_metrics(path, cfg["min_chars"], text=text))
     else:
-        _m = file_metrics(path, cfg["min_chars"], text=text)
-        is_container = _m["has_chapter"]
-
-    if is_container:
         node["type"] = "dir"
         for t, inc in subs:
             child = build_tree(note_dir, t, seen, cfg, depth + 1, inc)
             if child is not None:
                 node["children"].append(child)
         self_m = file_metrics(path, cfg["min_chars"], text=text)
-        node["chapter_title"] = self_m["chapter_title"]
-        node["section_title"] = self_m["section_title"]
-        node["has_chapter"] = self_m["has_chapter"]
-        node["has_section"] = self_m["has_section"]
-        if not subs:
+        node["titles"] = self_m["titles"]
+        if not node["children"]:
             node["self_metrics"] = self_m
-        # 显示名：子树里的 \chapter > 自身的 \section > 目录名
-        node["view_title"] = (find_first_chapter(node)
-                              or self_m["section_title"]
-                              or node["name"])
-    else:
-        node["type"] = "leaf"
-        node.update(file_metrics(path, cfg["min_chars"], text=text))
-        node["view_title"] = (node["section_title"]
-                              or node["chapter_title"]
-                              or node["name"])
     st = path.stat()
     node["mtime"] = st.st_mtime
     node["mtime_str"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
@@ -679,18 +960,6 @@ def aggregate(node):
     return total
 
 
-def assign_sections(chapter_node, ch_no):
-    """给某一章下的小节编号（章号.节内序号）。
-
-    只对实际存在的文件递增 —— 未建的文件在 PDF 里不占编号。
-    """
-    s = 0
-    for c in chapter_node.get("children", []):
-        if c.get("type") == "leaf":
-            s += 1
-            c["num"] = f"{ch_no}.{s}"
-
-
 CN_DIGITS = "零一二三四五六七八九"
 
 
@@ -708,79 +977,143 @@ def cn_number(n):
     return CN_DIGITS[tens] + "十" + (CN_DIGITS[ones] if ones else "")
 
 
-def assign_numbers(tops):
-    r"""给节点编号：部分 → 章 → 节。
+def alpha_number(n):
+    """1→A、2→B … 27→AA（附录编号；超过 26 个附录时按表格列名继续）。"""
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(ord("A") + r) + out
+    return out
 
-    · 部分号按 main.tex 中 \part 的出现顺序编号（中文数字），并写入显示名。
-    · 章号在全书内递增；节号为「章号.节内序号」。
-    · **被注释掉的 \input 同样参与编号** —— 此处的编号反映笔记的**完整结构**，
-      而不是 LaTeX 编译后的计数器（后者不含被注释的部分，会让「拓扑结构」
-      这类被注释的首章拿不到「第一部分」，反而把第 7 章排成第一部分）。
-      是否纳入编译另由章行的「未编译」标注体现。
+
+def assign_numbers(tops, levels):
+    r"""按层级模式给节点编号：顶层 1、2…，其下依次 `1.1`、`1.1.2`。
+
+    · 顶层是「部分」：部分号用中文数字并写入显示名（`第一部分：集合论`），
+      其下的章仍用全书统一的章号（`\part` 不占章号）；
+    · 顶层是「章」：章号写进显示名（`第1章：集合论`），其下为 `1.1`、`1.1.2`；
+    · 附录章（`\appendixchapter`）走附录自己的计数器、用字母编号，显示成
+      「附录 A：…」；其下的附录小节（`\appendixsubsection`）为 `A.1`。
+      这正是 structure.sty 里 `\theapx` / `\theapxsec` 的算法。
+    · **被注释掉的 \input 同样参与编号** —— 编号反映笔记的**完整结构**，而不是 LaTeX
+      编译后的计数器（后者不含被注释的部分，会让「拓扑结构」这类被注释的首章拿不到
+      「第一章」，反而把第 7 章排成第一章）。是否纳入编译另由「未编译」标注体现。
     """
-    part_count = {}
-    for t in tops:
-        p = t.get("part") or ""
-        if p:
-            part_count[p] = part_count.get(p, 0) + 1
+    apx = 0
 
-    part_no = 0
-    ch = 0
-    for top in tops:
-        pname = top.get("part") or ""
-        # 顶层是否为「部分」：带 \part 名且该名只对应这一个 \input。
-        # （一个 \part 下挂多个 \input 时，它们各自是独立的章，不能都算作部分。）
-        # 不带 \part 名的再退回按内容判定。
-        as_part = ((bool(pname) and part_count.get(pname) == 1)
-                   or (not pname and node_level(top) == "part"))
-
-        if as_part:
-            part_no += 1
-            base = pname or top["name"]
-            top["part_no"] = part_no
-            top["view_title"] = f"第{cn_number(part_no)}部分：{base}"
-            has_ch = False
-            for c in top.get("children", []):
-                if node_level(c) == "chapter":
-                    ch += 1
-                    c["num"] = str(ch)
-                    assign_sections(c, ch)
-                    has_ch = True
-            if not has_ch:
-                # 该部分下没有章层：直接给其子节点（不论目录还是文件）编号
-                n = 0
-                for c in top.get("children", []):
-                    n += 1
-                    c["num"] = str(n)
+    def walk(node, depth, prefix, idx, pno):
+        nonlocal apx
+        cmd = level_cmd(levels, depth)
+        title_cmd = node.get("title_cmd") or ""
+        if title_cmd == "appendixchapter":
+            # 附录章：字母编号，不带父节点的章号（附录与正文互不占用编号）
+            apx += 1
+            node["num"] = f"{pno}.{apx}" if pno else alpha_number(apx)
+            # 标题留空的附录（`\appendixchapter{}`）只显示「附录 A」—— 与模板一致，
+            # 不要拿目录名去兜底（那会显示成「附录 A：Appendix」）
+            base = node.get("title") or ""
+            node["view_title"] = (f"附录 {node['num']}：{base}" if base
+                                  else f"附录 {node['num']}")
+            # 编号已写进显示名（「附录 A：…」），行首不再重复标一次
+            child_prefix = node["num"] + "."
+            node["num"] = ""
         else:
-            ch += 1
-            top["num"] = str(ch)
-            assign_sections(top, ch)
+            # 附录小节与普通各级同一套：编号 = 父编号 + 自己的序号（A.1 / 1.1.2）
+            node["num"] = f"{prefix}{idx}"
+            if depth == 0 and cmd == "part":
+                node["part_no"] = idx
+                node["view_title"] = f"第{cn_number(idx)}部分：{node['view_title']}"
+                node["num"] = ""
+            elif depth == 0 and cmd == "chapter":
+                node["view_title"] = f"第{idx}章：{node['view_title']}"
+                node["num"] = ""
+            # 顶层把编号写进了显示名（第X部分 / 第X章），子节点仍按它的序号续编
+            child_prefix = (node["num"] or str(idx)) + "."
+        # 未建的文件在 PDF 里不占编号，所以只对实际存在的子项递增（沿用原有口径）
+        n = 0
+        for c in node.get("children", []):
+            if c.get("type") == "missing":
+                c["num"] = ""
+                continue
+            n += 1
+            walk(c, depth + 1, child_prefix, n, pno)
 
+    for i, t in enumerate(tops, 1):
+        part_mode = level_cmd(levels, 0) == "part"
+        walk(t, 0, "", i, i if part_mode else 0)
 
 def scan_main(note_dir, cfg):
-    r"""解析 main.tex 的顶层 \input，附带 \part 标题与纳入状态。"""
+    r"""解析 main.tex 的顶层 \input，附带其上方最近的 \part / \chapter / \section 标题。
+
+    顶层（部分 / 章）的标题写在 main.tex 里而不是目录中的文件，所以必须在这里取 ——
+    否则树上那一行只能显示英文目录名。三个命令都记下来，由层级模式决定用哪个
+    （`\part` 下挂多个 `\input` 的写法里，那些 `\input` 用的是 `\chapter` 名）。
+    """
     mt = note_dir / "main.tex"
     entries = []
     if not mt.exists():
         return entries
-    part_title = ""
+    cur = {k: "" for k in ("part", "chapter", "section")}
     for ln in mt.read_text(encoding="utf-8", errors="ignore").splitlines():
         stripped = ln.strip()
-        gp = PART_RE.search(ln)
-        if gp:
-            part_title = clean_label(gp.group(1))
+        for k in cur:
+            mh = _TITLE_RES[k].search(ln)
+            if mh:
+                cur[k] = clean_label(mh.group(1))
         for t in parse_inputs(ln):
             entries.append({
                 "target": t,
-                "part": part_title,
+                "part": cur["part"],
+                "chapter": cur["chapter"],
+                "section": cur["section"],
                 "included": not COMMENT_RE.match(stripped),
             })
     return entries
 
 
-def scan_note(note_dir, cfg):
-    """扫描一本笔记，返回含顶层节点与汇总的 dict。"""
+def main_headings(note_dir, entries):
+    r"""main.tex 里「\input 目标 → 该处各标题命令的值」。
+
+    键与节点的 id 同形（笔记目录内的相对路径），供 apply_levels 按层级模式取用。
+    """
+    out = {}
+    for e in entries:
+        vals = {k: e[k] for k in ("part", "chapter", "section") if e.get(k)}
+        if not vals:
+            continue
+        p = resolve_target(note_dir, e["target"])
+        try:
+            rid = str(p.relative_to(note_dir)).replace("\\", "/")
+        except ValueError:
+            rid = str(p).replace("\\", "/")
+        out[rid] = vals
+    return out
+
+
+def detect_note_levels(note_dir, entries, tops, settings):
+    """定这本笔记的层级模式：(命令列表, 'manual'/'auto', 依据说明)。
+
+    设置里手动指定的优先（层级模式记在工作区里的设置文件中，键是笔记目录名）；
+    没指定就按结构自动识别。
+    """
+    manual = (settings.get("note_levels") or {}).get(note_dir.name, "")
+    if manual:
+        cmds = parse_levels(manual)
+        if cmds:
+            return cmds, "manual", f"在「设置」里指定：{', '.join(cmds)}"
+    levels = detect_levels(entries, tops)
+    depth = max([tree_depth(t) for t in tops] or [1])
+    outer = detect_outer_cmd(entries)
+    how = (f"main.tex 用 \\{outer}、树 {depth} 层" if outer
+           else f"main.tex 里没有标题命令、树 {depth} 层")
+    return levels, "auto", f"自动识别（{how} → {', '.join(levels)}）"
+
+
+def scan_note(note_dir, cfg, settings=None):
+    """扫描一本笔记，返回含顶层节点与汇总的 dict。
+
+    三步：先建树（层级模式要按树层数定），再定层级模式并套标题与编号。
+    """
     entries = scan_main(note_dir, cfg)
     tops = []
     seen = set()
@@ -789,23 +1122,17 @@ def scan_note(note_dir, cfg):
         if node is None:
             continue
         node["part"] = e["part"]
-        # 只有当该顶层节点本身就是 \chapter 时，才沿用 \part 名作为显示名。
-        # 一个 \part 下可能挂多个 \input（各自是独立的章），此时若套用 part 名会重名。
-        if node_level(node) != "chapter":
-            node["view_title"] = e["part"] or node["name"]
         aggregate(node)
         tops.append(node)
 
-    total = {
-        "planned": 0, "written": 0, "empty": 0, "missing": 0, "envs": 0,
-        "chars": 0, "body_chars": 0, "proofs": 0, "empty_envs": 0,
-        "unpaired": 0, "leaves": 0,
-    }
-    for t in tops:
-        for k in total:
-            total[k] += t["stats"][k]
+    levels, source, hint = detect_note_levels(note_dir, entries, tops,
+                                              settings or {})
+    apply_levels(tops, levels, main_headings(note_dir, entries))
+    assign_numbers(tops, levels)
 
-    assign_numbers(tops)
+    total = zero_stats()
+    for t in tops:
+        add_stats(total, t["stats"])
 
     return {
         "name": note_dir.name,
@@ -814,14 +1141,21 @@ def scan_note(note_dir, cfg):
         "tops": tops,
         "totals": total,
         "orphans": find_orphans(note_dir, tops, cfg),
+        # 层级模式：levels 是命令序列，供界面显示与编号使用
+        "levels": levels,
+        "level_mode": ",".join(levels),
+        "level_names": level_names(levels),
+        "level_source": source,
+        "level_hint": hint,
+        "top_name": LEVEL_CN.get(levels[0] if levels else "", ""),
     }
 
 
-def scan_all(cfg):
+def scan_all(cfg, settings=None):
     """扫描全部笔记。"""
     notes = []
     for d in list_notes(cfg):
-        notes.append(scan_note(d, cfg))
+        notes.append(scan_note(d, cfg, settings))
     g = {
         "planned": 0, "written": 0, "empty": 0, "missing": 0, "envs": 0,
         "chars": 0, "body_chars": 0, "proofs": 0, "leaves": 0,
@@ -842,6 +1176,64 @@ def scan_all(cfg):
 MARK_DONE = "done"
 MARK_TODO = "todo"
 MARK_DIMS = ("env", "body", "proof")
+
+# 提示规则（设计 6.2 / 6.3）：
+#   · 硬提示 —— 确定的问题，与别的小节无关，单文件即可判定；
+#   · 软提示 —— 只在「同一节内的各小节」之间横向比较，绝不用绝对阈值。
+#     正文以外的文字占比本就偏低，按绝对阈值判断会让几乎每一节都亮灯，
+#     噪声淹没信号；若整节都没有正文，那是写法风格，不是异常。
+HINT_HARD = "hard"
+HINT_SOFT = "soft"
+
+
+def median_int(nums):
+    """中位数（取整）。空列表返回 0。"""
+    if not nums:
+        return 0
+    s = sorted(nums)
+    n = len(s)
+    return s[n // 2] if n % 2 else int((s[n // 2 - 1] + s[n // 2]) / 2)
+
+
+def leaf_hard_hints(leaf):
+    """硬提示：与同节其他小节无关，单独看这个文件就能确定的问题。"""
+    out = []
+    if leaf.get("unpaired"):
+        out.append("有 \\begin 未配对，编译会报错")
+    if leaf.get("empty_envs"):
+        out.append(f"存在 {leaf['empty_envs']} 个空环境")
+    return out
+
+
+def attach_hints(children):
+    """给一个目录节点的**直接子小节**挂提示。
+
+    「同一节」= 同一个父节点下的叶子；软提示以「其余小节」为参照 ——
+    环境数比其余小节的中位数低到 1/3 以下、其余小节都有 proof/sketch 而此节没有、
+    其余小节都有陈述文字而此节没有。其余小节少于 2 个时不比较（样本太小）。
+    """
+    for c in children:
+        if c.get("type") != "leaf":
+            continue
+        hard = leaf_hard_hints(c)
+        soft = []
+        others = [o for o in children
+                  if o is not c and o.get("type") == "leaf"
+                  and o.get("status") != "missing"]
+        if c.get("status") == "written" and len(others) >= 2:
+            med = median_int([o.get("envs", 0) for o in others])
+            if med >= 3 and c.get("envs", 0) < med / 3:
+                soft.append(f"环境 {c.get('envs', 0)} 个，本节其他小节中位数 {med} 个")
+            if all(o.get("has_proof") or o.get("has_sketch") for o in others) \
+                    and not (c.get("has_proof") or c.get("has_sketch")):
+                soft.append("本节其他小节都有 proof / sketch，此节没有")
+            if all((o.get("body_chars") or 0) > 0 for o in others) \
+                    and not (c.get("body_chars") or 0):
+                soft.append("本节其他小节都有陈述文字，此节没有")
+        hints = ([{"level": HINT_HARD, "text": t} for t in hard]
+                 + [{"level": HINT_SOFT, "text": t} for t in soft])
+        c["hints"] = hints
+        c["hint_level"] = (HINT_HARD if hard else (HINT_SOFT if soft else ""))
 
 
 def marks_bak_path():
@@ -971,17 +1363,21 @@ def apply_marks(data, marks, cfg):
     recent = []
     stagnant = []
     pending = []
+    suspects = []
+    chapter_pending = []
 
     for note in data["notes"]:
         counted = zero_stats()
         overall = zero_stats()
         n_pending = 0
         n_todo_marks = 0
+        n_chapter_todo = 0
+        n_hints = 0
         last_mtime = 0.0
         planned_next = []
 
         def walk(node, parent_excluded, is_top):
-            nonlocal n_pending, n_todo_marks, last_mtime
+            nonlocal n_pending, n_todo_marks, n_chapter_todo, n_hints, last_mtime
 
             mode = node_mode(marks, node["id"])
             if mode == "force_exclude":
@@ -1018,6 +1414,12 @@ def apply_marks(data, marks, cfg):
                 node["todo_count"] = n_todo
                 if ex:
                     return
+                # 顶层就是叶子（结构扁平）时不会经过父目录的 attach_hints，
+                # 这里补上硬提示，保证提示字段始终存在。
+                if "hints" not in node:
+                    hh = leaf_hard_hints(node)
+                    node["hints"] = [{"level": HINT_HARD, "text": t} for t in hh]
+                    node["hint_level"] = HINT_HARD if hh else ""
                 add_stats(counted, node["stats"])
                 n_todo_marks += n_todo
                 label = node.get("view_title") or node["name"]
@@ -1029,6 +1431,14 @@ def apply_marks(data, marks, cfg):
                         "note": note["name"], "title": label,
                         "id": node["id"], "path": node["path"],
                         "dims": [d for d in MARK_DIMS if em[d] == MARK_TODO],
+                    })
+                if node["hint_level"]:
+                    n_hints += 1
+                    suspects.append({
+                        "note": note["name"], "title": label,
+                        "id": node["id"], "path": node["path"],
+                        "level": node["hint_level"],
+                        "texts": [x["text"] for x in node["hints"]],
                     })
                 if node["planned"]:
                     planned_next.append({
@@ -1046,7 +1456,19 @@ def apply_marks(data, marks, cfg):
                     })
                 return
 
-            # 目录节点
+            # 目录节点：提示与章级标记先算 —— 与是否计入无关，
+            # 未启用章下面的小节同样要能看到提示、能翻看章级标记。
+            attach_hints(node.get("children", []))
+            cm = bool(((marks.get("nodes") or {}).get(node["id"]) or {})
+                      .get("chapter_mark"))
+            node["chapter_mark"] = cm
+            if cm and not ex:
+                n_chapter_todo += 1
+                chapter_pending.append({
+                    "note": note["name"],
+                    "title": node.get("view_title") or node["name"],
+                    "id": node["id"], "path": node["path"],
+                })
             if ex:
                 # 继续下探仅为把整棵子树标记为「排除」，便于界面灰显
                 for c in node.get("children", []):
@@ -1068,6 +1490,8 @@ def apply_marks(data, marks, cfg):
                                      if t.get("excluded"))
         note["todo_count"] = n_todo_marks
         note["pending_count"] = n_pending
+        note["chapter_todo_count"] = n_chapter_todo
+        note["hint_count"] = n_hints
         note["last_mtime"] = last_mtime
         note["last_mtime_str"] = (
             datetime.fromtimestamp(last_mtime).strftime("%Y-%m-%d %H:%M")
@@ -1101,6 +1525,16 @@ def apply_marks(data, marks, cfg):
     data["pending"] = pending
     data["pending_count"] = total_todo
     data["percent"] = round(g["written"] / g["planned"] * 100 if g["planned"] else 0, 1)
+    # 确认完成率：从「已写」里扣掉被标为待补的小节（三维标记里任一维度待补即算）
+    conf_written = sum(max(n["counted"]["written"] - n["pending_count"], 0)
+                       for n in data["notes"])
+    data["confirmed_written"] = conf_written
+    data["confirmed_percent"] = round(
+        conf_written / g["planned"] * 100 if g["planned"] else 0, 1)
+    data["chapter_todo_count"] = sum(n["chapter_todo_count"] for n in data["notes"])
+    data["hint_count"] = sum(n["hint_count"] for n in data["notes"])
+    data["suspects"] = suspects
+    data["chapter_pending"] = chapter_pending
     return data
 
 
@@ -1147,6 +1581,35 @@ def migrate_marks(marks, data):
     return moved
 
 
+def merge_marks(local, incoming):
+    """把导入的标记并入本地（设计 8.3：按时间戳合并，不丢任一侧记录）。
+
+    条目级没有各自的时间戳，所以冲突时以**整体 updated 较新的一方**为准；
+    只有一侧存在的条目一律保留（并集）。stale 列表取并集。
+    """
+    local = local if isinstance(local, dict) else {}
+    incoming = incoming if isinstance(incoming, dict) else {}
+    newer = str(incoming.get("updated") or "") >= str(local.get("updated") or "")
+    out = default_marks()
+    for sec in ("entries", "nodes"):
+        a = local.get(sec) or {}
+        b = incoming.get(sec) or {}
+        if not isinstance(a, dict) or not isinstance(b, dict):
+            continue
+        merged = {}
+        for k in set(a) | set(b):
+            if k in a and k in b:
+                merged[k] = b[k] if newer else a[k]
+            elif k in b:
+                merged[k] = b[k]
+            else:
+                merged[k] = a[k]
+        out[sec] = merged
+    out["stale"] = sorted(set(local.get("stale") or [])
+                          | set(incoming.get("stale") or []))
+    return out
+
+
 # ---------------------------------------------------------------- 导出层
 
 DIM_NAME = {"env": "环境", "body": "正文", "proof": "证明"}
@@ -1181,13 +1644,16 @@ def build_report(data):
     out.append(f"| 未建 | {g['missing']} |")
     out.append(f"| 定理环境 | {g['envs']} |")
     out.append(f"| 结构进度 | {data['percent']}% |")
+    out.append(f"| 确认完成率 | {data['confirmed_percent']}% |")
     out.append(f"| 待补小节 | {data['pending_count']} |")
+    out.append(f"| 整章待补 | {data['chapter_todo_count']} |")
+    out.append(f"| 值得留意 | {data['hint_count']} |")
     out.append("")
 
     out.append("## 各笔记进度")
     out.append("")
-    out.append("| 笔记 | 计入/排除章 | 规划 | 已写 | 进度 | 待补 | 未编译章 |")
-    out.append("| --- | --- | --- | --- | --- | --- | --- |")
+    out.append("| 笔记 | 计入/排除章 | 规划 | 已写 | 进度 | 确认 | 待补 | 未编译章 |")
+    out.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
     for n in data["notes"]:
         c = n["counted"]
         inc = len(n["tops"]) - n["excluded_count"]
@@ -1195,6 +1661,7 @@ def build_report(data):
                  if t.get("decision_reason") == "not_compiled")
         out.append(f"| {n['title']} | {inc} / {n['excluded_count']} | "
                    f"{c['planned']} | {c['written']} | {n['percent']}% | "
+                   f"{n['confirmed_percent']}% | "
                    f"{n['pending_count']} | {nc} |")
     out.append("")
 
@@ -1209,6 +1676,37 @@ def build_report(data):
                 out.append("")
             dims = " / ".join(DIM_NAME.get(d, d) for d in p["dims"])
             out.append(f"- {p['title']} —— {dims}")
+        out.append("")
+    else:
+        out.append("暂无。")
+        out.append("")
+
+    out.append("## 整章待补")
+    out.append("")
+    if data.get("chapter_pending"):
+        cur = None
+        for p in data["chapter_pending"]:
+            if p["note"] != cur:
+                cur = p["note"]
+                out.append(f"### {cur}")
+                out.append("")
+            out.append(f"- {p['title']}")
+        out.append("")
+    else:
+        out.append("暂无。")
+        out.append("")
+
+    out.append("## 值得留意")
+    out.append("")
+    if data.get("suspects"):
+        cur = None
+        for s in data["suspects"]:
+            if s["note"] != cur:
+                cur = s["note"]
+                out.append(f"### {cur}")
+                out.append("")
+            mark = "（编译层面）" if s["level"] == HINT_HARD else ""
+            out.append(f"- {s['title']}{mark} —— " + "；".join(s["texts"]))
         out.append("")
     else:
         out.append("暂无。")
@@ -1240,6 +1738,7 @@ STATE = {
     "cfg": None,
     "data": None,
     "marks": None,
+    "settings": None,
     "lock": threading.Lock(),
 }
 
@@ -1290,10 +1789,17 @@ def open_in_texstudio(cfg, target):
 
 
 def ensure_view(force=False):
-    """确保已有扫描结果；force 时重新扫描。"""
+    """确保已有扫描结果；force 时重新扫描。
+
+    层级模式是一次扫描的输入（决定标题落在哪个命令、怎么编号），所以改设置后
+    必须重扫 —— 调用方把 force 置真即可。设置本身每回都重新下发，
+    免得页面拿到上一次扫描时的旧值。
+    """
     with STATE["lock"]:
+        if STATE["settings"] is None:
+            STATE["settings"] = load_settings()
         if STATE["data"] is None or force:
-            data = scan_all(STATE["cfg"])
+            data = scan_all(STATE["cfg"], STATE["settings"])
             marks = load_marks()
             moved = migrate_marks(marks, data)
             if moved:
@@ -1301,6 +1807,8 @@ def ensure_view(force=False):
             apply_marks(data, marks, STATE["cfg"])
             STATE["data"] = data
             STATE["marks"] = marks
+        STATE["data"]["settings"] = public_settings(STATE["settings"])
+        STATE["data"]["level_modes"] = level_mode_choices()
     return STATE["data"]
 
 
@@ -1366,6 +1874,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(ensure_view(force=True))
         elif path == "/api/report":
             self._serve_report()
+        elif path == "/api/marks/export":
+            self._serve_marks_export()
         elif path == "/api/ping":
             self._json({"ok": True, "app": "progress", "version": VERSION})
         else:
@@ -1378,9 +1888,13 @@ class Handler(BaseHTTPRequestHandler):
             self._api_entry(body)
         elif path == "/api/chapter":
             self._api_chapter(body)
+        elif path == "/api/marks/import":
+            self._api_marks_import(body)
         elif path == "/api/open":
             ok, msg = open_in_texstudio(self._cfg(), body.get("path", ""))
             self._json({"ok": ok, "message": msg})
+        elif path == "/api/settings":
+            self._api_settings(body)
         elif path == "/api/quit":
             self._json({"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -1405,50 +1919,148 @@ class Handler(BaseHTTPRequestHandler):
             "Content-Disposition":
                 f'attachment; filename="progress-report-{stamp}.md"'})
 
+    def _apply_entry(self, slot, body):
+        """把一次请求的内容写进某条小节记录，返回该记录是否还有内容。"""
+        if "marks" in body and isinstance(body["marks"], dict):
+            cur = slot.setdefault("marks", {})
+            for d in MARK_DIMS:
+                v = body["marks"].get(d)
+                if v in (MARK_DONE, MARK_TODO):
+                    cur[d] = v
+        if "note" in body:
+            slot["note"] = str(body["note"])[:2000]
+        if "todos" in body and isinstance(body["todos"], list):
+            todos = []
+            for t in body["todos"][:100]:
+                if isinstance(t, dict) and t.get("text"):
+                    todos.append({"text": str(t["text"])[:300],
+                                  "done": bool(t.get("done"))})
+            slot["todos"] = todos
+        if "planned" in body:
+            slot["planned"] = bool(body["planned"])
+        return bool(slot.get("marks") or slot.get("note")
+                    or slot.get("todos") or slot.get("planned"))
+
     def _api_entry(self, body):
-        node_id = body.get("id") or ""
-        if not node_id:
+        """写小节的标记 / 备注 / 待办 / 计划。
+
+        支持批量：body 里给 `ids`（数组）即把同一份内容应用到全部小节 ——
+        用于「把整章无 proof 的小节一次标为证明待补」这类操作。
+        """
+        ids = body.get("ids")
+        if isinstance(ids, list):
+            ids = [str(i) for i in ids if str(i)][:2000]
+        else:
+            one = body.get("id") or ""
+            ids = [one] if one else []
+        if not ids:
             self._json({"ok": False, "message": "缺少 id"}, status=400)
             return
         with STATE["lock"]:
-            slot = entry_slot(STATE["marks"], node_id)
-            if "marks" in body and isinstance(body["marks"], dict):
-                cur = slot.setdefault("marks", {})
-                for d in MARK_DIMS:
-                    v = body["marks"].get(d)
-                    if v in (MARK_DONE, MARK_TODO):
-                        cur[d] = v
-            if "note" in body:
-                slot["note"] = str(body["note"])[:2000]
-            if "todos" in body and isinstance(body["todos"], list):
-                todos = []
-                for t in body["todos"][:100]:
-                    if isinstance(t, dict) and t.get("text"):
-                        todos.append({"text": str(t["text"])[:300],
-                                      "done": bool(t.get("done"))})
-                slot["todos"] = todos
-            if "planned" in body:
-                slot["planned"] = bool(body["planned"])
-            if not slot.get("marks") and not slot.get("note") \
-                    and not slot.get("todos") and not slot.get("planned"):
-                STATE["marks"]["entries"].pop(node_id, None)
+            for node_id in ids:
+                slot = entry_slot(STATE["marks"], node_id)
+                if not self._apply_entry(slot, body):
+                    STATE["marks"]["entries"].pop(node_id, None)
             save_marks(STATE["marks"])
-        self._json(reapply_view())
+        data = reapply_view()
+        if len(ids) > 1:
+            data["changed"] = len(ids)
+        self._json(data)
 
     def _api_chapter(self, body):
+        """写顶层 / 目录节点的手动覆盖（计入范围）与章级标记。
+
+        mode = auto / force_include / force_exclude；mark = true / false
+        （章级「整章待补」，与小节级待补汇总并存、语义不同）。
+        """
         node_id = body.get("id") or ""
-        mode = body.get("mode") or "auto"
-        if not node_id or mode not in ("auto", "force_include", "force_exclude"):
+        mode = body.get("mode")
+        mark = body.get("mark")
+        if not node_id or (mode is None and mark is None):
+            self._json({"ok": False, "message": "参数不合法"}, status=400)
+            return
+        if mode is not None and mode not in ("auto", "force_include",
+                                             "force_exclude"):
             self._json({"ok": False, "message": "参数不合法"}, status=400)
             return
         with STATE["lock"]:
             nodes = STATE["marks"]["nodes"]
-            if mode == "auto":
-                nodes.pop(node_id, None)
+            rec = dict(nodes.get(node_id) or {})
+            if mode is not None:
+                if mode == "auto":
+                    rec.pop("mode", None)
+                    rec.pop("manual", None)
+                else:
+                    rec["mode"] = mode
+                    rec["manual"] = True
+            if mark is not None:
+                if mark:
+                    rec["chapter_mark"] = True
+                else:
+                    rec.pop("chapter_mark", None)
+            if rec:
+                nodes[node_id] = rec
             else:
-                nodes[node_id] = {"mode": mode, "manual": True}
+                nodes.pop(node_id, None)
             save_marks(STATE["marks"])
         self._json(reapply_view())
+
+    def _serve_marks_export(self):
+        """导出标记数据（进度标记 / 备注 / 待办 / 章级设置）为 JSON 文件。"""
+        ensure_view()
+        with STATE["lock"]:
+            payload = json.dumps(STATE["marks"], ensure_ascii=False, indent=2)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        self._send(payload, ctype="application/json; charset=utf-8", extra={
+            "Content-Disposition":
+                f'attachment; filename="progress-marks-{stamp}.json"'})
+
+    def _api_marks_import(self, body):
+        """导入标记数据，与本地按时间戳合并（不丢任一侧记录）。"""
+        incoming = body.get("marks") if isinstance(body.get("marks"), dict) else body
+        if not isinstance(incoming, dict) or not any(
+                k in incoming for k in ("entries", "nodes")):
+            self._json({"ok": False, "message": "文件内容不是标记数据"},
+                       status=400)
+            return
+        with STATE["lock"]:
+            before = len(STATE["marks"]["entries"])
+            STATE["marks"] = merge_marks(STATE["marks"], incoming)
+            if STATE["data"] is not None:
+                migrate_marks(STATE["marks"], STATE["data"])
+            save_marks(STATE["marks"])
+            after = len(STATE["marks"]["entries"])
+            added = max(after - before, 0)
+        data = reapply_view()
+        data["merged"] = {"entries": after, "added": added}
+        self._json(data)
+
+    def _api_settings(self, body):
+        """保存设置。层级模式变了要重扫（标题与编号都随之改变）。"""
+        changed_levels = False
+        with STATE["lock"]:
+            settings = STATE["settings"] or load_settings()
+            if "show_unused" in body:
+                settings["show_unused"] = bool(body["show_unused"])
+            lv = body.get("note_levels")
+            if isinstance(lv, dict):
+                saved = settings.setdefault("note_levels", {})
+                before = dict(saved)
+                for k, v in lv.items():
+                    name = str(k)
+                    spec = str(v or "")
+                    if not spec or spec == "auto":
+                        saved.pop(name, None)
+                    elif parse_levels(spec):
+                        saved[name] = spec
+                    else:
+                        self._json({"ok": False,
+                                    "message": f"层级模式不合法：{spec}"}, status=400)
+                        return
+                changed_levels = (before != saved)
+            save_settings(settings)
+            STATE["settings"] = settings
+        self._json(ensure_view(force=changed_levels))
 
 
 def make_server(cfg):
@@ -1483,7 +2095,7 @@ def service_alive(cfg):
 # ---------------------------------------------------------------- CLI（调试）
 
 def cmd_rescan(cfg):
-    data = scan_all(cfg)
+    data = scan_all(cfg, load_settings())
     marks = load_marks()
     moved = migrate_marks(marks, data)
     if moved:
@@ -1508,6 +2120,12 @@ def cmd_rescan(cfg):
     print(f"{'合计':<34}{'':>11}{g['planned']:>7}{g['written']:>7}"
           f"{g['empty']:>6}{g['missing']:>6}{g['envs']:>7}"
           f"{data['percent']:>8.1f}%{data['pending_count']:>6}")
+
+    print("\n层级模式（自动识别；可在设置页里逐本指定）：")
+    for n in data["notes"]:
+        src = "指定" if n.get("level_source") == "manual" else "自动"
+        print(f"  {n['name']:<34}{src}  {n.get('level_mode', ''):<30}"
+              f"{n.get('level_names', '')}")
 
     if data["stagnant"]:
         line = "、".join(f"{s['name']}（{s['days']} 天）" for s in data["stagnant"])
@@ -1548,6 +2166,7 @@ def main(argv):
     if opt["port"]:
         cfg["port"] = opt["port"]
     STATE["cfg"] = cfg
+    STATE["settings"] = load_settings()
 
     if opt["rescan"]:
         t0 = time.time()

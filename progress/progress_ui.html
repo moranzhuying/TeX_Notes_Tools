@@ -101,6 +101,17 @@ main{flex:1;min-width:0;padding:16px 20px 40px}
 .sel button{border:0;border-radius:0;padding:5px 11px}
 .sel button.on{background:var(--bg3);font-weight:500}
 
+/* 笔记选择器：笔记少时平铺成按钮，多了收成一个下拉 + 前后切换 */
+#noteSel .sel{flex-wrap:wrap;max-width:100%}
+.note-pick{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.note-pick select{background:var(--bg3);color:var(--fg);border:.5px solid var(--bd2);
+  border-radius:6px;padding:5px 8px;font-family:inherit;font-size:13px;max-width:340px}
+.note-step{width:27px;height:27px;flex:0 0 27px;display:inline-flex;align-items:center;
+  justify-content:center;border:.5px solid var(--bd2);border-radius:6px;background:transparent;
+  color:var(--fg2);cursor:pointer;font-size:14px;line-height:1;padding:0}
+.note-step:hover:not(:disabled){background:var(--bg3);color:var(--fg)}
+.note-step:disabled{opacity:.35;cursor:default}
+
 /* 明细 */
 #detailWrap{display:flex;gap:16px;align-items:flex-start}
 #tree{flex:1;min-width:0;background:var(--bg2);border-radius:10px;padding:6px}
@@ -132,6 +143,15 @@ main{flex:1;min-width:0;padding:16px 20px 40px}
 .pdot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
 .pdot.hard{background:#e24b4a}
 .pdot.soft{background:var(--orange)}
+/* 章行上的「整章待补」标记：未标记时是淡的小旗，标记后变橙色圆点 */
+.cmk{width:16px;height:16px;flex:0 0 16px;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;opacity:.5}
+.cmk:hover{opacity:1}
+.cmk.on{opacity:1}
+/* 行内的备注 / 未完成待办小标记 */
+.lflag{display:inline-flex;align-items:center;flex:0 0 auto;padding:0 2px;
+  color:var(--fg3);font-size:10px;line-height:1}
+.lflag.todo{color:var(--orange);font-weight:600}
 
 .cbx{width:15px;height:15px;flex:0 0 15px;border:.5px solid var(--bd2);border-radius:4px;
   cursor:pointer;display:flex;align-items:center;justify-content:center;margin-right:2px}
@@ -199,6 +219,27 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
 .hint{color:var(--fg3);font-size:12px}
 .empty{color:var(--fg3);font-size:13px;padding:24px;text-align:center}
 
+/* 设置 */
+#settingsBox .srow{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px}
+#settingsBox .srow .k{flex:0 0 auto;color:var(--fg2)}
+#settingsBox .grow{flex:1;min-width:0}
+#settingsBox .shint{font-size:11px;color:var(--fg3);line-height:1.8;margin-top:2px}
+#settingsBox table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+#settingsBox td,#settingsBox th{text-align:left;padding:7px 8px;
+  border-bottom:.5px solid var(--bd);color:var(--fg2);vertical-align:middle}
+#settingsBox th{color:var(--fg3);font-weight:400}
+#settingsBox select{background:var(--bg3);color:var(--fg);border:.5px solid var(--bd2);
+  border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px;max-width:100%}
+#settingsBox .badge{font-size:10px;padding:0 6px;border-radius:4px;background:var(--bg3);
+  color:var(--fg3);border:.5px solid var(--bd2);white-space:nowrap;display:inline-block}
+#settingsBox .badge.man{color:var(--orange);border-color:var(--orange)}
+.tsw{position:relative;width:34px;height:18px;flex:0 0 34px;border-radius:20px;
+  background:var(--bg3);border:.5px solid var(--bd2);cursor:pointer}
+.tsw i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+  background:var(--fg3);transition:left .15s}
+.tsw.on{background:var(--blue);border-color:var(--blue)}
+.tsw.on i{left:18px;background:#fff}
+
 #toast{position:fixed;right:20px;bottom:20px;max-width:340px;z-index:50;
   background:var(--bg2);border:.5px solid var(--bd2);border-radius:8px;
   padding:10px 16px;font-size:13px;color:var(--fg);
@@ -248,6 +289,7 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
   <nav>
     <div class="item on" data-view="overview">总览</div>
     <div class="item" data-view="detail">明细</div>
+    <div class="item" data-view="settings">设置</div>
   </nav>
   <main>
     <section id="view-overview">
@@ -264,13 +306,14 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
     </section>
     <section id="view-detail" hidden>
       <div class="toolbar">
-        <span class="sel" id="noteSel"></span>
+        <span id="noteSel"></span>
         <span class="sel" id="filterSel">
           <button data-f="all" class="on">全部</button>
           <button data-f="written">已写</button>
           <button data-f="empty">未写</button>
           <button data-f="missing">未建</button>
           <button data-f="todo">待补</button>
+          <button data-f="hint">可疑</button>
         </span>
         <div class="search">
           <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
@@ -287,7 +330,7 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
           <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
             stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8 2.2l6.1 3.2L8 8.6 1.9 5.4z"/><path d="M2.3 10.9L8 13.9l5.7-3"/></svg>
-          未启用章</button>
+          <span id="unusedToggleTxt">未启用章</span></button>
       </div>
       <div id="detailWrap">
         <div id="tree"></div>
@@ -295,6 +338,9 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
       </div>
       <div id="unused"></div>
       <div id="orphans"></div>
+    </section>
+    <section id="view-settings" hidden>
+      <div id="settingsBox"></div>
     </section>
   </main>
 </div>
@@ -316,17 +362,20 @@ const S = {
   open: new Set(),         // 展开的目录节点 id
   unusedOpen: false,
   orphansOpen: false,
-  showUnused: true,        // 树中是否一并显示未启用的章（灰显）
+  showUnused: true,        // 树中是否一并显示未启用的章（灰显）；默认值由服务端设置决定
   editMode: false,         // 编辑范围：显示行尾复选框
 };
 
 const API = {
-  data:    (force) => "/api/data" + (force ? "?refresh=1" : ""),
-  entry:   "/api/entry",
-  chapter: "/api/chapter",
-  open:    "/api/open",
-  quit:    "/api/quit",
-  report:  "/api/report",
+  data:     (force) => "/api/data" + (force ? "?refresh=1" : ""),
+  entry:    "/api/entry",
+  chapter:  "/api/chapter",
+  open:     "/api/open",
+  quit:     "/api/quit",
+  report:   "/api/report",
+  settings: "/api/settings",
+  marksExport: "/api/marks/export",
+  marksImport: "/api/marks/import",
 };
 
 /* ============================ 数据层 ============================ */
@@ -352,11 +401,20 @@ async function loadAndRender(force) {
     const d = await fetchData(force);
     S.data = d;
     if (S.noteIdx >= d.notes.length) S.noteIdx = 0;
+    applySettings();
     ensureDefaultOpen();
     refreshAll();
   } catch (e) {
     setSvc(false, "服务已停止");
   }
+}
+
+/* 服务端设置 → 界面状态（设置是跨浏览器持久化的，不用 localStorage） */
+function applySettings() {
+  const st = (S.data && S.data.settings) || {};
+  S.showUnused = st.show_unused !== false;
+  const btn = document.getElementById("btnUnusedToggle");
+  if (btn) btn.classList.toggle("on", S.showUnused);
 }
 
 /* 默认展开当前笔记中最近改动的那一章 */
@@ -406,6 +464,7 @@ function matchFilter(leaf) {
   if (S.filter === "empty") return st === "empty";
   if (S.filter === "missing") return st === "missing";
   if (S.filter === "todo") return st === "todo";
+  if (S.filter === "hint") return !!leaf.hint_level;
   return true;
 }
 
@@ -496,6 +555,22 @@ const SVG_CARET = '<svg class="caret" viewBox="0 0 16 16" fill="none" '
 const SVG_TICK = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" '
   + 'stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
   + '<path d="M3.5 8.4L6.4 11.3L12.5 4.8"/></svg>';
+const SVG_FLAG = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#8b8982" '
+  + 'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M4 14.2V2.4"/><path d="M4 3.1h7.6L9.7 6.6l1.9 3.5H4"/></svg>';
+const SVG_NOTE = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" '
+  + 'stroke-linejoin="round"><path d="M2.8 3.4h10.4v7.2H7.2L4.8 12.6v-2H2.8z"/></svg>';
+
+/* 排除原因的中文说明（与服务端 REASON_TEXT 一致） */
+const REASON_CN = {
+  included: "已纳入编译",
+  not_compiled: "未纳入编译但有内容",
+  empty_uncompiled: "未纳入编译且无内容",
+  manual_include: "手动强制计入",
+  manual_exclude: "手动强制排除",
+  parent_excluded: "因上级被排除",
+};
 
 /* 定理环境名的中文对照（structure.sty 定义的 17 个） */
 const ENV_CN = {
@@ -565,6 +640,8 @@ function renderGlobalCard() {
       + fmtInt(g.planned) + '</div></div>'
     + '<div class="metric"><div class="k">已写</div><div class="v mono">'
       + fmtInt(g.written) + '</div></div>'
+    + '<div class="metric"><div class="k">确认完成</div><div class="v mono">'
+      + (S.data.confirmed_percent || 0) + '%</div></div>'
     + '<div class="metric"><div class="k">待补</div><div class="v mono">'
       + fmtInt(S.data.pending_count) + '</div></div>'
     + '<div class="metric"><div class="k">定理环境</div><div class="v mono">'
@@ -582,11 +659,15 @@ function renderNotesGrid() {
   let h = "";
   ns.forEach((n) => {
     const c = n.counted || {};
+    const top = n.top_name || "章";        // 顶层是「章」还是「部分」，按笔记的层级模式
     const flags = [];
     const nc = (n.tops || []).filter((t) => t.decision_reason === "not_compiled").length;
-    if (nc) flags.push('<span class="flag">' + nc + ' 章未编译</span>');
-    if (n.excluded_count) flags.push('<span class="flag">' + n.excluded_count + ' 章未启用</span>');
+    if (nc) flags.push('<span class="flag">' + nc + " " + top + '未编译</span>');
+    if (n.excluded_count) flags.push('<span class="flag">' + n.excluded_count + " " + top + '未启用</span>');
     if (n.pending_count) flags.push('<span class="flag warn">' + n.pending_count + ' 节待补</span>');
+    if (n.chapter_todo_count) {
+      flags.push('<span class="flag warn">' + n.chapter_todo_count + " " + top + '待补</span>');
+    }
     h += '<div class="ncard" data-note="' + esc(n.name) + '">'
       + '<div class="hd"><span class="nm">' + esc(n.title) + '</span>'
       + '<span class="pc mono">' + (n.percent || 0) + '%</span></div>'
@@ -595,6 +676,7 @@ function renderNotesGrid() {
       + '<div class="nums">'
       + '<span>已写 <b class="mono">' + fmtInt(c.written) + '</b> / '
         + fmtInt(c.planned) + '</span>'
+      + '<span>确认 <b class="mono">' + (n.confirmed_percent || 0) + '%</b></span>'
       + '<span>环境 <b class="mono">' + fmtInt(c.envs) + '</b></span>'
       + '<span>字数 <b class="mono">' + fmtBig(c.chars) + '</b></span>'
       + '</div>'
@@ -604,15 +686,49 @@ function renderNotesGrid() {
   box.innerHTML = h;
 }
 
+/* 笔记切换：少时平铺成按钮（一眼看全、一次点击），多了收成一个下拉 + 前后切换，
+   免得工具栏被标题撑爆。阈值只影响呈现，不影响功能。 */
+const NOTE_CHIPS_MAX = 12;
+
 function renderNoteSel() {
   const box = document.getElementById("noteSel");
   if (!S.data) { box.innerHTML = ""; return; }
-  let h = "";
-  sortedForDisplay().forEach((n, i) => {
+  const ns = sortedForDisplay();
+
+  if (ns.length > NOTE_CHIPS_MAX) {
+    let opts = "";
+    ns.forEach((n, i) => {
+      opts += '<option value="' + i + '"' + (i === S.noteIdx ? " selected" : "") + '>'
+        + esc(n.title) + '</option>';
+    });
+    box.innerHTML = '<span class="note-pick">'
+      + '<button class="note-step" data-note-step="-1" title="上一本"' 
+      + (S.noteIdx <= 0 ? " disabled" : "") + '>‹</button>'
+      + '<select data-note-pick="1" title="切换笔记（共 ' + ns.length + ' 本）">'
+      + opts + '</select>'
+      + '<button class="note-step" data-note-step="1" title="下一本"'
+      + (S.noteIdx >= ns.length - 1 ? " disabled" : "") + '>›</button>'
+      + '</span>';
+    return;
+  }
+
+  let h = '<span class="sel">';
+  ns.forEach((n, i) => {
     h += '<button data-note-idx="' + i + '" class="'
       + (i === S.noteIdx ? "on" : "") + '">' + esc(n.title) + '</button>';
   });
-  box.innerHTML = h;
+  box.innerHTML = h + '</span>';
+}
+
+/* 切换笔记：清掉展开与选中，展开新笔记里最近改动的那一章 */
+function selectNote(idx) {
+  const ns = (S.data && S.data.notes) || [];
+  if (!(idx >= 0 && idx < ns.length)) return;
+  S.noteIdx = idx;
+  S.selected = null;
+  S.open = new Set();
+  ensureDefaultOpen();
+  refreshAll();
 }
 
 function miniBar(stats) {
@@ -655,12 +771,19 @@ function nodeRowHTML(node, depth) {
   let dotHTML = "";
   let cnt = "";
   let mini = "";
+  let cmk = "";
+  let lflag = "";
 
   if (isDir) {
     const st = node.stats || {};
     mini = miniBar(st);
     cnt = '<span class="cnt">' + (node.children || []).length + ' 项</span>'
       + '<span class="cnt mono">' + (st.written || 0) + "/" + (st.planned || 0) + '</span>';
+    /* 章级标记：与小节级待补汇总并存，语义不同（不好归到某一节的问题） */
+    const cm = !!node.chapter_mark;
+    cmk = '<span class="cmk' + (cm ? " on" : "") + '" data-chmark="' + esc(node.id)
+      + '" title="' + (cm ? "整章待补（点击取消）" : "整章待补（点击标记）") + '">'
+      + (cm ? SVG_CIRCLE : SVG_FLAG) + '</span>';
   } else if (node.type === "missing") {
     dotHTML = '<span class="dot m"></span>';
     cnt = '<span class="cnt">未建</span>';
@@ -682,6 +805,20 @@ function nodeRowHTML(node, depth) {
     if (node.todo_count) {
       cnt = '<span class="cnt" style="color:var(--orange)">' + node.todo_count + ' 待补</span>';
     }
+    /* 提示（红＝硬问题、琥珀＝软提示），悬停显示原因 */
+    if (node.hint_level) {
+      cnt += '<span class="pdot ' + node.hint_level + '" title="'
+        + esc((node.hints || []).map((x) => x.text).join("；")) + '"></span>';
+    }
+    /* 备注 / 待办的行内小标记 */
+    const openTodos = (node.todos || []).filter((t) => !t.done).length;
+    if (node.note) {
+      lflag += '<span class="lflag" title="有备注">' + SVG_NOTE + '</span>';
+    }
+    if (openTodos) {
+      lflag += '<span class="lflag todo" title="' + openTodos + ' 条未完成待办">'
+        + openTodos + '</span>';
+    }
   }
 
   /* 行内标签：未启用 = 被排除、不计入统计；未编译 = 索引里被注释掉、但仍计入 */
@@ -695,7 +832,7 @@ function nodeRowHTML(node, depth) {
     + '" data-kind="' + node.type + '">'
     + (isDir ? SVG_CARET : '<span class="caret leaf"></span>')
     + dotHTML + '<span class="nm">' + esc(label) + '</span>' + tag
-    + mini + cnt + marksHTML + cbx + '</div>';
+    + mini + cnt + cmk + marksHTML + lflag + cbx + '</div>';
 
   if (isDir && isOpen) {
     h += '<div class="kids">';
@@ -736,6 +873,12 @@ function legendHTML() {
     + '<span>不计入统计，其下小节仍可展开查看</span></div>'
     + '<div class="li"><span class="tag-nc">未编译</span>'
     + '<span>索引里被注释掉，但已计入统计</span></div>'
+    + '<div class="li"><span class="pdot hard"></span>'
+    + '<span>硬提示：编译层面确定的问题（悬停看原因）</span></div>'
+    + '<div class="li"><span class="pdot soft"></span>'
+    + '<span>软提示：与同一节的其他小节相比明显偏少</span></div>'
+    + '<div class="li"><span class="cmk">' + SVG_FLAG + '</span>'
+    + '<span>整章待补（章行上的手动标记，点一下切换）</span></div>'
     + '</div>';
 }
 
@@ -743,19 +886,28 @@ function renderPanel() {
   const box = document.getElementById("panel");
   const n = currentNote();
   if (!n || !S.selected) {
-    box.innerHTML = '<div class="p-empty">点击左侧任一小节查看详情</div>'
+    box.innerHTML = '<div class="p-empty">点击左侧任一章节或小节查看详情</div>'
       + legendHTML();
     return;
   }
-  let leaf = null;
-  (n.tops || []).forEach((t) => {
-    walkLeaves(t).forEach((l) => { if (l.id === S.selected) leaf = l; });
-  });
-  if (!leaf) {
+  const node = findNode(S.selected);
+  if (!node) {
     box.innerHTML = '<div class="p-empty">该条目已不在当前范围内</div>';
     return;
   }
+  /* 目录节点（章 / 节）也能选中：面板给出整章待补、批量标记与计入范围 */
+  const body = (node.type === "leaf" || node.type === "missing")
+    ? panelLeafHTML(node) : panelDirHTML(node);
+  box.innerHTML = body + legendHTML();
+}
 
+function panelLeafHTML(leaf) {
+  if (leaf.type === "missing") {
+    return '<div class="p-title">' + esc(leaf.view_title || leaf.name) + '</div>'
+      + '<div class="p-path mono">' + esc(leaf.id) + '</div>'
+      + '<div class="p-sec"><div class="p-warn">' + SVG_CIRCLE
+      + '<span>索引里已规划，但文件尚未创建</span></div></div>';
+  }
   const mk = leaf.marks || {};
   const dims = [["env", "环境"], ["body", "正文"], ["proof", "证明"]];
   const leafRaw = leaf.view_title || leaf.name;
@@ -795,17 +947,12 @@ function renderPanel() {
     h += '</div>';
   }
 
-  const warns = [];
-  if (leaf.unpaired) warns.push("有 \\begin 未配对，编译会报错");
-  if (leaf.empty_envs > 0) warns.push("存在 " + leaf.empty_envs + " 个空环境");
-  if (leaf.status === "written" && !leaf.has_proof && !leaf.has_sketch) {
-    warns.push("未见 proof 或 sketch 环境");
-  }
-  if (leaf.status === "written" && !leaf.body_chars) warns.push("无陈述性文字");
-  if (warns.length) {
+  /* 提示由服务端算：硬提示看单文件即可确定，软提示只与同节其他小节横向比较 */
+  const hints = leaf.hints || [];
+  if (hints.length) {
     h += '<div class="p-sec"><div class="p-lab">值得留意</div>';
-    warns.forEach((w) => {
-      h += '<div class="p-warn">' + SVG_CIRCLE + '<span>' + esc(w) + '</span></div>';
+    hints.forEach((x) => {
+      h += '<div class="p-warn">' + SVG_CIRCLE + '<span>' + esc(x.text) + '</span></div>';
     });
     h += '</div>';
   }
@@ -829,7 +976,73 @@ function renderPanel() {
     + '<button id="btnPlan">' + (leaf.planned ? "取消下一步" : "设为下一步") + '</button>'
     + '</div>';
 
-  box.innerHTML = h + legendHTML();
+  return h;
+}
+
+/* 目录节点（章 / 节）的详情：整章待补、批量标记、计入范围 */
+function panelDirHTML(node) {
+  const st = node.stats || {};
+  const raw = node.view_title || node.name;
+  const label = node.num ? (node.num + " " + raw) : raw;
+  const leaves = walkLeaves(node);
+  const noProof = leaves.filter((l) => l.status === "written"
+    && !l.has_proof && !l.has_sketch
+    && (l.marks || {}).proof !== "todo");
+  const cm = !!node.chapter_mark;
+
+  let h = '<div class="p-title">' + esc(label) + '</div>'
+    + '<div class="p-path mono">' + esc(node.id) + '</div>';
+
+  if (node.excluded) {
+    h += '<div class="p-warn">' + SVG_CIRCLE + '<span>未启用（'
+      + esc(REASON_CN[node.excluded_reason] || node.excluded_reason || "已排除")
+      + (node.manual ? "，手动设置" : "")
+      + '）—— 不计入进度统计，其下小节仍可展开标记</span></div>';
+  } else if (node.included === false) {
+    h += '<div class="p-warn">' + SVG_CIRCLE
+      + '<span>未纳入编译，但已计入统计</span></div>';
+  }
+
+  h += '<div class="p-sec">'
+    + '<div class="p-line"><span class="k">小节数</span><span class="v mono">'
+      + (st.leaves || 0) + '</span></div>'
+    + '<div class="p-line"><span class="k">已写 / 规划</span><span class="v mono">'
+      + (st.written || 0) + ' / ' + (st.planned || 0) + '</span></div>'
+    + '<div class="p-line"><span class="k">定理环境</span><span class="v mono">'
+      + fmtInt(st.envs) + ' 个</span></div>'
+    + '<div class="p-line"><span class="k">字数</span><span class="v mono">'
+      + fmtBig(st.chars) + '</span></div>'
+    + '<div class="p-line"><span class="k">最后修改</span><span class="v mono">'
+      + esc(node.mtime_str || "—") + '</span></div>'
+    + '</div>';
+
+  h += '<div class="p-sec"><div class="p-lab">整章待补</div>'
+    + '<div class="shint">用于不好归到某一节的问题 —— 与小节级的待补汇总并存，'
+    + '两者语义不同。</div>'
+    + '<div class="p-btns"><button id="btnChapterMark"' + (cm ? ' class="pri"' : '')
+    + '>' + (cm ? "取消整章待补" : "标为整章待补") + '</button></div></div>';
+
+  if (noProof.length) {
+    h += '<div class="p-sec"><div class="p-lab">批量标记</div>'
+      + '<div class="shint">本' + esc(noteTopName()) + '下已写、但既没有 proof 也没有 '
+      + 'sketch 的小节共 ' + noProof.length + ' 个。</div>'
+      + '<div class="p-btns"><button id="btnProofAll">'
+      + '把它们的「证明」标为待补</button></div></div>';
+  }
+
+  h += '<div class="p-sec"><div class="p-lab">计入范围</div>'
+    + '<div class="p-btns">'
+    + '<button data-chmode="auto" data-id="' + esc(node.id) + '">自动判定</button>'
+    + '<button data-chmode="force_include" data-id="' + esc(node.id) + '">强制计入</button>'
+    + '<button data-chmode="force_exclude" data-id="' + esc(node.id) + '">强制排除</button>'
+    + '</div></div>';
+
+  return h;
+}
+
+function noteTopName() {
+  const n = currentNote();
+  return (n && n.top_name) || "章";
 }
 
 function renderUnused() {
@@ -838,6 +1051,7 @@ function renderUnused() {
   if (!n) { box.innerHTML = ""; return; }
   const rows = (n.tops || []).filter((t) => !t.decision);
   if (!rows.length) { box.innerHTML = ""; return; }
+  const top = n.top_name || "章";
 
   const reasonText = {
     empty_uncompiled: "未纳入编译且无内容",
@@ -845,12 +1059,12 @@ function renderUnused() {
   };
   let h = '<div class="uh" id="unusedHead">'
     + '<span>' + (S.unusedOpen ? "▾" : "▸") + '</span>'
-    + '<span>未启用章节（' + rows.length + '）</span></div>';
+    + '<span>未启用' + esc(top) + '（' + rows.length + '）</span></div>';
   if (S.unusedOpen) {
-    h += '<div class="uhint">这些章不计入进度统计，但已在上方的树里灰显列出 —— '
+    h += '<div class="uhint">这些条目不计入进度统计，但已在上方的树里灰显列出 —— '
       + '展开即可看到它们下面的全部小节，照常可以标记、备注、打开文件。'
-      + '点「计入」把整章纳入统计。</div>';
-    h += '<div class="ub"><table><thead><tr><th>章</th><th>小节数</th>'
+      + '点「计入」把整个' + esc(top) + '纳入统计。</div>';
+    h += '<div class="ub"><table><thead><tr><th>' + esc(top) + '</th><th>小节数</th>'
       + '<th>原因</th><th>操作</th></tr></thead><tbody>';
     rows.forEach((t) => {
       h += '<tr><td>' + esc(t.view_title || t.name) + '</td>'
@@ -896,6 +1110,77 @@ function renderOrphans() {
   box.innerHTML = h;
 }
 
+/* ============================ 设置页 ============================ */
+function renderSettings() {
+  const box = document.getElementById("settingsBox");
+  if (!S.data) { box.innerHTML = ""; return; }
+  const st = S.data.settings || {};
+  const modes = S.data.level_modes || [];
+  const notes = S.data.notes || [];
+
+  let h = '<div class="card"><p class="sec-h">显示</p>'
+    + '<div class="srow"><span class="tsw' + (st.show_unused !== false ? " on" : "")
+    + '" id="swUnused"><i></i></span>'
+    + '<span class="k">明细页默认显示未启用的章</span></div>'
+    + '<div class="shint">开：树上把「未启用」的顶层节点一并列出（灰显、不计入统计），'
+    + '其下的小节照常可展开、可标记、可打开文件。<br>'
+    + '关：树里只显示计入范围内的条目（仍可在明细页底部把整章计入）。</div>'
+    + '</div>';
+
+  h += '<div class="card"><p class="sec-h">笔记层级模式</p>'
+    + '<div class="shint">层级模式决定树上每一层对应哪个 LaTeX 标题命令 —— '
+    + '标题从哪个命令里取（`\\chapter` / `\\section` / `\\subsection`），'
+    + '以及怎么编号（`1.1`、`1.1.2`、`附录 A`、`A.1`）都由它决定。'
+    + '下拉选项与「新建大纲」是同一套。默认「自动识别」：按 main.tex 最外层的标题命令'
+    + '与树的层数推断。改动后立即重扫（数秒）。</div>';
+
+  h += '<table><thead><tr><th>笔记</th><th>层级模式</th><th>依据</th><th></th>'
+    + '</tr></thead><tbody>';
+  notes.forEach((n) => {
+    const cur = n.level_source === "manual" ? (n.level_mode || "") : "auto";
+    let opts = "";
+    modes.forEach((m) => {
+      const sel = (m.id === cur) ? " selected" : "";
+      const text = m.cmds ? (m.names + "　" + m.cmds) : m.names;
+      opts += '<option value="' + esc(m.id) + '"' + sel + '>' + esc(text) + '</option>';
+    });
+    /* 手动写进设置文件的模式未必在下拉清单里，补一项，免得下拉显示成别的值 */
+    if (cur !== "auto" && !modes.some((m) => m.id === cur)) {
+      opts = '<option value="' + esc(cur) + '" selected>自定义　' + esc(cur)
+        + "</option>" + opts;
+    }
+    const manual = n.level_source === "manual";
+    h += '<tr><td>' + esc(n.title)
+      + '<div class="shint">' + esc(n.name) + '</div></td>'
+      + '<td><select data-level-note="' + esc(n.name) + '">' + opts + '</select></td>'
+      + '<td><span class="badge' + (manual ? " man" : "") + '">'
+      + (manual ? "指定" : "自动") + '</span>'
+      + '<div class="shint">' + esc(n.level_hint || "") + '</div></td>'
+      + '<td>' + (manual
+          ? '<span class="tbtn" data-reset-level="' + esc(n.name) + '">恢复自动</span>'
+          : '') + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  const anyManual = notes.some((n) => n.level_source === "manual");
+  h += '<div class="card"><p class="sec-h">数据文件</p>'
+    + '<div class="shint">设置写在 <span class="mono">progress_settings.json</span>，'
+    + '三维标记 / 备注 / 待办 / 章级设置写在 <span class="mono">progress_marks.json</span>，'
+    + '两者与本工具同目录、彼此分开存放；删掉即恢复默认。</div>'
+    + (anyManual ? '<div class="p-btns"><button id="btnAllAuto">'
+        + '全部恢复自动识别</button></div>' : '')
+    + '<div class="p-btns">'
+    + '<button id="btnMarksExport">导出标记数据</button>'
+    + '<button id="btnMarksImport">导入标记数据</button>'
+    + '<input type="file" id="marksFile" accept=".json,application/json" hidden>'
+    + '</div>'
+    + '<div class="shint">导入按 <b>updated</b> 时间戳合并：较新的一份覆盖冲突项，'
+    + '只有一侧有的记录一律保留，不会丢掉任何一边的标记。</div>'
+    + '</div>';
+
+  box.innerHTML = h;
+}
+
 /* ============================ 调度层（唯一刷新入口） ============================ */
 function refreshAll() {
   renderHeader();
@@ -903,10 +1188,25 @@ function refreshAll() {
   renderGlobalCard();
   renderNotesGrid();
   renderNoteSel();
+  syncUnusedToggle();
   renderTree();
   renderPanel();
   renderUnused();
   renderOrphans();
+  renderSettings();
+}
+
+/* 明细页工具栏那个开关的文案：顶层是「章」还是「部分」由笔记的层级模式决定 */
+function syncUnusedToggle() {
+  const n = currentNote();
+  const top = (n && n.top_name) || "章";
+  const txt = document.getElementById("unusedToggleTxt");
+  if (txt) txt.textContent = "未启用" + top;
+  const btn = document.getElementById("btnUnusedToggle");
+  if (btn) {
+    btn.title = "在树中一并显示未启用的" + top + "（灰显）；关掉则只显示计入范围内的条目";
+    btn.classList.toggle("on", S.showUnused);
+  }
 }
 
 /* ============================ 交互 ============================ */
@@ -917,6 +1217,7 @@ function switchView(v) {
   });
   document.getElementById("view-overview").hidden = (v !== "overview");
   document.getElementById("view-detail").hidden = (v !== "detail");
+  document.getElementById("view-settings").hidden = (v !== "settings");
 }
 
 document.getElementById("topbar").addEventListener("click", (e) => {
@@ -967,13 +1268,16 @@ document.getElementById("notesGrid").addEventListener("click", (e) => {
 });
 
 document.getElementById("noteSel").addEventListener("click", (e) => {
+  const st = e.target.closest("[data-note-step]");
+  if (st) { selectNote(S.noteIdx + parseInt(st.dataset.noteStep, 10)); return; }
   const b = e.target.closest("button");
   if (!b) return;
-  S.noteIdx = parseInt(b.dataset.noteIdx, 10) || 0;
-  S.selected = null;
-  S.open = new Set();
-  ensureDefaultOpen();
-  refreshAll();
+  selectNote(parseInt(b.dataset.noteIdx, 10) || 0);
+});
+
+document.getElementById("noteSel").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-note-pick]");
+  if (sel) selectNote(parseInt(sel.value, 10) || 0);
 });
 
 document.getElementById("filterSel").addEventListener("click", (e) => {
@@ -1014,17 +1318,23 @@ document.getElementById("tree").addEventListener("click", (e) => {
     toggleMark(mk.dataset.id, mk.dataset.mark);
     return;
   }
+  const cm = e.target.closest("[data-chmark]");
+  if (cm) {
+    e.stopPropagation();
+    toggleChapterMark(cm.dataset.chmark);
+    return;
+  }
   const row = e.target.closest(".nrow");
   if (!row) return;
   const id = row.dataset.node;
-  if (row.dataset.kind === "leaf") {
-    S.selected = (S.selected === id) ? null : id;
-    renderTree();
-    renderPanel();
-  } else {
+  const isLeafRow = (row.dataset.kind === "leaf");
+  /* 叶子：点一下选中、再点取消；目录：点一下展开并选中（右侧显示章详情） */
+  S.selected = (isLeafRow && S.selected === id) ? null : id;
+  if (!isLeafRow) {
     if (S.open.has(id)) S.open.delete(id); else S.open.add(id);
-    renderTree();
   }
+  renderTree();
+  renderPanel();
 });
 
 document.getElementById("unused").addEventListener("click", (e) => {
@@ -1042,13 +1352,97 @@ document.getElementById("orphans").addEventListener("click", (e) => {
 });
 
 document.getElementById("btnUnusedToggle").addEventListener("click", (e) => {
-  S.showUnused = !S.showUnused;
-  e.currentTarget.classList.toggle("on", S.showUnused);
-  renderTree();
-  toast(S.showUnused
-    ? "树中一并显示未启用的章（灰显，不计入统计）"
-    : "树中只显示计入范围内的章");
+  setShowUnused(!S.showUnused);
 });
+
+document.getElementById("settingsBox").addEventListener("click", (e) => {
+  if (e.target.closest("#swUnused")) { setShowUnused(!S.showUnused); return; }
+  const r = e.target.closest("[data-reset-level]");
+  if (r) { setNoteLevel(r.dataset.resetLevel, "auto"); return; }
+  if (e.target.closest("#btnAllAuto")) setAllAuto();
+  if (e.target.closest("#btnMarksExport")) { exportMarks(); return; }
+  if (e.target.closest("#btnMarksImport")) {
+    const f = document.getElementById("marksFile");
+    if (f) f.click();
+    return;
+  }
+});
+
+document.getElementById("settingsBox").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-level-note]");
+  if (sel) setNoteLevel(sel.dataset.levelNote, sel.value);
+  if (e.target.id === "marksFile") {
+    importMarks(e.target.files && e.target.files[0]);
+    e.target.value = "";
+  }
+});
+
+function exportMarks() {
+  window.location.href = API.marksExport;
+  toast("正在下载标记数据…");
+}
+
+async function importMarks(file) {
+  if (!file) return;
+  let obj = null;
+  try {
+    obj = JSON.parse(await file.text());
+  } catch (err) {
+    toast("导入失败：文件不是有效的 JSON");
+    return;
+  }
+  try {
+    const d = await postJSON(API.marksImport, {marks: obj});
+    S.data = d;
+    S.selected = null;
+    refreshAll();
+    const m = d.merged || {};
+    toast("已导入：本地共 " + (m.entries || 0) + " 条小节标记"
+      + (m.added ? "（新增 " + m.added + " 条）" : ""));
+  } catch (err) {
+    toast("导入失败：服务未响应或文件格式不符");
+  }
+}
+
+/* 显示开关与层级模式都持久化在服务端（progress_settings.json） */
+function setShowUnused(v) {
+  toast(v ? "明细页将一并显示未启用的章（灰显，不计入统计）"
+          : "明细页只显示计入范围内的条目");
+  postJSON(API.settings, {show_unused: v})
+    .then((d) => { S.data = d; applySettings(); refreshAll(); })
+    .catch(() => { setSvc(false); toast("设置失败：服务未响应"); });
+}
+
+function setNoteLevel(name, mode) {
+  toast("正在按新的层级模式重扫…", true);
+  postJSON(API.settings, {note_levels: {[name]: mode}})
+    .then((d) => {
+      S.data = d;
+      S.selected = null;
+      applySettings();
+      refreshAll();
+      toast(mode === "auto" ? "已恢复自动识别" : "层级模式已更新");
+    })
+    .catch(() => { setSvc(false); toast("设置失败：服务未响应"); });
+}
+
+function setAllAuto() {
+  const lv = {};
+  (S.data.notes || []).forEach((n) => {
+    if (n.level_source === "manual") lv[n.name] = "auto";
+  });
+  if (!Object.keys(lv).length) return;
+  toast("正在恢复自动识别…", true);
+  postJSON(API.settings, {note_levels: lv})
+    .then((d) => {
+      S.data = d;
+      S.selected = null;
+      applySettings();
+      refreshAll();
+      toast("已全部恢复自动识别");
+    })
+    .catch(() => { setSvc(false); toast("设置失败：服务未响应"); });
+}
 
 document.getElementById("resume").addEventListener("click", (e) => {
   const row = e.target.closest("[data-open-path]");
@@ -1131,6 +1525,10 @@ document.getElementById("panel").addEventListener("click", (e) => {
     return;
   }
   if (e.target.id === "btnPlan") { togglePlan(); return; }
+  if (e.target.id === "btnChapterMark") { toggleChapterMark(S.selected); return; }
+  if (e.target.id === "btnProofAll") { markProofAll(); return; }
+  const ch = e.target.closest("[data-chmode]");
+  if (ch) { setChapterMode(ch.dataset.id, ch.dataset.chmode); return; }
 });
 
 document.getElementById("panel").addEventListener("keydown", (e) => {
@@ -1194,6 +1592,37 @@ function togglePlan() {
   if (!leaf) return;
   postJSON(API.entry, {id: S.selected, planned: !leaf.planned})
     .then((d) => { S.data = d; refreshAll(); })
+    .catch(() => setSvc(false));
+}
+
+/* 章级待补：独立于小节汇总的手动标记 */
+function toggleChapterMark(id) {
+  const node = findNode(id || S.selected);
+  if (!node || node.type === "leaf" || node.type === "missing") return;
+  const on = !node.chapter_mark;
+  postJSON(API.chapter, {id: node.id, mark: on})
+    .then((d) => {
+      S.data = d;
+      refreshAll();
+      toast(on ? "已标为整章待补" : "已取消整章待补");
+    })
+    .catch(() => setSvc(false));
+}
+
+/* 批量：把该层下「已写但无 proof / sketch」的小节的「证明」一次标为待补 */
+function markProofAll() {
+  const node = findNode(S.selected);
+  if (!node || node.type === "leaf") return;
+  const ids = walkLeaves(node).filter((l) => l.status === "written"
+      && !l.has_proof && !l.has_sketch && (l.marks || {}).proof !== "todo")
+    .map((l) => l.id);
+  if (!ids.length) { toast("这一层下没有需要标记的小节"); return; }
+  postJSON(API.entry, {ids: ids, marks: {proof: "todo"}})
+    .then((d) => {
+      S.data = d;
+      refreshAll();
+      toast("已把 " + ids.length + " 个小节的「证明」标为待补");
+    })
     .catch(() => setSvc(false));
 }
 
