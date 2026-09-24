@@ -277,7 +277,8 @@ python maintain/new_note.py <笔记名> --dry-run      # 预演，不写任何�
 - 只复制**源码与配置**（`.gitignore`/`.gitattributes`/`structure.sty`/脚本三件套/`Content`/`Figures` 等），
   跳过编译产物与 `__pycache__`。
 - 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`。
-- `main.tex` 的 `\title`、首个 `\part` 会改成笔记名，`\mainmatter` 下会写入新的章节 `\input` 链。
+- `main.tex` 的 `\title` 改成笔记名；`\mainmatter` 段被重写为「改名为笔记名的 `\part` +
+  新的章节 `\input` 链」—— `\part` 是**保留并改名**，不会连同模板的旧内容一起被删掉。
 - **不提供章节结构**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
   后续自己补 `Content/` 与 `\input`。
 - `git init` 之后、首次提交之前，会自动把 `guard/hooks/pre-commit` 装进新仓库的 `.git/hooks/`，

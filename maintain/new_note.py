@@ -175,7 +175,12 @@ def build_content(content_dir, tree):
 
 
 def rewrite_main_tex(main_tex, name, chapters):
-    """更新 main.tex：标题、\\part，以及各章的 \\input。"""
+    r"""更新 main.tex：标题、\part，以及各章的 \input。
+
+    `\mainmatter` 与 `\backmatter` 之间是正文主体：其中的 `\part` **保留并改名**成
+    笔记名，其余内容由新的章节 `\input` 链取代。不能把整段直接替换掉 ——
+    那样刚改好名的 `\part` 会被一起吃掉，所以这里分两步处理。
+    """
     if not main_tex.is_file():
         return False
     text = main_tex.read_text(encoding="utf-8")
@@ -184,11 +189,19 @@ def rewrite_main_tex(main_tex, name, chapters):
                  text, count=1)
     new = new.replace("\\part{测试部分}", f"\\part{{{name}}}")
 
-    if chapters:
-        inputs = "\n".join(f"\\input{{./Content/{c}/index}}" for c in chapters)
-        new = re.sub(r"(\\mainmatter\s*\n)(.*?)(?=\s*\\backmatter)",
-                     lambda m: m.group(1) + "\n" + inputs + "\n",
-                     new, count=1, flags=re.S)
+    inputs = [f"\\input{{./Content/{c}/index}}" for c in chapters]
+    m = re.search(r"(\\mainmatter[ \t]*\n)(.*?)(\s*\\backmatter)", new, flags=re.S)
+    if m:
+        seg = []
+        if re.search(r"\\part\{", m.group(2)):     # 正文主体里带 \part
+            seg.append(f"\\part{{{name}}}")
+        if inputs:
+            seg.append("\n".join(inputs))          # 各章 \input 连续成行，同模板写法
+        if seg:
+            # 首行补一个空行，\part 与 \input 块之间空一行；尾部空行由末组自带
+            new = new[:m.start()] + m.group(1) + "\n" + "\n\n".join(seg) \
+                + m.group(3) + new[m.end():]
+
     main_tex.write_text(new, encoding="utf-8", newline="")
     return True
 
