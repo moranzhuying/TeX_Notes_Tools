@@ -14,7 +14,6 @@
 | `note_tools/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
 | `clean_aux/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
 | `repo_check/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
-| `search_notes/search_notes.py` | 跨笔记全文检索，无参数即交互面板（**已从总面板移除**，需要时单独运行） | 见下 |
 | `check_sensitive/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `commit/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
@@ -231,8 +230,6 @@ Tools/
 │   └── note_tools.py
 ├── clean_aux/             清理编译产物
 │   └── clean_aux.py
-├── search_notes/          （已从面板移除；需要时单独运行）
-│   └── search_notes.py
 ├── repo_check/            仓库体检
 │   └── repo_check.py
 ├── check_sensitive/       提交前本机信息扫描
@@ -436,27 +433,6 @@ python repo_check/repo_check.py --area notes # notes / template / tools / all
 逐仓库检查：`.gitignore` / `.gitattributes` 是否存在；有没有**被跟踪**的编译产物；
 有没有被跟踪的 `__pycache__`、`*.conf`、`.cwl_source`、`.sensitive-words.txt`、
 运行档案；以及未提交改动数与远程配置。**只读，不改动任何文件。**
-
-## search_notes.py — 跨笔记全文检索
-
-> 已从总面板移除（2026-09-24）。进度表（`progress/`）的明细页现在自带正文搜索，
-> 还能直接看命中处的源码与 PDF；这个独立脚本仍保留，需要时单独运行。
-
-「这个词我在哪本里写过」—— 逐个打开笔记翻太慢，这里直接给文件 + 行号 + 上下文。
-
-**不带参数运行就是交互面板**：每行输入一个关键字就出结果，可以连着搜，
-选项直接跟在关键字后面（`紧算子 -i`、`compact -n MyNote`），回车或 `q` 退出。
-
-```bash
-python search_notes/search_notes.py                           # 交互面板
-python search_notes/search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
-python search_notes/search_notes.py compact -n MyNote         # 限定某本笔记
-python search_notes/search_notes.py 定理 -e tex,md             # 限定扩展名
-python search_notes/search_notes.py "R^{n}" -r                 # 按正则匹配
-python search_notes/search_notes.py compact -i                 # 忽略大小写
-```
-
-参数：`-n/--note` 笔记名、`-e/--ext` 扩展名（默认 tex）、`-r/--regex`、`-i/--ignore-case`。
 
 ## show_memory.py — 查看工作记录
 
