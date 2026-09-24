@@ -173,6 +173,9 @@ main{flex:1;min-width:0;padding:16px 20px 40px}
 .search input{border:0;background:transparent;color:var(--fg);font-size:13px;
   outline:none;width:100%;font-family:inherit}
 .search input::placeholder{color:var(--fg3)}
+/* 搜索命中的高亮与计数 */
+mark{background:#378add45;color:inherit;border-radius:3px;padding:0 1px}
+.hits{font-size:11px;color:var(--fg3);white-space:nowrap}
 
 /* 未启用章 / 未纳入索引的文件 */
 #unused,#orphans{margin-top:14px;background:var(--bg2);border-radius:10px;overflow:hidden}
@@ -318,8 +321,9 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
         <div class="search">
           <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
             stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14"/></svg>
-          <input id="q" type="text" placeholder="搜索小节（按 / 聚焦）">
+          <input id="q" type="text" placeholder="搜索小节（空格分隔多词，按 / 聚焦）">
         </div>
+        <span class="hits" id="hits"></span>
         <button id="btnEditRange" class="ico-btn" title="显示行尾复选框，用于调整计入范围">
           <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor"
             stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -468,13 +472,23 @@ function matchFilter(leaf) {
   return true;
 }
 
-function matchQuery(leaf) {
-  if (!S.query) return true;
-  const q = S.query.toLowerCase();
-  const t = (leaf.view_title || "").toLowerCase();
-  const n = (leaf.name || "").toLowerCase();
-  return t.indexOf(q) >= 0 || n.indexOf(q) >= 0;
+/* 查询词：按空白切分，**全部命中**才算匹配（AND）。
+   例：「张量积 模」= 标题里同时含这两个词的小节（如「两个模的张量积」）。 */
+function queryTermsOf(q) {
+  const s = String(q == null ? "" : q).trim();
+  return s ? s.toLowerCase().split(/\s+/).filter((x) => x.length > 0) : [];
 }
+
+function queryTerms() { return queryTermsOf(S.query); }
+
+/* 匹配显示名与（去掉编号前缀、下划线已转空格的）文件名 */
+function matchTerms(node, terms) {
+  if (!terms.length) return true;
+  const hay = ((node.view_title || "") + " " + (node.name || "")).toLowerCase();
+  return terms.every((t) => hay.indexOf(t) >= 0);
+}
+
+function matchQuery(node) { return matchTerms(node, queryTerms()); }
 
 function leafVisible(leaf) {
   return matchFilter(leaf) && matchQuery(leaf);
@@ -486,19 +500,17 @@ function nodeHasVisible(node) {
   const kids = node.children || [];
   if (!kids.length) {
     /* 内容写在自身 index.tex 里、没有下级文件的目录：以自身为准参与筛选 */
-    if (S.query) {
-      const q = S.query.toLowerCase();
-      const t = (node.view_title || "").toLowerCase();
-      const n = (node.name || "").toLowerCase();
-      if (t.indexOf(q) < 0 && n.indexOf(q) < 0) return false;
-    }
+    if (!matchQuery(node)) return false;
     if (S.filter === "all") return true;
     const st = (node.stats && node.stats.written > 0) ? "written" : "empty";
     if (S.filter === "written") return st === "written";
     if (S.filter === "empty") return st === "empty";
     return false;
   }
-  return kids.some(nodeHasVisible);
+  if (kids.some(nodeHasVisible)) return true;
+  /* 分支自身的标题命中、而子项都没命中时，也把它列出来（折叠着，展开即看全）
+     —— 这样按「节」这一级检索也能找到 */
+  return queryTerms().length > 0 && matchQuery(node);
 }
 
 function sortedNotes() {
@@ -521,6 +533,22 @@ function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/* 高亮命中词：先转义，再包 <mark>。长词优先，免得短词先吃掉长词的一部分 */
+function hiText(text, terms) {
+  const s = esc(text);
+  if (!terms || !terms.length) return s;
+  const pats = terms
+    .map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .filter((t) => t.length)
+    .sort((a, b) => b.length - a.length);
+  if (!pats.length) return s;
+  try {
+    return s.replace(new RegExp("(" + pats.join("|") + ")", "gi"), "<mark>$1</mark>");
+  } catch (err) {
+    return s;
+  }
 }
 
 function fmtInt(n) { return (n || 0).toLocaleString("zh-CN"); }
@@ -753,12 +781,15 @@ function dimBar(marks) {
   return h + '</span>';
 }
 
-function nodeRowHTML(node, depth) {
+function nodeRowHTML(node, depth, searching) {
   const isDir = node.type !== "leaf" && node.type !== "missing";
-  const isOpen = S.open.has(node.id);
+  const terms = queryTerms();
+  /* 搜索时：沿途只要有命中的后代就自动展开，命中项一眼可见 */
+  const hitBelow = searching && (node.children || []).some(nodeHasVisible);
+  const isOpen = S.open.has(node.id) || hitBelow;
   const sel = S.selected === node.id ? " sel" : "";
   const raw = node.view_title || node.name;
-  const label = node.num ? (node.num + " " + raw) : raw;
+  const label = (node.num ? node.num + " " : "") + hiText(raw, terms);
   const ex = !!node.excluded;
   /* 复选框只在「编辑范围」模式下出现，且置于行尾，避免干扰日常浏览 */
   const cbx = S.editMode
@@ -831,13 +862,13 @@ function nodeRowHTML(node, depth) {
     + '" data-node="' + esc(node.id)
     + '" data-kind="' + node.type + '">'
     + (isDir ? SVG_CARET : '<span class="caret leaf"></span>')
-    + dotHTML + '<span class="nm">' + esc(label) + '</span>' + tag
+    + dotHTML + '<span class="nm">' + label + '</span>' + tag
     + mini + cnt + cmk + marksHTML + lflag + cbx + '</div>';
 
   if (isDir && isOpen) {
     h += '<div class="kids">';
     (node.children || []).forEach((c) => {
-      if (nodeHasVisible(c)) h += nodeRowHTML(c, depth + 1);
+      if (nodeHasVisible(c)) h += nodeRowHTML(c, depth + 1, searching);
     });
     h += '</div>';
   }
@@ -848,14 +879,52 @@ function renderTree() {
   const box = document.getElementById("tree");
   const n = currentNote();
   if (!n) { box.innerHTML = '<div class="empty">请先选择笔记</div>'; return; }
+  const searching = queryTerms().length > 0;
+  if (!searching && lastQuery) keepSearchOpen();
+  lastQuery = S.query;
   let h = "";
   (n.tops || []).forEach((t) => {
     /* 未启用的章默认也进树（灰显 + 「未启用」标签）——否则它下面的节 / 小节
        在页面上完全看不到，用户会以为工作台「没显示全」。可用工具栏按钮关掉。 */
     if (!t.decision && !S.showUnused) return;
-    if (nodeHasVisible(t)) h += nodeRowHTML(t, 0);
+    if (nodeHasVisible(t)) h += nodeRowHTML(t, 0, searching);
   });
   box.innerHTML = h || '<div class="empty">没有符合条件的条目</div>';
+  updateHits(n, searching);
+}
+
+/* 搜索命中的计数与「清空后保留展开」 */
+
+let lastQuery = "";   /* 上一次的查询词，用于清空搜索时把命中的目录留在展开状态 */
+
+function keepSearchOpen() {
+  const terms = queryTermsOf(lastQuery);
+  if (!terms.length) return;
+  const n = currentNote();
+  if (!n) return;
+  /* 与渲染时的自动展开同一口径：子树里存在命中的小节 */
+  const hit = (node) => {
+    if (node.type === "leaf") return matchFilter(node) && matchTerms(node, terms);
+    return (node.children || []).some(hit);
+  };
+  const dig = (node) => {
+    if (node.type === "leaf" || !hit(node)) return;
+    S.open.add(node.id);
+    (node.children || []).forEach(dig);
+  };
+  (n.tops || []).forEach(dig);
+}
+
+function updateHits(note, searching) {
+  const el = document.getElementById("hits");
+  if (!el) return;
+  if (!searching) { el.textContent = ""; return; }
+  let c = 0;
+  (note.tops || []).forEach((t) => {
+    if (!t.decision && !S.showUnused) return;
+    walkLeaves(t).forEach((l) => { if (leafVisible(l)) c++; });
+  });
+  el.textContent = c ? "命中 " + c + " 节" : "无匹配";
 }
 
 function legendHTML() {
