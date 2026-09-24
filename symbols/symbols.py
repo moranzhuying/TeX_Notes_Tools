@@ -18,7 +18,7 @@ symbols.py — 笔记符号管理面板（交互式）
     7. 退出
 
 配置文件：脚本同目录 symbols.conf（root / template / cwl），命令行参数优先。
-提取档案：脚本同目录 symbols_extract.json（本机使用，不入版本控制）
+提取档案：脚本同目录 symbols_extract.json
           结构：{ "子文件夹": { "年-月-日": { "命令名": "定义行" } } }
 结构档案：脚本同目录 notes_tree.json（记录目录结构，用于对比差异）
 
@@ -28,8 +28,6 @@ symbols.py — 笔记符号管理面板（交互式）
     python symbols.py --distribute --write 只分发
     python symbols.py --drop NAME --write  删除指定符号
 
-维护提示：本脚本在根目录（本机运行）与 tex_note_manager 仓库（发布副本）
-          各存一份，改完后请到 tex_note_manager 目录运行 commit.py 同步发布。
 """
 import argparse
 import datetime
@@ -125,7 +123,7 @@ def save_config(cfg, conf_path):
     lines = [
         "# symbols.py 配置",
         "# 每行格式：键 = 值  以 # 或 ; 开头的行是注释",
-        "# 本文件含本机路径，已加入 .gitignore，不上传",
+        "# 本文件含绝对路径，不要提交到公开仓库",
         "",
         "# 笔记根目录：其下每个含 structure.sty 的子目录都被视为一本笔记",
         f"root = {cfg.get('root', '')}",

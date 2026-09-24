@@ -10,7 +10,7 @@ manager.py — 笔记工作区管理面板
     python manager.py          # 进入交互式面板
     python manager.py --help   # 显示用法
 
-配置保存在脚本同目录的 manager.conf（含本机路径，请勿入库）。
+配置保存在脚本同目录的 manager.conf。
 """
 import os
 import re
@@ -83,7 +83,7 @@ desktop.ini
 *.swp
 *~
 
-# ===== 本地工具配置（含本机路径，不入版本控制） =====
+# ===== 工具配置 =====
 .cwl_source
 symbols.conf
 symbols_extract.json
@@ -543,6 +543,15 @@ def main():
         pass
 
     cfg = load_conf()
+    try:
+        run_panel(cfg)
+    except (EOFError, KeyboardInterrupt):
+        print()                      # 输入被关掉 / Ctrl+C：安静退出，别抛栈
+    print("  已退出。")
+    return 0
+
+
+def run_panel(cfg):
     while True:
         root = cfg.get("root", "")
         ds = subdirs(root) if root else []
@@ -556,8 +565,7 @@ def main():
             continue
         choices = [s.strip() for s in sel.replace("，", ",").split(",")]
         if "0" in choices:
-            print("  已退出。")
-            return 0
+            return
 
         for c in choices:
             if c == "1":
@@ -576,6 +584,7 @@ def main():
                 clear()
                 create_repo(cfg)
                 pause()
+
 
 if __name__ == "__main__":
     sys.exit(main())

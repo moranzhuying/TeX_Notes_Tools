@@ -72,7 +72,7 @@ def load_sensitive_words():
 
     从脚本所在目录逐级向上（最多 4 级）把沿途遇到的 .sensitive-words.txt 全部合并：
     工作区根目录放一份通用的，某个仓库内可再放一份该仓库专属的。
-    词表文件仅在本机使用，不纳入版本控制（已在 .gitignore 中）。
+    词表文件不纳入版本控制。
     """
     words = []
     d = os.path.dirname(os.path.abspath(__file__))
@@ -308,9 +308,13 @@ def main():
         print("\n[预览] --dry-run：未执行任何 git 操作。")
         return 0
 
-    # 3) 确认
-    if not yes and sys.stdin.isatty():
-        ans = input("\n确认提交并推送？[y/N] ").strip().lower()
+    # 3) 确认（读不到输入就当取消 —— 绝不能因为输入被关掉就稀里糊涂提交并推送）
+    if not yes:
+        try:
+            ans = input("\n确认提交并推送？[y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n已取消（没有读到确认输入）。")
+            return 0
         if ans not in ("y", "yes"):
             print("已取消。")
             return 0

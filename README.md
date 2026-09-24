@@ -49,11 +49,10 @@
 | 4 | 为未入版本控制的文件夹建仓库：补 `.gitignore` 与 `.gitattributes`、`git init`、首次提交并推送 |
 | 0 | 退出 |
 
-> 本面板只做**笔记区的仓库管理**。环境检测 / 账户 / SSH 属于「换机器时配置一次」的事，
-> 已剥离为 `git_setup/git_setup.py`（总面板选项 1）；符号库、写作进度等子工具入口也统一由
-> `launcher.py` 提供，本面板不再重复。
+> 本面板只做**笔记区的仓库管理**；环境检测 / 账户 / SSH 在 `git_setup/`（总面板选项 1），
+> 符号库、写作进度等子工具入口由 `launcher.py` 提供。
 
-配置写在脚本同目录的 `manager.conf`（含本机路径，已列入 `.gitignore`）：
+配置写在脚本同目录的 `manager.conf`：
 
 ```ini
 root = D:/你的笔记根目录
@@ -83,7 +82,7 @@ ignore =            # 额外忽略的目录名，逗号分隔
 
 ### 配置
 
-把 `symbols.conf.example` 复制为 `symbols.conf`（与本脚本同目录），按本机情况填写：
+把 `symbols.conf.example` 复制为 `symbols.conf`（与本脚本同目录），按实际路径填写：
 
 ```ini
 root = D:\你的笔记根目录
@@ -156,7 +155,7 @@ python progress.py --no-browser    启动但不打开浏览器
 
 ### 配置
 
-把 `progress.conf.example` 复制为 `progress.conf`（与脚本同目录），按本机情况修改：
+把 `progress.conf.example` 复制为 `progress.conf`（与脚本同目录），按实际路径修改：
 
 ```ini
 [paths]
@@ -185,7 +184,7 @@ python check_sensitive.py --tracked      # 全量体检：扫所有已跟踪文�
 python check_sensitive.py --dir <路径>   # 扫指定目录（非 git 目录也能用）
 ```
 
-- 内置模式只匹配通用形态（Windows 与 Unix 的家目录路径），本机专有词放在工作区根的 `.sensitive-words.txt` 中，脚本会**逐级向上**收集合并，因此各仓库不必各放一份。
+- 内置模式只匹配通用形态（Windows 与 Unix 的家目录路径）；其余词表放在工作区根的 `.sensitive-words.txt`，脚本**逐级向上**收集合并。
 - **只扫新增行**：被删除的内容不构成泄露，所以「清理本机信息」这类提交不会被自己误拦。
 - 命中时打印「文件 + 类别 + 内容片段」并以退出码 1 结束，可直接用作 `pre-commit` 钩子。
 
@@ -195,14 +194,9 @@ python check_sensitive.py --dir <路径>   # 扫指定目录（非 git 目录也
 cp Tools/check_sensitive/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/hooks/pre-commit"
 ```
 
-钩子是本地文件（`.git/hooks/` 不进版本控制），换机器或重新 clone 后需重装。临时跳过单次检查用 `git commit --no-verify`。
+钩子装在 `.git/hooks/` 里（不进版本控制），重新 clone 后需重装；临时跳过单次检查用 `git commit --no-verify`。
 
 > 用 `new_note/new_note.py` 新建的笔记仓库**会自动装好**这个钩子，不必再手工执行上面的命令。
->
-> 钩子按「相对位置 + 通配」（`../Tools/*/check_sensitive.py` 等）找脚本，所以工具目录
-> 改名、挪窝都不用重装；反过来，如果**脚本位置变了又没重装**，钩子会找不到脚本而静默放行 ——
-> 装了钩子后建议这样验一下：在该仓库里 `sh .git/hooks/pre-commit`，能看到
-> `[通过] 暂存区新增内容：…` 就说明脚本被找到了。
 
 ## 目录结构
 
@@ -233,17 +227,14 @@ Tools/
 │   └── repo_check.py
 ├── check_sensitive/       提交前本机信息扫描
 │   └── check_sensitive.py / pre-commit   ← 钩子模板也在这里
-├── sync_paths/            配置路径检查与修复（本机专用，不入库）
+├── sync_paths/            配置路径检查与修复
 │   └── sync_paths.py
 ├── commit/                一键提交
 │   └── commit.py / commit.md
-├── show_memory/           （已从面板移除；需要时单独运行）
-│   └── show_memory.py
-└── _tools/                git-filter-repo 等第三方，以及 `_rules.txt`
+└── show_memory/           （已从面板移除；需要时单独运行）
+    └── show_memory.py
 ```
 
-> `outline_tool` 复用 `new_note` 的解析与生成规则（`sys.path` 指向 `../new_note`），
-> 所以两层目录结构**不能单独挪走其中一个**。
 
 直接运行 `python launcher.py` 即可进入总面板；也可以进入子目录单独运行某个脚本
 （脚本的配置与运行档案都放在**它自己所在的目录**，所以单独运行同样正常）。
@@ -354,8 +345,7 @@ levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \sect
 - **不提供大纲**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
   后续自己补 `Content/` 与 `\input`。
 - `git init` 之后、首次提交之前，会自动把 `check_sensitive/pre-commit` 装进新仓库的 `.git/hooks/`，
-  让「提交前本机信息扫描」一并生效（不必事后手工补装）。钩子靠相对路径逐级查找
-  `check_sensitive/check_sensitive.py`，找不到时放行 —— 所以它不阻断提交，也不含本机路径。
+  让「提交前本机信息扫描」一并生效，不必事后手工补装。
 
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
@@ -473,7 +463,7 @@ python show_memory/show_memory.py MEMORY     # 看长期记忆
 
 | 文件 | 说明 |
 |---|---|
-| `manager.conf` / `symbols.conf` / `progress.conf` | 本机配置，含绝对路径 |
+| `manager.conf` / `symbols.conf` / `progress.conf` | 工具配置，含绝对路径 |
 | `symbols_extract.json` | 符号提取记录，`{文件夹: {日期: {命令名: 定义行}}}` |
 | `notes_tree.json` | 笔记目录结构快照 |
 | `progress_marks.json` | 进度标记数据（三维标记、备注、待办、计划、章统计覆盖），原子写入并在每次写入前留一份 `.bak` |
