@@ -355,6 +355,12 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
 .envTbl .caret:hover{color:var(--fg)}
 .envTbl .caret.leaf{cursor:default}
 .envTbl td.lb .tag-un{margin-left:6px}
+/* 未启用块：不计入合计，但列出来，让两套口径的差异看得见 */
+.envTbl tr.offHead td{text-align:left;color:var(--fg3);cursor:pointer;
+  border-top:.5px solid var(--bd);padding-top:8px}
+.envTbl tr.offHead td:hover{color:var(--fg)}
+.envTbl .hint{font-size:10px;color:var(--fg3)}
+.envTbl tr.off td{opacity:.72}
 .dn0{stroke:var(--blue)}
 .dn1{stroke:var(--blue);opacity:.76}
 .dn2{stroke:var(--blue);opacity:.54}
@@ -2192,6 +2198,29 @@ function envRowHTML(labelHTML, envNames, o) {
   return h + '<td class="mono">' + fmtInt(total) + "</td></tr>";
 }
 
+/* 未启用的顶层章：不计入进度统计，但明细页照常显示它们的数字。
+   平铺成一份列表，单独成块列在表尾 —— 这样「结构汇总」与「进度统计」两套口径的
+   差异是看得见的，而不是两个页面各说各话。 */
+function envOffRows() {
+  const d = S.data;
+  if (!d) return [];
+  const all = S.statsScope === "__all__";
+  const notes = all ? (d.notes || [])
+    : (d.notes || []).filter((n) => n.name === S.statsScope);
+  const out = [];
+  notes.forEach((n) => {
+    (n.tops || []).filter((t) => !t.decision).forEach((t) => {
+      out.push({
+        key: t.id,
+        label: (all ? n.title + " · " : "") + nodeLabel(t),
+        envNames: (t.stats || {}).env_names || {},
+        children: t.children || [],
+      });
+    });
+  });
+  return out;
+}
+
 function chartEnvSVG(units) {
   const merged = mergeEnvNames(units.map((u) => u.envNames));
   const ent = Object.keys(merged).filter((k) => merged[k] > 0)
@@ -2255,7 +2284,42 @@ function chartEnvSVG(units) {
       });
     }
   });
-  rows += envRowHTML("合计", sumEnv, Object.assign({}, base, {cls: "sum"}));
+  rows += envRowHTML("计入范围合计", sumEnv, Object.assign({}, base, {cls: "sum"}));
+
+  /* 未启用块：默认收起，免得十几行 0 占版面；展开后才看具体是哪几章 */
+  const offRows = envOffRows();
+  const cols = topKeys.length + (restKeys.length ? 1 : 0) + 2;
+  if (offRows.length) {
+    const offTotal = {};
+    offRows.forEach((r) => {
+      Object.keys(r.envNames || {}).forEach((k) => {
+        offTotal[k] = (offTotal[k] || 0) + (r.envNames[k] || 0);
+      });
+    });
+    const offSum = Object.keys(offTotal).reduce((a, k) => a + offTotal[k], 0);
+    const offOpen = S.envOpen.has("__off__");
+    rows += '<tr class="offHead" data-envopen="__off__"><td colspan="' + cols + '">'
+      + (offOpen ? "▾" : "▸") + " 未启用（不计入）：" + offRows.length + " 章 · 环境 "
+      + fmtInt(offSum) + ' 个<span class="hint">　明细页照常显示它们的数字</span></td></tr>';
+    if (offOpen) {
+      offRows.forEach((r) => {
+        const kids = r.children || [];
+        rows += envRowHTML(esc(r.label), r.envNames,
+          Object.assign({}, base, {key: r.key, nKids: kids.length, cls: "off",
+                                   open: S.envOpen.has(r.key)}));
+        if (kids.length && S.envOpen.has(r.key)) {
+          kids.forEach((c) => {
+            rows += envRowHTML(esc(nodeLabel(c))
+              + (c.excluded ? '<span class="tag-un">未启用</span>' : ""),
+              ((c.stats || {}).env_names) || {},
+              Object.assign({}, base, {depth: 1, key: c.id, cls: "off"}));
+          });
+        }
+      });
+      rows += envRowHTML("未启用合计", offTotal,
+        Object.assign({}, base, {cls: "sum off"}));
+    }
+  }
   h += '<div class="envTblWrap"><table class="envTbl"><thead><tr>'
     + '<th class="lb">' + (S.statsScope === "__all__" ? "笔记 / 章" : "章 / 节") + "</th>"
     + topKeys.map((k) => "<th>" + esc(ENV_CN[k] || k) + "</th>").join("")
@@ -2264,10 +2328,10 @@ function chartEnvSVG(units) {
 
   h += '<div class="chartCap">环形只标前 5 类，其余并入「其他」。'
     + "下表按" + (S.statsScope === "__all__" ? "笔记" : "章")
-    + "列出构成，点行首的三角展开下一层；每行是该节点**整棵子树**的汇总 —— "
+    + "列出构成，点行首的三角展开下一层；每行是该节点<b>整棵子树</b>的汇总 —— "
     + "与明细页点开该节点看到的「定理环境」同源，逐级相加都能对上。"
-    + "被排除的下一层会标「未启用」：它的环境算在父行里，但不计入进度统计"
-    + "（明细页也照常显示它的数字，两边不打架）。</div>";
+    + "表尾的「未启用」块列出被排除的章（默认收起）：它们的环境算在自己那行里，"
+    + "但既不进「计入范围合计」也不进环形 —— 明细页照常显示它们的数字。</div>";
   return h + '</div>';
 }
 
