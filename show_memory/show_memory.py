@@ -18,8 +18,8 @@ show_memory.py — 查看工作记录
 import sys
 from pathlib import Path
 
-MAINTAIN_DIR = Path(__file__).resolve().parent
-TOOLS_DIR = MAINTAIN_DIR.parent
+TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/show_memory/
+TOOLS_DIR = TOOL_DIR.parent
 WORKSPACE = TOOLS_DIR.parent
 MEM_DIR = WORKSPACE / ".workbuddy" / "memory"
 

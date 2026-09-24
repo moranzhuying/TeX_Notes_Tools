@@ -5,18 +5,18 @@
 | 脚本 | 用途 | 详细说明 |
 |---|---|---|
 | `launcher.py` | **总面板**：列出并调起下面各工具 | 见下 |
-| `guard/git_setup.py` | Git 基本信息：环境检测 / 配置账户 / 配置 SSH | 见下 |
+| `git_setup/git_setup.py` | Git 基本信息：环境检测 / 配置账户 / 配置 SSH | 见下 |
 | `manager/manager.py` | 笔记工作区管理：仓库状态 / 批量提交 / 建仓库 | `manager.md` |
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 | 见下 |
 | `progress/progress.py` | 写作进度追踪：扫描笔记并在浏览器中查看 | `progress.md`、`progress_design.md` |
-| `maintain/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
-| `maintain/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
-| `maintain/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
-| `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
-| `maintain/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
-| `maintain/search_notes.py` | 跨笔记全文检索，无参数即交互面板 | 见下 |
-| `guard/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
-| `guard/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
+| `new_note/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
+| `outline_tool/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
+| `note_tools/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
+| `clean_aux/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
+| `repo_check/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
+| `search_notes/search_notes.py` | 跨笔记全文检索，无参数即交互面板 | 见下 |
+| `check_sensitive/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
+| `commit/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
 
 ## manager.py — 笔记工作区管理面板
 
@@ -50,7 +50,7 @@
 | 0 | 退出 |
 
 > 本面板只做**笔记区的仓库管理**。环境检测 / 账户 / SSH 属于「换机器时配置一次」的事，
-> 已剥离为 `guard/git_setup.py`（总面板选项 1）；符号库、写作进度等子工具入口也统一由
+> 已剥离为 `git_setup/git_setup.py`（总面板选项 1）；符号库、写作进度等子工具入口也统一由
 > `launcher.py` 提供，本面板不再重复。
 
 配置写在脚本同目录的 `manager.conf`（含本机路径，已列入 `.gitignore`）：
@@ -192,42 +192,58 @@ python check_sensitive.py --dir <路径>   # 扫指定目录（非 git 目录也
 装钩子（每个仓库执行一次）：
 
 ```bash
-cp hooks/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/hooks/pre-commit"
+cp Tools/check_sensitive/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/hooks/pre-commit"
 ```
 
 钩子是本地文件（`.git/hooks/` 不进版本控制），换机器或重新 clone 后需重装。临时跳过单次检查用 `git commit --no-verify`。
 
-> 用 `maintain/new_note.py` 新建的笔记仓库**会自动装好**这个钩子，不必再手工执行上面的命令。
+> 用 `new_note/new_note.py` 新建的笔记仓库**会自动装好**这个钩子，不必再手工执行上面的命令。
+>
+> 钩子按「相对位置 + 通配」（`../Tools/*/check_sensitive.py` 等）找脚本，所以工具目录
+> 改名、挪窝都不用重装；反过来，如果**脚本位置变了又没重装**，钩子会找不到脚本而静默放行 ——
+> 装了钩子后建议这样验一下：在该仓库里 `sh .git/hooks/pre-commit`，能看到
+> `[通过] 暂存区新增内容：…` 就说明脚本被找到了。
 
 ## 目录结构
 
-每个工具一个子目录，根目录只放总面板：
+**一个面板选项 = 一个同名目录**（脚本、说明、配置都放在自己目录里，互不混）：
 
 ```
 Tools/
 ├── launcher.py            总面板：列出并调起下面各工具
+├── git_setup/             Git 基本信息（环境检测 / 账户 / SSH）
+│   └── git_setup.py
 ├── manager/               笔记工作区管理
-│   ├── manager.py / manager.md / manager.conf
+│   └── manager.py / manager.md / manager.conf(.example)
 ├── symbols/               符号库管理
-│   ├── symbols.py / symbols.md / symbols.conf(.example)
+│   └── symbols.py / symbols.md / symbols.conf(.example)
 ├── progress/              写作进度追踪
-│   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
-├── maintain/              创建与维护
-│   ├── new_note.py       从模板新建一本笔记
-│   ├── outline_tool.py   大纲的创建 / 导出 / 校验
-│   ├── outline_example.md  大纲 md 的示例（可复制改写）
-│   ├── note_tools.py     单本笔记的入口（提交 / 习题模式）
-│   ├── clean_aux.py      清理编译产物
-│   ├── repo_check.py     仓库体检
-│   ├── search_notes.py   跨笔记全文检索
-│   └── show_memory.py    （已从面板移除；需要时单独运行）
-└── guard/                 防护与提交
-    ├── git_setup.py       Git 基本信息（环境检测 / 账户 / SSH）
-    ├── check_sensitive.py 提交前本机信息扫描
-    ├── commit.py / commit.md
-    ├── sync_paths.py      配置路径检查（目录改名后修复 .conf）
-    └── hooks/pre-commit   供各仓库安装的 git 钩子
+│   └── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
+├── new_note/              从模板新建笔记
+│   └── new_note.py / outline_example.md
+├── outline_tool/          大纲的创建 / 导出 / 校验
+│   └── outline_tool.py
+├── note_tools/            单本笔记的入口（提交 / 习题模式）
+│   └── note_tools.py
+├── clean_aux/             清理编译产物
+│   └── clean_aux.py
+├── search_notes/          跨笔记全文检索
+│   └── search_notes.py
+├── repo_check/            仓库体检
+│   └── repo_check.py
+├── check_sensitive/       提交前本机信息扫描
+│   └── check_sensitive.py / pre-commit   ← 钩子模板也在这里
+├── sync_paths/            配置路径检查与修复（本机专用，不入库）
+│   └── sync_paths.py
+├── commit/                一键提交
+│   └── commit.py / commit.md
+├── show_memory/           （已从面板移除；需要时单独运行）
+│   └── show_memory.py
+└── _tools/                git-filter-repo 等第三方，以及 `_rules.txt`
 ```
+
+> `outline_tool` 复用 `new_note` 的解析与生成规则（`sys.path` 指向 `../new_note`），
+> 所以两层目录结构**不能单独挪走其中一个**。
 
 直接运行 `python launcher.py` 即可进入总面板；也可以进入子目录单独运行某个脚本
 （脚本的配置与运行档案都放在**它自己所在的目录**，所以单独运行同样正常）。
@@ -243,20 +259,20 @@ Tools/
 写了就作为默认值。
 
 ```bash
-python maintain/new_note.py                              # 交互式引导（推荐）
-python maintain/new_note.py <笔记名>                      # 只建本地仓库（不生成骨架）
-python maintain/new_note.py <笔记名> --push               # 同时建 GitHub 仓库并推送
-python maintain/new_note.py <笔记名> --outline <大纲.md>   # 按 md 大纲生成骨架
-python maintain/new_note.py <笔记名> --template <目录>
-python maintain/new_note.py <笔记名> --dry-run            # 预演，不写任何文件
-python maintain/new_note.py <笔记名> --outline <大纲.md> --levels textbook   # 覆盖 md 里的设置
+python new_note/new_note.py                              # 交互式引导（推荐）
+python new_note/new_note.py <笔记名>                      # 只建本地仓库（不生成骨架）
+python new_note/new_note.py <笔记名> --push               # 同时建 GitHub 仓库并推送
+python new_note/new_note.py <笔记名> --outline <大纲.md>   # 按 md 大纲生成骨架
+python new_note/new_note.py <笔记名> --template <目录>
+python new_note/new_note.py <笔记名> --dry-run            # 预演，不写任何文件
+python new_note/new_note.py <笔记名> --outline <大纲.md> --levels textbook   # 覆盖 md 里的设置
 ```
 
 ### 大纲 md 怎么写
 
 文件头是可省的元信息块（`---` 包围、`键: 值`），随后用 **Markdown 标题的层级**表示
 目录层级：最浅的一层就是最外层；行内用 `|` 分隔「目录名」与「中译名」（中译名可省，
-省了就退用目录名）。可直接抄 `maintain/outline_example.md`。
+省了就退用目录名）。可直接抄 `new_note/outline_example.md`。
 
 ```markdown
 ---
@@ -337,9 +353,9 @@ levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \sect
   「最外层标题命令 ＋ `\input`」的成对分组。
 - **不提供大纲**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
   后续自己补 `Content/` 与 `\input`。
-- `git init` 之后、首次提交之前，会自动把 `guard/hooks/pre-commit` 装进新仓库的 `.git/hooks/`，
+- `git init` 之后、首次提交之前，会自动把 `check_sensitive/pre-commit` 装进新仓库的 `.git/hooks/`，
   让「提交前本机信息扫描」一并生效（不必事后手工补装）。钩子靠相对路径逐级查找
-  `guard/check_sensitive.py`，找不到时放行 —— 所以它不阻断提交，也不含本机路径。
+  `check_sensitive/check_sensitive.py`，找不到时放行 —— 所以它不阻断提交，也不含本机路径。
 
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
@@ -349,11 +365,11 @@ levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \sect
 `new_note.py` 按大纲 md 建骨架，本工具负责**把大纲弄出来**。三个入口：
 
 ```bash
-python maintain/outline_tool.py                       # 面板
-python maintain/outline_tool.py --check <大纲.md>      # 只校验（不弹提问，并预览会生成哪些文件）
-python maintain/outline_tool.py --check <大纲.md> --write-levels   # 顺手把推断的 levels 写进 md
-python maintain/outline_tool.py --export <笔记目录> [输出.md]
-python maintain/outline_tool.py --from-text <清单.txt> [输出.md]   # 层级按层数自动推断
+python outline_tool/outline_tool.py                       # 面板
+python outline_tool/outline_tool.py --check <大纲.md>      # 只校验（不弹提问，并预览会生成哪些文件）
+python outline_tool/outline_tool.py --check <大纲.md> --write-levels   # 顺手把推断的 levels 写进 md
+python outline_tool/outline_tool.py --export <笔记目录> [输出.md]
+python outline_tool/outline_tool.py --from-text <清单.txt> [输出.md]   # 层级按层数自动推断
 ```
 
 **1. 新建大纲**：粘一份「缩进清单」（`目录名 | 中译名`，缩进表示层级，`END` 结束）
@@ -399,11 +415,11 @@ md 没写 `levels:` 或写的与结构不符时，按结构推断并给出「改
 回车则不删退出。删除前还会再确认一次。
 
 ```bash
-python maintain/clean_aux.py                 # 交互面板
-python maintain/clean_aux.py --write         # 删除全部（先确认）
-python maintain/clean_aux.py --write --yes   # 删除全部且不确认（脚本用）
-python maintain/clean_aux.py --with-pdf      # 连 PDF 一起
-python maintain/clean_aux.py --area notes    # 只处理某区域：notes / template / tools / all
+python clean_aux/clean_aux.py                 # 交互面板
+python clean_aux/clean_aux.py --write         # 删除全部（先确认）
+python clean_aux/clean_aux.py --write --yes   # 删除全部且不确认（脚本用）
+python clean_aux/clean_aux.py --with-pdf      # 连 PDF 一起
+python clean_aux/clean_aux.py --area notes    # 只处理某区域：notes / template / tools / all
 ```
 
 **默认不动 PDF**（那通常是你真正想留的东西），且只按扩展名匹配编译产物，不会碰到源码。
@@ -413,8 +429,8 @@ python maintain/clean_aux.py --area notes    # 只处理某区域：notes / temp
 把「仓库规范」变成可自动核查项，避免搬家 / 改名 / 复制模板后靠肉眼盯：
 
 ```bash
-python maintain/repo_check.py              # 巡检全部区域
-python maintain/repo_check.py --area notes # notes / template / tools / all
+python repo_check/repo_check.py              # 巡检全部区域
+python repo_check/repo_check.py --area notes # notes / template / tools / all
 ```
 
 逐仓库检查：`.gitignore` / `.gitattributes` 是否存在；有没有**被跟踪**的编译产物；
@@ -429,28 +445,28 @@ python maintain/repo_check.py --area notes # notes / template / tools / all
 选项直接跟在关键字后面（`谱序列 -i`、`compact -n Algebra`），回车或 `q` 退出。
 
 ```bash
-python maintain/search_notes.py                           # 交互面板
-python maintain/search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
-python maintain/search_notes.py compact -n Algebra         # 限定某本笔记
-python maintain/search_notes.py 定理 -e tex,md             # 限定扩展名
-python maintain/search_notes.py "R^{n}" -r                 # 按正则匹配
-python maintain/search_notes.py compact -i                 # 忽略大小写
+python search_notes/search_notes.py                           # 交互面板
+python search_notes/search_notes.py 谱序列                     # 默认搜全部笔记的 .tex
+python search_notes/search_notes.py compact -n Algebra         # 限定某本笔记
+python search_notes/search_notes.py 定理 -e tex,md             # 限定扩展名
+python search_notes/search_notes.py "R^{n}" -r                 # 按正则匹配
+python search_notes/search_notes.py compact -i                 # 忽略大小写
 ```
 
 参数：`-n/--note` 笔记名、`-e/--ext` 扩展名（默认 tex）、`-r/--regex`、`-i/--ignore-case`。
 
 ## show_memory.py — 查看工作记录
 
-> 已从总面板移除（2026-09-24）。脚本仍在，需要时直接 `python maintain/show_memory.py`。
+> 已从总面板移除（2026-09-24）。脚本仍在，需要时直接 `python show_memory/show_memory.py`。
 
 `.workbuddy/memory/` 里按日期归档着工作日志与一份长期记忆。这些记录平时不看，
 但「上次改到哪儿了」「为什么当初这么定」往往只能从这里找。
 
 ```bash
-python maintain/show_memory.py            # 列出所有记录
-python maintain/show_memory.py --last 3   # 看最近 3 天
-python maintain/show_memory.py 2026-09-24 # 看某一天
-python maintain/show_memory.py MEMORY     # 看长期记忆
+python show_memory/show_memory.py            # 列出所有记录
+python show_memory/show_memory.py --last 3   # 看最近 3 天
+python show_memory/show_memory.py 2026-09-24 # 看某一天
+python show_memory/show_memory.py MEMORY     # 看长期记忆
 ```
 
 ## 生成的档案

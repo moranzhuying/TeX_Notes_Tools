@@ -25,11 +25,12 @@ import re
 import sys
 from pathlib import Path
 
-MAINTAIN_DIR = Path(__file__).resolve().parent
-TOOLS_DIR = MAINTAIN_DIR.parent
-WORKSPACE = TOOLS_DIR.parent
+TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/outline_tool/
+TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/
+WORKSPACE = TOOLS_DIR.parent                      # 工作区根
 
-sys.path.insert(0, str(MAINTAIN_DIR))
+# 复用 new_note.py 的解析与生成规则（同一套，别抄两份）
+sys.path.insert(0, str(TOOLS_DIR / "new_note"))
 import new_note as nn          # noqa: E402
 
 INPUT_RE = re.compile(r"^\s*%?\s*\\input\{(.+?)\}\s*$")

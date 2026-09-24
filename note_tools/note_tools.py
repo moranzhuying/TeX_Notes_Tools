@@ -15,8 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-MAINTAIN_DIR = Path(__file__).resolve().parent
-TOOLS_DIR = MAINTAIN_DIR.parent
+TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/note_tools/
+TOOLS_DIR = TOOL_DIR.parent
 WORKSPACE = TOOLS_DIR.parent
 MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
 

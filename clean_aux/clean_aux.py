@@ -25,7 +25,7 @@ import os
 import sys
 from pathlib import Path
 
-# <工作区>/Tools/maintain/ → 工作区根
+# <工作区>/Tools/clean_aux/ → 工作区根
 WORKSPACE = Path(__file__).resolve().parent.parent.parent
 
 # 编译中间产物（可再生，删了没关系）

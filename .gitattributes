@@ -2,4 +2,4 @@
 *.py text eol=lf
 
 # git 钩子是无扩展名的 shell 脚本，需单独声明
-hooks/pre-commit text eol=lf
+check_sensitive/pre-commit text eol=lf

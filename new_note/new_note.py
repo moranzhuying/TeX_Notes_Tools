@@ -6,8 +6,8 @@ new_note.py — 从模板创建一本新笔记
 把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按 Markdown 大纲生成
 `Content/` 骨架 → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
 
-`git init` 之后会自动把 `guard/hooks/pre-commit` 装进新仓库，把「提交前本机信息扫描」
-一并带过去，不必事后手工补装。钩子靠相对路径逐级查找 `guard/check_sensitive.py`，
+`git init` 之后会自动把 `check_sensitive/pre-commit` 装进新仓库，把「提交前本机信息扫描」
+一并带过去，不必事后手工补装。钩子靠相对路径 + 通配查找 `check_sensitive.py`，
 找不到时放行，所以不会因为换机器而阻断提交。
 
 **不带参数运行会进入交互式引导**（推荐，从总面板进来就是这条路）：依次询问笔记名、
@@ -96,11 +96,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-MAINTAIN_DIR = Path(__file__).resolve().parent
-TOOLS_DIR = MAINTAIN_DIR.parent
+TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/new_note/
+TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/
 WORKSPACE = TOOLS_DIR.parent
 MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
-HOOK_SRC = TOOLS_DIR / "guard" / "hooks" / "pre-commit"
+HOOK_SRC = TOOLS_DIR / "check_sensitive" / "pre-commit"
 
 COPY_FILES = [
     ".gitignore", ".gitattributes",
@@ -646,7 +646,7 @@ def copy_item(src, dst, dry):
 def install_hook(target, dry):
     """把提交前扫描钩子装进新仓库的 `.git/hooks/`。
 
-    钩子本身是纯 sh 脚本，靠相对路径逐级查找 `guard/check_sensitive.py`，
+    钩子本身是纯 sh 脚本，靠相对路径 + 通配查找 `check_sensitive/check_sensitive.py`，
     不含任何本机路径，所以可以直接复制过去。
 
     返回 (ok, 说明)。装不上不算致命 —— 只提示，不中断建仓库流程。
