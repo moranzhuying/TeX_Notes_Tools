@@ -21,6 +21,11 @@ html[data-theme="light"]{
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+/* hidden 属性必须压得住作者样式里的 display。
+   浏览器只在「没有别的 display 规则」时才让 hidden 生效；像 #viewer 那样写了
+   display:flex 的元素，hidden 会被无视 —— 结果它一直盖在整页之上，连「关闭」
+   按钮都失效（关闭只是把 hidden 设回 true，而它本来就是 true）。 */
+[hidden]{display:none!important}
 body{
   background:var(--bg); color:var(--fg);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
