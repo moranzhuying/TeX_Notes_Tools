@@ -4,7 +4,11 @@
 new_note.py — 从模板创建一本新笔记
 
 把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按录入的章节结构生成
-`Content/` 骨架 → `git init` → 首次提交 →（可选）建远程并推送。
+`Content/` 骨架 → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
+
+`git init` 之后会自动把 `guard/hooks/pre-commit` 装进新仓库，把「提交前本机信息扫描」
+一并带过去，不必事后手工补装。钩子靠相对路径逐级查找 `guard/check_sensitive.py`，
+找不到时放行，所以不会因为换机器而阻断提交。
 
 **不带参数运行会进入交互式引导**（推荐，从总面板进来就是这条路）：依次询问
 笔记名、是否建远程、用哪个模板，然后让你粘贴章节结构。
@@ -12,7 +16,7 @@ new_note.py — 从模板创建一本新笔记
 用法
 ----
     python new_note.py                        # 交互式引导
-    python new_note.py <笔记名>                # 只建本地仓库（章节结构用模板自带的）
+    python new_note.py <笔记名>                # 只建本地仓库（不生成章节骨架）
     python new_note.py <笔记名> --push         # 同时建 GitHub 仓库并推送
     python new_note.py <笔记名> --template <目录>
     python new_note.py <笔记名> --outline <文件>   # 从文件读章节结构
@@ -48,6 +52,7 @@ MAINTAIN_DIR = Path(__file__).resolve().parent
 TOOLS_DIR = MAINTAIN_DIR.parent
 WORKSPACE = TOOLS_DIR.parent
 MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
+HOOK_SRC = TOOLS_DIR / "guard" / "hooks" / "pre-commit"
 
 COPY_FILES = [
     ".gitignore", ".gitattributes",
@@ -205,6 +210,31 @@ def copy_item(src, dst, dry):
         copy_item(child, dst / child.name, dry)
 
 
+def install_hook(target, dry):
+    """把提交前扫描钩子装进新仓库的 `.git/hooks/`。
+
+    钩子本身是纯 sh 脚本，靠相对路径逐级查找 `guard/check_sensitive.py`，
+    不含任何本机路径，所以可以直接复制过去。
+
+    返回 (ok, 说明)。装不上不算致命 —— 只提示，不中断建仓库流程。
+    """
+    dst = target / ".git" / "hooks" / "pre-commit"
+    if not HOOK_SRC.is_file():
+        return False, f"未找到钩子源文件，跳过：{HOOK_SRC}"
+    if dry:
+        return True, ".git/hooks/pre-commit（提交前本机信息扫描）"
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(HOOK_SRC, dst)
+        try:
+            os.chmod(dst, 0o755)      # Windows 上近乎空操作，POSIX 上必需
+        except OSError:
+            pass
+    except OSError as e:
+        return False, f"安装失败：{e}"
+    return True, ".git/hooks/pre-commit（提交前本机信息扫描）"
+
+
 def strip_test_sections(root, dry):
     removed = []
     for p in sorted(root.rglob("*"), key=lambda x: -len(x.parts)):
@@ -308,7 +338,8 @@ def interactive():
         if len(files) > 12:
             print(f"             …（其余 {len(files) - 12} 个）")
     else:
-        print("  章节结构 ：沿用模板自带（不做替换）")
+        print("  章节结构 ：不生成（模板自带的示例章会被删除，"
+              "\\mainmatter 下留一个空 \\part）")
     print("-" * 64)
 
     if ask("\n  确认执行？[y/N]", "N").lower() not in ("y", "yes"):
@@ -370,6 +401,9 @@ def run(name, template, target, do_push, tree, dry):
             for c in build_content(content, tree):
                 print(f"  Content/{c}/index.tex")
                 print(f"  Content/{c}/…/index.tex")
+    else:
+        print("\n章节骨架：未提供大纲，不生成；模板自带的示例章已删除，"
+              "\\mainmatter 下只剩空的 \\part")
 
     if dry:
         print("\n[预演] 未写入任何文件。")
@@ -380,10 +414,17 @@ def run(name, template, target, do_push, tree, dry):
     if not ok:
         print(f"  ✗ 失败：{err}")
         return 1
-    ok, _, err = sh(["git", "add", "-A"], cwd=str(target))
+    print("  ✓ 分支 master")
+
+    print("\n安装提交前钩子：")
+    hook_ok, hook_msg = install_hook(target, dry)
+    print(f"  {'✓' if hook_ok else '⚠'} {hook_msg}")
+
+    # 钩子装完后才提交 —— 首次提交也要过一遍本机信息扫描
+    ok, out, err = sh(["git", "add", "-A"], cwd=str(target))
     if ok:
-        ok, _, err = sh(["git", "commit", "-q", "-m", f"初始化笔记：{name}"], cwd=str(target))
-    print("  ✓ 分支 master，首次提交完成" if ok else f"  ✗ 提交失败：{err}")
+        ok, out, err = sh(["git", "commit", "-q", "-m", f"初始化笔记：{name}"], cwd=str(target))
+    print("  ✓ 首次提交完成" if ok else f"  ✗ 提交失败：{err or out}")
 
     if do_push:
         print("\n创建远程仓库：")

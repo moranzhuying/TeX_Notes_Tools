@@ -197,6 +197,8 @@ cp hooks/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/
 
 钩子是本地文件（`.git/hooks/` 不进版本控制），换机器或重新 clone 后需重装。临时跳过单次检查用 `git commit --no-verify`。
 
+> 用 `maintain/new_note.py` 新建的笔记仓库**会自动装好**这个钩子，不必再手工执行上面的命令。
+
 ## 目录结构
 
 每个工具一个子目录，根目录只放总面板：
@@ -231,7 +233,7 @@ Tools/
 ## new_note.py — 从模板新建笔记
 
 把「开始一本新笔记」的一串手工操作收敛成一步：复制骨架 → 按录入的章节结构生成
-`Content/` → `git init` → 首次提交 →（可选）建远程并推送。
+`Content/` → `git init` → 装提交前钩子 → 首次提交 →（可选）建远程并推送。
 
 **不带参数运行会进入交互式引导**（从总面板进来就是这条路）：依次询问笔记名、
 是否建远程、用哪个模板，然后让你粘贴章节结构，最后给出确认预览。
@@ -276,6 +278,11 @@ python maintain/new_note.py <笔记名> --dry-run      # 预演，不写任何�
   跳过编译产物与 `__pycache__`。
 - 模板里带 `Test` 字样的章节会被剔除，并同步移除 `main.tex` 中对应的 `\input`。
 - `main.tex` 的 `\title`、首个 `\part` 会改成笔记名，`\mainmatter` 下会写入新的章节 `\input` 链。
+- **不提供章节结构**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
+  后续自己补 `Content/` 与 `\input`。
+- `git init` 之后、首次提交之前，会自动把 `guard/hooks/pre-commit` 装进新仓库的 `.git/hooks/`，
+  让「提交前本机信息扫描」一并生效（不必事后手工补装）。钩子靠相对路径逐级查找
+  `guard/check_sensitive.py`，找不到时放行 —— 所以它不阻断提交，也不含本机路径。
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
 
