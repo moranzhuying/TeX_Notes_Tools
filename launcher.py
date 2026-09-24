@@ -35,18 +35,19 @@ MENU = [
     ("4", "写作进度追踪表", "progress/progress.py", "后台", "核心工具"),
 
     ("5", "从模板新建笔记", "maintain/new_note.py", "面板", "创建与维护"),
-    ("6", "笔记工具（提交 / 切换习题编排模式）", "maintain/note_tools.py", "面板", "创建与维护"),
-    ("7", "清理编译产物（aux / log / xdv …）", "maintain/clean_aux.py", "面板", "创建与维护"),
-    ("8", "仓库体检（规范 / 误跟踪 / 未提交）", "maintain/repo_check.py", "面板", "创建与维护"),
-    ("9", "本地全文检索", "maintain/search_notes.py", "面板", "创建与维护"),
-    ("10", "工作记录查看", "maintain/show_memory.py", "面板", "创建与维护"),
+    ("6", "大纲工具（创建 / 导出 / 校验）", "maintain/outline_tool.py", "面板", "创建与维护"),
+    ("7", "笔记工具（提交 / 切换习题编排模式）", "maintain/note_tools.py", "面板", "创建与维护"),
+    ("8", "清理编译产物（aux / log / xdv …）", "maintain/clean_aux.py", "面板", "创建与维护"),
+    ("9", "仓库体检（规范 / 误跟踪 / 未提交）", "maintain/repo_check.py", "面板", "创建与维护"),
+    ("10", "本地全文检索", "maintain/search_notes.py", "面板", "创建与维护"),
+    ("11", "工作记录查看", "maintain/show_memory.py", "面板", "创建与维护"),
 
-    ("11", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
-    ("12", "配置路径检查与修复", "guard/sync_paths.py", "参数:", "信息安全与提交"),
-    ("13", "提交本工具集到 GitHub", "guard/commit.py", "面板", "信息安全与提交"),
+    ("12", "提交前本机信息扫描（全量体检）", "guard/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
+    ("13", "配置路径检查与修复", "guard/sync_paths.py", "参数:", "信息安全与提交"),
+    ("14", "提交本工具集到 GitHub", "guard/commit.py", "面板", "信息安全与提交"),
 ]
 
-SUBMIT_NO = "13"          # 打 * 标记的那一项
+SUBMIT_NO = "14"          # 打 * 标记的那一项
 
 
 def clear():

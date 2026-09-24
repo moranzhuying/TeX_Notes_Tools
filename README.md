@@ -10,6 +10,7 @@
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 | 见下 |
 | `progress/progress.py` | 写作进度追踪：扫描笔记并在浏览器中查看 | `progress.md`、`progress_design.md` |
 | `maintain/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
+| `maintain/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
 | `maintain/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
 | `maintain/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …） | 见下 |
 | `maintain/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
@@ -214,6 +215,7 @@ Tools/
 │   ├── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
 ├── maintain/              创建与维护
 │   ├── new_note.py       从模板新建一本笔记
+│   ├── outline_tool.py   大纲的创建 / 导出 / 校验
 │   ├── outline_example.md  大纲 md 的示例（可复制改写）
 │   ├── note_tools.py     单本笔记的入口（提交 / 习题模式）
 │   ├── clean_aux.py      清理编译产物
@@ -327,6 +329,40 @@ levels: part, chapter, section
 
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
+
+## outline_tool.py — 大纲的创建 / 导出 / 校验
+
+`new_note.py` 按大纲 md 建骨架，本工具负责**把大纲弄出来**。三个入口：
+
+```bash
+python maintain/outline_tool.py                       # 面板
+python maintain/outline_tool.py --check <大纲.md>      # 只校验（并预览会生成哪些文件）
+python maintain/outline_tool.py --export <笔记目录> [输出.md]
+python maintain/outline_tool.py --from-text <清单.txt> --levels bourbaki [输出.md]
+```
+
+**1. 新建大纲**：选层级模式 → 粘一份「缩进清单」（`目录名 | 中译名`，缩进表示层级，
+`END` 结束）→ 写成规范的大纲 md。适合先在草稿里把结构列出来，再转成规范文件。
+
+**2. 从现有笔记导出大纲**：读 `main.tex` 的正文主体与各级 `index.tex` 链，
+把现有笔记的结构 + 中译名反推成大纲 md —— 既能给旧笔记留一份大纲，也能当新笔记的蓝本。
+导出规则：
+
+- 层级模式按**结构**推断：最外层命令取自 `main.tex`，其余按 `part → chapter → section
+  → subsection` 的固定次序顺延到实际层数（不按「各层读到什么命令」投票，那会被
+  笔记里的不规则写法带偏）。
+- 中译名的两种写法都认：写在**自己的 `index.tex` 顶部**，或写在**该支第一个叶子文件**里。
+  查不到就只写目录名，并在输出里列出「哪些位置没读到、文件里其实写的是什么命令」。
+  顺带的诊断会指出笔记里的不一致，例如把层2 写成了 `\section`（本层应为 `\chapter`）、
+  叶子只有 `\section{}` 空标题、某些分支只有两层。
+- **被 `%` 注释掉的章照样收** —— 导出的是「计划」，用 `%` 关掉的多半是还没写的章。
+  输出里会提示有几处是这样。
+- 原本没有编号的目录名（如 `Appendix_…`）导出后会被补号 —— 这是 `new_note.py`
+  的编号规则，不是导出丢信息。
+- 写完会**回读校验**：重新解析这份 md，确认能还原出同一棵树。
+
+**3. 校验大纲**：读一份 md，报格式错误（跳级、层数不符、命令乱序、目录名非法……），
+通过则打印它会生成的完整文件清单 —— 相当于 `new_note.py --dry-run` 的只读版。
 
 ## note_tools.py — 单本笔记的入口
 
