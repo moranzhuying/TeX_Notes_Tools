@@ -1383,11 +1383,16 @@ def marks_bak_path():
 
 
 def default_marks():
-    return {"version": 1, "updated": "", "nodes": {}, "entries": {}}
+    return {"version": 1, "updated": "", "nodes": {}, "entries": {}, "stale": []}
 
 
 def load_marks():
-    """读取标记数据。文件不存在返回空结构；损坏时尝试从 .bak 恢复。"""
+    """读取标记数据。文件不存在返回空结构；损坏时尝试从 .bak 恢复。
+
+    「损坏」不只是 JSON 解析不了 —— 形状不对（`nodes` / `entries` 不是对象，
+    甚至里面某条记录不是对象）同样会让后续按 `get()` 取字段的代码在**每次请求**上崩，
+    所以一并校验：**整体形状不对就退回 .bak；个别记录不对就只丢掉那几条**。
+    """
     if not MARKS_PATH.exists():
         return default_marks()
 
@@ -1395,6 +1400,11 @@ def load_marks():
         data = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("结构不是对象")
+        for k in ("nodes", "entries"):
+            if k in data and not isinstance(data[k], dict):
+                raise ValueError(f"{k} 不是对象")
+        if "stale" in data and not isinstance(data["stale"], list):
+            raise ValueError("stale 不是数组")
         return data
 
     try:
@@ -1420,11 +1430,28 @@ def load_marks():
     if isinstance(old, dict):
         for k, v in old.items():
             data["nodes"].setdefault(k, v)
+    # 个别记录形状不对：只丢掉那几条，其余标记照常保留
+    dropped = []
+    for sec in ("nodes", "entries"):
+        for k in list(data[sec]):
+            if not isinstance(data[sec][k], dict):
+                dropped.append(f"{sec}.{k}")
+                del data[sec][k]
+    if dropped:
+        print(f"  [提示] 标记数据里有 {len(dropped)} 条记录形状不对、已忽略："
+              f"{', '.join(dropped[:3])}{' …' if len(dropped) > 3 else ''}")
+    data["stale"] = [str(s) for s in (data.get("stale") or [])]
     return data
 
 
 def save_marks(data):
-    """原子写入标记数据：先写临时文件，再替换；旧文件留作 .bak。"""
+    """原子写入标记数据：先写临时文件，再替换；旧文件留作 .bak。
+
+    ⚠️ Windows 上 `os.replace` 会被杀软 / 索引器**短暂**占用而报 WinError 32 ——
+    实测 60 个并发写里有 4 个就栽在这一步，异常直接把请求线程带死（浏览器看到的是
+    「连接被关闭」）。所以这里退避重试，并且**最终失败也不抛给调用方**：
+    内存里的改动仍在，只是没落盘，返回 False 让调用方告知界面。
+    """
     data["updated"] = datetime.now().isoformat(timespec="seconds")
     tmp = MARKS_PATH.parent / (MARKS_PATH.name + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="") as f:
@@ -1434,7 +1461,16 @@ def save_marks(data):
             os.replace(MARKS_PATH, marks_bak_path())
         except OSError:
             pass
-    os.replace(tmp, MARKS_PATH)
+    for i in range(6):
+        try:
+            os.replace(tmp, MARKS_PATH)
+            return True
+        except OSError:
+            time.sleep(0.05 * (i + 1))
+    # 退避后仍失败：把临时文件留着（里面是最新数据，便于人工恢复），只提示不抛异常
+    print(f"  [提示] 标记文件写盘失败（多半被杀软 / 索引器占用），本次改动只在内存里；"
+          f"未落盘的数据留在 {tmp.name}")
+    return False
 
 
 def node_mode(marks, node_id):
@@ -1740,6 +1776,9 @@ def merge_marks(local, incoming):
         a = local.get(sec) or {}
         b = incoming.get(sec) or {}
         if not isinstance(a, dict) or not isinstance(b, dict):
+            # 形状不对时**保留本地那一侧**，绝不清空 ——
+            # 早年这里直接 continue，于是导入一个形状不对的文件会把本地标记全抹掉。
+            out[sec] = a if isinstance(a, dict) else {}
             continue
         merged = {}
         for k in set(a) | set(b):
@@ -2106,6 +2145,11 @@ def detect_texstudio():
 
 def open_in_texstudio(cfg, target):
     """用 TeXStudio 打开工作区内的文件。返回 (成功?, 说明)。"""
+    target = str(target or "").strip()
+    if not target:
+        # 空路径会解析成工作区根目录本身 —— 那会被当成「工作区内的合法路径」放行，
+        # 于是「打开」变成把整个笔记目录丢给编辑器。必须挡在边界检查之前。
+        return False, "没有可打开的文件路径"
     p = Path(target)
     if not p.is_absolute():
         p = cfg["root"] / target
@@ -2437,8 +2481,9 @@ class Handler(BaseHTTPRequestHandler):
                 slot = entry_slot(STATE["marks"], node_id)
                 if not self._apply_entry(slot, body):
                     STATE["marks"]["entries"].pop(node_id, None)
-            save_marks(STATE["marks"])
+            saved = save_marks(STATE["marks"])
         data = reapply_view()
+        data["saved"] = saved
         if len(ids) > 1:
             data["changed"] = len(ids)
         self._json(data)
@@ -2478,8 +2523,10 @@ class Handler(BaseHTTPRequestHandler):
                 nodes[node_id] = rec
             else:
                 nodes.pop(node_id, None)
-            save_marks(STATE["marks"])
-        self._json(reapply_view())
+            saved = save_marks(STATE["marks"])
+        data = reapply_view()
+        data["saved"] = saved
+        self._json(data)
 
     def _serve_marks_export(self):
         """导出标记数据（进度标记 / 备注 / 待办 / 章级设置）为 JSON 文件。"""
@@ -2499,15 +2546,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "message": "文件内容不是标记数据"},
                        status=400)
             return
+        bad = [k for k in ("entries", "nodes")
+               if k in incoming and not isinstance(incoming[k], dict)]
+        if bad:
+            self._json({"ok": False,
+                        "message": f"文件内容不是标记数据（{' / '.join(bad)} 不是对象）"},
+                       status=400)
+            return
         with STATE["lock"]:
             before = len(STATE["marks"]["entries"])
             STATE["marks"] = merge_marks(STATE["marks"], incoming)
             if STATE["data"] is not None:
                 migrate_marks(STATE["marks"], STATE["data"])
-            save_marks(STATE["marks"])
+            saved = save_marks(STATE["marks"])
             after = len(STATE["marks"]["entries"])
             added = max(after - before, 0)
         data = reapply_view()
+        data["saved"] = saved
         data["merged"] = {"entries": after, "added": added}
         self._json(data)
 
@@ -2539,13 +2594,23 @@ class Handler(BaseHTTPRequestHandler):
         self._json(ensure_view(force=changed_levels))
 
 
+class ProgressServer(ThreadingHTTPServer):
+    """监听队列要够深：`socketserver` 默认 backlog 只有 5，60 个并发请求会有几个
+    在握手阶段就被直接拒绝（浏览器看到 ConnectionRefused，而服务其实活得好好的）。
+    daemon_threads 让 Ctrl+C / 退出服务时不必等挂住的连接。"""
+
+    request_queue_size = 128
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def make_server(cfg):
     """创建服务；端口被占用时顺延。"""
     host = cfg["host"]
     port = cfg["port"]
     for i in range(10):
         try:
-            srv = ThreadingHTTPServer((host, port + i), Handler)
+            srv = ProgressServer((host, port + i), Handler)
             return srv, port + i
         except OSError:
             continue
