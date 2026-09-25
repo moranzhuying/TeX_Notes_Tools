@@ -286,21 +286,19 @@ def load_settings():
             out[k] = data[k]
     if not isinstance(out.get("note_levels"), dict):
         out["note_levels"] = {}
+    # 手工编辑过的设置里 show_unused 可能是字符串，按布尔字面量解释
+    v = out.get("show_unused", True)
+    if isinstance(v, str):
+        v = v.strip().lower() in ("1", "true", "yes", "on")
+    out["show_unused"] = bool(v)
     return out
 
 
 def save_settings(data):
-    """原子写入设置：先写临时文件再替换；旧文件留作 .bak。"""
+    """写设置。返回是否成功落盘（与 save_marks 一样抗 Windows 的占用重试）。"""
     data["updated"] = datetime.now().isoformat(timespec="seconds")
-    tmp = SETTINGS_PATH.parent / (SETTINGS_PATH.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="") as f:
-        f.write(json.dumps(data, ensure_ascii=False, indent=2))
-    if SETTINGS_PATH.exists():
-        try:
-            os.replace(SETTINGS_PATH, settings_bak_path())
-        except OSError:
-            pass
-    os.replace(tmp, SETTINGS_PATH)
+    return atomic_write_text(SETTINGS_PATH,
+                             json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def public_settings(settings):
@@ -1444,33 +1442,39 @@ def load_marks():
     return data
 
 
-def save_marks(data):
-    """原子写入标记数据：先写临时文件，再替换；旧文件留作 .bak。
+def atomic_write_text(path, text):
+    """原子写文本：先写临时文件再替换，旧文件留作 `.bak`。
 
     ⚠️ Windows 上 `os.replace` 会被杀软 / 索引器**短暂**占用而报 WinError 32 ——
-    实测 60 个并发写里有 4 个就栽在这一步，异常直接把请求线程带死（浏览器看到的是
-    「连接被关闭」）。所以这里退避重试，并且**最终失败也不抛给调用方**：
-    内存里的改动仍在，只是没落盘，返回 False 让调用方告知界面。
+    实测 60 个并发写里有 4 个栽在这一步，异常会把请求线程带死（浏览器看到的是
+    「连接被关闭」）。所以退避重试，并且**最终失败也不抛给调用方**：
+    返回 False，把未落盘的 .tmp 留下（里面是最新数据，便于人工恢复）。
     """
-    data["updated"] = datetime.now().isoformat(timespec="seconds")
-    tmp = MARKS_PATH.parent / (MARKS_PATH.name + ".tmp")
+    tmp = path.parent / (path.name + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="") as f:
-        f.write(json.dumps(data, ensure_ascii=False, indent=2))
-    if MARKS_PATH.exists():
+        f.write(text)
+    bak = path.parent / (path.name + ".bak")
+    if path.exists():
         try:
-            os.replace(MARKS_PATH, marks_bak_path())
+            os.replace(path, bak)
         except OSError:
             pass
     for i in range(6):
         try:
-            os.replace(tmp, MARKS_PATH)
+            os.replace(tmp, path)
             return True
         except OSError:
             time.sleep(0.05 * (i + 1))
-    # 退避后仍失败：把临时文件留着（里面是最新数据，便于人工恢复），只提示不抛异常
-    print(f"  [提示] 标记文件写盘失败（多半被杀软 / 索引器占用），本次改动只在内存里；"
+    print(f"  [提示] {path.name} 写盘失败（多半被杀软 / 索引器占用）；"
           f"未落盘的数据留在 {tmp.name}")
     return False
+
+
+def save_marks(data):
+    """写标记数据。返回是否成功落盘（见 atomic_write_text）。"""
+    data["updated"] = datetime.now().isoformat(timespec="seconds")
+    return atomic_write_text(MARKS_PATH,
+                             json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def node_mode(marks, node_id):
@@ -2589,9 +2593,11 @@ class Handler(BaseHTTPRequestHandler):
                                     "message": f"层级模式不合法：{spec}"}, status=400)
                         return
                 changed_levels = (before != saved)
-            save_settings(settings)
+            saved_ok = save_settings(settings)
             STATE["settings"] = settings
-        self._json(ensure_view(force=changed_levels))
+        data = ensure_view(force=changed_levels)
+        data["saved"] = saved_ok
+        self._json(data)
 
 
 class ProgressServer(ThreadingHTTPServer):

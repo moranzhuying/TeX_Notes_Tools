@@ -803,7 +803,7 @@ convention  alarm   sketch
 | **marks 形状不对 → 每次请求都崩**（2026-09-25 服务端专项发现） | `load_marks` 只校验「是对象」，不校验 `nodes` / `entries` 是不是对象。于是「合法 JSON 但形状不对」（手工编辑过、被别的程序改过）会让 `apply_marks` 在**每个** `/api/data` 上抛 `AttributeError: 'str' object has no attribute 'get'`，页面彻底打不开，且不走 .bak 恢复 | `load_marks` 一并校验形状：**整体形状不对退回 .bak**（符合 8.2 的承诺）；**个别记录不对只丢那几条**，其余标记保留 |
 | **导入形状不对的文件会清空本地标记**（2026-09-25 服务端专项发现） | `merge_marks` 里形状不匹配时 `continue`，而 `out` 是从 `default_marks()` 起手的 → 那一节被落成空。于是导入一个形状不对的 JSON 会**静默 200 并抹掉全部本地标记** | 形状不匹配时**保留本地那一侧**；`/api/marks/import` 先校验（某节存在但不是对象 → 400 并说明），不再接受坏文件 |
 | **`/api/open` 传空路径 → 打开工作区根目录**（2026-09-25 服务端专项发现） | `Path("")` 即 `.`，相对路径分支下变成 `root / ""` = 工作区根，恰好通过「在工作区内」的边界检查 | 边界检查**之前**先挡掉空 / 纯空白路径 |
-| **`save_marks` 在 Windows 上会被占用而抛异常**（2026-09-25 服务端专项发现） | `os.replace(tmp, MARKS_PATH)` 被杀软 / 索引器短暂占用时报 `WinError 32`；异常把请求线程带死，浏览器看到的是「连接被关闭」。实测 60 个并发写里 **4 个**栽在这一步 | 退避重试 6 次；最终仍失败也**不抛异常** —— 返回 `False`，响应里带 `saved:false`，前端弹提示让用户重试；未落盘的数据留在 `.tmp` 里便于人工恢复 |
+| **`save_marks` 在 Windows 上会被占用而抛异常**（2026-09-25 服务端专项发现） | `os.replace(tmp, MARKS_PATH)` 被杀软 / 索引器短暂占用时报 `WinError 32`；异常把请求线程带死，浏览器看到的是「连接被关闭」。实测 60 个并发写里 **4 个**栽在这一步。**`save_settings` 当时是同一份代码的复制品，同样中招** | 抽出 `atomic_write_text()` 供两者共用：退避重试 6 次；最终仍失败也**不抛异常** —— 返回 `False`，响应里带 `saved:false`，前端弹提示让用户重试；未落盘的数据留在 `.tmp` 里便于人工恢复 |
 | **并发请求被直接拒连**（2026-09-25 服务端专项发现） | `socketserver` 的默认 `request_queue_size` 只有 **5**，60 个并发请求会有几个在握手阶段就 `ConnectionRefused`（服务其实活得好好的，容易误判成「服务死了」） | 自定义 `ProgressServer`：`request_queue_size = 128`、`daemon_threads = True`、`allow_reuse_address = True` |
 
 ### 与设计文档的偏差

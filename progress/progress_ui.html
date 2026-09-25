@@ -607,7 +607,7 @@ async function postJSON(url, body) {
   const d = await r.json();
   /* 服务端写盘失败时会带 saved:false（文件被杀软 / 索引器占用）——
      改动还在内存里，但没落盘，得让用户知道并重试一次。 */
-  if (d && d.saved === false) toast("标记没写进磁盘（文件被占用），请再点一次");
+  if (d && d.saved === false) toast("改动没写进磁盘（文件被占用），请再试一次");
   return d;
 }
 
