@@ -387,6 +387,86 @@ def unwrap_cmd(s, cmd):
     return s
 
 
+# LaTeX 重音转义 -> Unicode（\"o、\'e、\`a、\^o、\~n 等）
+ACCENT_MAP = {
+    '"': {"a": "ä", "e": "ë", "i": "ï", "o": "ö", "u": "ü", "y": "ÿ",
+          "A": "Ä", "E": "Ë", "I": "Ï", "O": "Ö", "U": "Ü"},
+    "'": {"a": "á", "e": "é", "i": "í", "o": "ó", "u": "ú", "y": "ý",
+          "c": "ć", "n": "ń", "s": "ś", "z": "ź",
+          "A": "Á", "E": "É", "I": "Í", "O": "Ó", "U": "Ú", "C": "Ć", "N": "Ń"},
+    "`": {"a": "à", "e": "è", "i": "ì", "o": "ò", "u": "ù",
+          "A": "À", "E": "È", "I": "Ì", "O": "Ò", "U": "Ù"},
+    "^": {"a": "â", "e": "ê", "i": "î", "o": "ô", "u": "û",
+          "A": "Â", "E": "Ê", "I": "Î", "O": "Ô", "U": "Û"},
+    "~": {"a": "ã", "n": "ñ", "o": "õ", "A": "Ã", "N": "Ñ", "O": "Õ"},
+}
+
+# 标题里常见的数学命令 -> Unicode。表里没有的，退回「去掉反斜杠保留名字」。
+MATH_CMDS = {
+    "leq": "≤", "le": "≤", "leqslant": "≤", "geq": "≥", "ge": "≥",
+    "geqslant": "≥", "neq": "≠", "ne": "≠", "equiv": "≡", "approx": "≈",
+    "sim": "∼", "simeq": "≃", "cong": "≅", "propto": "∝",
+    "ll": "≪", "gg": "≫", "prec": "≺", "succ": "≻",
+    "subset": "⊂", "supset": "⊃", "subseteq": "⊆", "supseteq": "⊇",
+    "in": "∈", "notin": "∉", "ni": "∋",
+    "cup": "∪", "cap": "∩", "setminus": "∖", "emptyset": "∅",
+    "varnothing": "∅", "times": "×", "cdot": "·", "div": "÷",
+    "boxplus": "⊞", "boxminus": "⊟", "boxtimes": "⊠", "boxdot": "⊡",
+    "bigboxplus": "⊞", "bigoplus": "⨁", "bigotimes": "⨂", "bigodot": "⨀",
+    "bigcup": "⋃", "bigcap": "⋂", "bigvee": "⋁", "bigwedge": "⋀",
+    "biguplus": "⨄", "coprod": "∐", "iint": "∬", "iiint": "∭",
+    "pm": "±", "mp": "∓", "otimes": "⊗", "oplus": "⊕", "ominus": "⊖",
+    "ast": "∗", "star": "⋆", "circ": "∘", "bullet": "•",
+    "wedge": "∧", "vee": "∨", "land": "∧", "lor": "∨", "neg": "¬",
+    "to": "→", "mapsto": "↦", "gets": "←",
+    "rightarrow": "→", "longrightarrow": "⟶", "leftarrow": "←",
+    "longleftarrow": "⟵", "Rightarrow": "⇒", "Leftarrow": "⇐",
+    "leftrightarrow": "↔", "Leftrightarrow": "⇔",
+    "uparrow": "↑", "downarrow": "↓", "hookrightarrow": "↪",
+    "infty": "∞", "partial": "∂", "nabla": "∇", "forall": "∀",
+    "exists": "∃", "nexists": "∄", "sum": "∑", "prod": "∏", "int": "∫",
+    "oint": "∮", "angle": "∠", "perp": "⊥", "parallel": "∥",
+    "langle": "⟨", "rangle": "⟩", "lceil": "⌈", "rceil": "⌉",
+    "lfloor": "⌊", "rfloor": "⌋", "sqrt": "√", "cdots": "⋯", "ldots": "…",
+    "dots": "…", "vdots": "⋮", "ddots": "⋱", "prime": "′", "deg": "°",
+    # 希腊字母
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+    "varepsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ", "Theta": "Θ",
+    "iota": "ι", "kappa": "κ", "lambda": "λ", "Lambda": "Λ", "mu": "μ",
+    "nu": "ν", "xi": "ξ", "Xi": "Ξ", "pi": "π", "Pi": "Π", "rho": "ρ",
+    "sigma": "σ", "Sigma": "Σ", "tau": "τ", "upsilon": "υ", "phi": "φ",
+    "varphi": "φ", "Phi": "Φ", "chi": "χ", "psi": "ψ", "Psi": "Ψ",
+    "omega": "ω", "Omega": "Ω", "Gamma": "Γ", "Delta": "Δ",
+}
+
+# 纯排版命令：删掉（不留痕迹）
+DROP_CMDS = {
+    "left", "right", "middle", "limits", "nolimits", "displaystyle",
+    "textstyle", "scriptstyle", "scriptscriptstyle",
+    "big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr",
+}
+
+# 间距命令：换成一个空格（随后统一折叠）
+SPACE_CMDS = {"quad", "qquad", "thickspace", "medspace", "thinspace",
+              "enspace", "hspace", "vspace"}
+
+
+def _deaccent(m):
+    mark, ch = m.group(1), m.group(2)
+    return ACCENT_MAP.get(mark, {}).get(ch, ch)
+
+
+def _cmd_text(m):
+    name = m.group(1)
+    if name in MATH_CMDS:
+        return MATH_CMDS[name]
+    if name in DROP_CMDS:
+        return ""
+    if name in SPACE_CMDS:
+        return " "
+    return name          # 未知命令：去掉反斜杠、保留名字（如 \R -> R、\Pol -> Pol）
+
+
 def clean_label(text):
     r"""清理 LaTeX 标题中的装饰命令，得到可显示的纯文本。
 
@@ -428,9 +508,15 @@ def clean_label(text):
         if s == before:
             break
     s = s.replace("{", "").replace("}", "")
-    # 残留的 \R \N 等宏去掉反斜杠
-    s = re.sub(r"\\([A-Za-z]+)", r"\1", s)
-    return " ".join(s.split())
+    # 重音转义：\"o -> ö、\'e -> é、\`a -> à、\^o -> ô、\~n -> ñ
+    s = re.sub(r"\\([\"'`^~])\s*([A-Za-z])", _deaccent, s)
+    # 命令：常用数学命令换成符号、纯排版命令删掉、其余去掉反斜杠保留名字
+    s = re.sub(r"\\([A-Za-z]+)", _cmd_text, s)
+    # 行内间距命令 \  \,  \;  \:  \! -> 空格（随后统一折叠）
+    s = re.sub(r"\\([ ,;:!])", " ", s)
+    # 其余转义符号：\# \_ \% \& \{ \} -> 字面符号
+    s = re.sub(r"\\([#$%&_{}])", r"\1", s)
+    return " ".join(s.replace("\\", "").split())
 
 
 def natural_key(p):
@@ -609,6 +695,25 @@ def resolve_target(note_dir, target):
     return note_dir / (rel + ".tex")
 
 
+def strip_comment(line):
+    r"""去掉行内注释：从第一个**未转义**的 `%` 起截断。
+
+    LaTeX 里 `\%` 是转义的百分号、不算注释起点。环境统计必须先过这一步 ——
+    否则被 `%` 注释掉的旧环境会被算进 envs，还可能让 `\begin` / `\end` 配对失衡
+    （只注释掉一半时，会报出并不存在的「未配对」硬提示）。
+    """
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "%":
+            return line[:i]
+        i += 1
+    return line
+
+
 def file_metrics(path, min_chars=MIN_CHARS, text=None):
     """统计单个 tex 文件的指标。
 
@@ -651,11 +756,13 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
     for ln in lines:
         raw = ln.rstrip("\n")
         stripped = raw.strip()
+        # 环境统计只看代码部分：`%` 之后的内容（含整行注释）不算
+        code = strip_comment(raw)
 
         # 环境开闭：先做廉价的字符串预检查，避免多数行进入正则
-        has_env_tag = "\\begin{" in raw or "\\end{" in raw
+        has_env_tag = "\\begin{" in code or "\\end{" in code
         if has_env_tag:
-            for mm in BEGIN_RE.finditer(raw):
+            for mm in BEGIN_RE.finditer(code):
                 name = mm.group(1)
                 if name in THEOREM_ENVS:
                     if depth == 0:
@@ -664,11 +771,14 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
                     env_stack.append(name)
                     m["envs"] += 1
                     m["env_names"][name] = m["env_names"].get(name, 0) + 1
+                # 「证明」维度：proof 不在 THEOREM_ENVS 里（不计入 17 个定理环境），
+                # 但它与 sketch 都要能被认出来，所以按 PROOF_ENVS 单独判。
+                if name in PROOF_ENVS:
                     if name == "proof":
                         m["has_proof"] = True
-                    elif name == "sketch":
+                    else:
                         m["has_sketch"] = True
-            for mm in END_RE.finditer(raw):
+            for mm in END_RE.finditer(code):
                 name = mm.group(1)
                 if name in THEOREM_ENVS and depth > 0:
                     depth -= 1
