@@ -153,9 +153,15 @@ def level_cmd(levels, depth):
         return ""
     if depth < len(levels):
         return levels[depth]
-    base = next((SECTION_CMDS.index(c) for c in levels if c != "-"),
-                len(SECTION_CMDS))
-    i = min(base + depth, len(SECTION_CMDS) - 1)
+    # 越界（层次比模式更深）：从**最后一个真实命令**按 LaTeX 次序继续往下。
+    # 不能拿「第一个非 - 的命令」当下标基准再 +depth —— 模式里若有分组层
+    # （`chapter,-,section`），多出来的那层会跳到 subsection 之后去。
+    real = [(k, c) for k, c in enumerate(levels) if c != "-"]
+    if not real:
+        return ""
+    last_k, last_c = real[-1]
+    base = SECTION_CMDS.index(last_c) if last_c in SECTION_CMDS else len(SECTION_CMDS) - 1
+    i = min(base + (depth - last_k), len(SECTION_CMDS) - 1)
     return SECTION_CMDS[i]
 
 
@@ -751,17 +757,61 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
     buf = 0                # 当前环境累积字符
     env_stack = []
 
+    def add_text(seg):
+        """把一段纯正文按「当前的嵌套深度」归入内层 / 外层，并计入总字数。
+
+        只在代码部分（注释已剥掉）上调用，所以行内注释不会污染字数。
+        """
+        nonlocal buf
+        cnt = len(seg)
+        if not cnt:
+            return
+        if depth > 0:
+            buf += cnt
+            m["inner_chars"] += cnt
+        else:
+            m["body_chars"] += cnt
+        m["chars"] += cnt
+
     for ln in lines:
         raw = ln.rstrip("\n")
         stripped = raw.strip()
-        # 环境统计只看代码部分：`%` 之后的内容（含整行注释）不算
+        # 一律只用代码部分：`%` 之后（含整行注释）既不算字数、也不参与标题与环境识别
         code = strip_comment(raw)
+        cstrip = code.strip()
+        if not cstrip:
+            continue
 
-        # 环境开闭：先做廉价的字符串预检查，避免多数行进入正则
-        has_env_tag = "\\begin{" in code or "\\end{" in code
-        if has_env_tag:
+        # 标题行：先收集各命令的标题（每本笔记按自己的层级模式取用），文本不计入字数。
+        # 「命令出现过」本身就是有用信息（`\appendixchapter{}` 留空标题也是附录），
+        # 所以只要匹配到就记下来，哪怕标题文本是空串。
+        is_title = False
+        if cstrip[:1] == "\\":
+            for _k, _rx in _TITLE_RES.items():
+                if _k in m["titles"]:
+                    continue
+                _mt = _rx.search(code)
+                if _mt:
+                    m["titles"][_k] = clean_label(_mt.group(1))
+            is_title = bool(TITLE_RE.match(cstrip))
+
+        # 环境开关按**列顺序**处理：同一行里的 `\begin{X}…\end{X}` 也要算对 ——
+        # 逐个 finditer 分开跑会把同行环境判成空环境、内容也归错桶。
+        # 段间文本按「当时的嵌套深度」进内层（inner）或外层（body）。
+        events = []
+        if "\\begin{" in code or "\\end{" in code:
             for mm in BEGIN_RE.finditer(code):
-                name = mm.group(1)
+                events.append((mm.start(), mm.end(), "b", mm.group(1)))
+            for mm in END_RE.finditer(code):
+                events.append((mm.start(), mm.end(), "e", mm.group(1)))
+            events.sort()
+
+        seg_start = 0
+        for pos, endpos, kind, name in events:
+            if not is_title:
+                add_text(code[seg_start:pos].strip())
+            seg_start = endpos
+            if kind == "b":
                 if name in THEOREM_ENVS:
                     if depth == 0:
                         buf = 0
@@ -769,52 +819,31 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
                     env_stack.append(name)
                     m["envs"] += 1
                     m["env_names"][name] = m["env_names"].get(name, 0) + 1
-                # 「证明」维度：proof 不在 THEOREM_ENVS 里（不计入 17 个定理环境），
+                # 「证明」维度：proof 不在 THEOREM_ENVS 里（不计入那 17 个），
                 # 但它与 sketch 都要能被认出来，所以按 PROOF_ENVS 单独判。
                 if name in PROOF_ENVS:
                     if name == "proof":
                         m["has_proof"] = True
                     else:
                         m["has_sketch"] = True
-            for mm in END_RE.finditer(code):
-                name = mm.group(1)
-                if name in THEOREM_ENVS and depth > 0:
-                    depth -= 1
-                    if env_stack:
-                        env_stack.pop()
-                    if depth == 0:
-                        if buf < EMPTY_ENV_CHARS:
-                            m["empty_envs"] += 1
-                        buf = 0
-
-        if not stripped or stripped[:1] == "%":
-            continue
-
-        # 标题行：先收集各命令的标题（每本笔记按自己的层级模式取用），再跳过不计字数
-        # 「命令出现过」本身是有用信息（`\appendixchapter{}` 留空标题也是附录），
-        # 所以只要匹配到就记下来，哪怕标题文本是空串。
-        if stripped[:1] == "\\":
-            for _k, _rx in _TITLE_RES.items():
-                if _k in m["titles"]:
-                    continue
-                _mt = _rx.search(raw)
-                if _mt:
-                    m["titles"][_k] = clean_label(_mt.group(1))
-            if TITLE_RE.match(stripped):
-                continue
-
-        if has_env_tag:
-            core = END_RE.sub("", BEGIN_RE.sub("", raw)).strip()
-        else:
-            core = stripped
-
-        n = len(core)
-        if depth > 0:
-            buf += n
-            m["inner_chars"] += n
-        else:
-            m["body_chars"] += n
-        m["chars"] += n
+            else:
+                if name in THEOREM_ENVS:
+                    if depth > 0:
+                        # 用栈比对名字：`\begin{theorem}…\end{lemma}` 在 LaTeX 里是错误
+                        if env_stack and env_stack[-1] != name:
+                            m["unpaired"] = True
+                        if env_stack:
+                            env_stack.pop()
+                        depth -= 1
+                        if depth == 0:
+                            if buf < EMPTY_ENV_CHARS:
+                                m["empty_envs"] += 1
+                            buf = 0
+                    else:
+                        # 栈已空还遇到 `\end`：这一行本身就多了一个 end
+                        m["unpaired"] = True
+        if not is_title:
+            add_text(code[seg_start:].strip())
 
     if depth != 0:
         m["unpaired"] = True
@@ -1176,9 +1205,19 @@ def assign_numbers(tops, levels):
             n += 1
             walk(c, depth + 1, child_prefix, n, pno)
 
-    for i, t in enumerate(tops, 1):
-        part_mode = level_cmd(levels, 0) == "part"
-        walk(t, 0, "", i, i if part_mode else 0)
+    part_mode = level_cmd(levels, 0) == "part"
+    n = 0
+    for t in tops:
+        if t.get("type") == "missing":
+            # 未建的文件在 PDF 里不存在、不占章号 —— 子层一直是这么做的，
+            # 顶层原先漏了这一步，会把后面各章整体推后一位。
+            t["num"] = ""
+            continue
+        n += 1
+        if part_mode:
+            # 附录计数器随「部分」重置：structure.sty 是 \newcounter{apx}[part]
+            apx = 0
+        walk(t, 0, "", n, n if part_mode else 0)
 
 def scan_main(note_dir, cfg):
     r"""解析 main.tex 的顶层 \input，附带其上方最近的 \part / \chapter / \section 标题。
@@ -1594,14 +1633,15 @@ def apply_marks(data, marks, cfg):
                 node["planned"] = bool(rec.get("planned"))
                 n_todo = sum(1 for d in MARK_DIMS if em[d] == MARK_TODO)
                 node["todo_count"] = n_todo
-                if ex:
-                    return
                 # 顶层就是叶子（结构扁平）时不会经过父目录的 attach_hints，
-                # 这里补上硬提示，保证提示字段始终存在。
+                # 这里补上硬提示，保证提示字段**始终存在** —— 要放在 `if ex: return`
+                # 之前，否则被排除的顶层叶子读 hints 会得到 undefined。
                 if "hints" not in node:
                     hh = leaf_hard_hints(node)
                     node["hints"] = [{"level": HINT_HARD, "text": t} for t in hh]
                     node["hint_level"] = HINT_HARD if hh else ""
+                if ex:
+                    return
                 add_stats(counted, node["stats"])
                 n_todo_marks += n_todo
                 label = node.get("view_title") or node["name"]
@@ -1827,14 +1867,30 @@ def body_hit_rows(lows, terms):
     return rows
 
 
+def _terms_re(terms):
+    r"""多关键字的匹配正则：**长词优先**，一次扫描、非重叠计数。
+
+    `sum(ln.count(t) for t in terms)` 会把「张量积」里的「张量」再数一遍 ——
+    搜 `张量 张量积` 时同一处被数两次，「正文 N 处」就虚高了。
+    """
+    pats = sorted({re.escape(t) for t in terms if t}, key=len, reverse=True)
+    if not pats:
+        return None
+    try:
+        return re.compile("|".join(pats), re.IGNORECASE)
+    except re.error:
+        return None
+
+
 def search_body(texts, notes, terms, note_name=None, limit=300):
-    """在缓存的 tex 文本里做正文检索。
+    """在缓存的 tex 文本里做正文检索。返回 (结果, 命中总数)。
 
     terms 之间是 AND：同一个文件里**都出现过**才算命中（可以在不同行）。
     只搜树上的文件 —— 游离文件不属于笔记结构，不进结果。
+    命中总数要在截断**之前**数好，否则前端拿到的「命中 N 节」永远不超过 limit。
     """
     if not terms:
-        return []
+        return [], 0
     index = {}                      # 相对路径 -> (笔记名, 叶子节点)
     for n in notes:
         if note_name and n["name"] != note_name:
@@ -1844,6 +1900,7 @@ def search_body(texts, notes, terms, note_name=None, limit=300):
                 index[leaf["id"]] = (n["name"], leaf)
 
     out = []
+    terms_re = _terms_re(terms)
     for rel, text in texts.items():
         info = index.get(rel)
         if info is None:
@@ -1854,7 +1911,7 @@ def search_body(texts, notes, terms, note_name=None, limit=300):
         if not all(t in text.lower() for t in terms):
             continue
         rows = body_hit_rows(lows, terms)
-        count = sum(ln.count(t) for ln in lows for t in terms)
+        count = sum(len(terms_re.findall(ln)) for ln in lows) if terms_re else 0
         hits = []
         for i in rows[:SNIPPET_MAX]:
             term = next((t for t in terms if t in lows[i]), terms[0])
@@ -1871,7 +1928,7 @@ def search_body(texts, notes, terms, note_name=None, limit=300):
             "hits": hits,
         })
     out.sort(key=lambda x: (-x["count"], x["id"]))
-    return out[:limit]
+    return out[:limit], len(out)
 
 
 def source_blocks(text, terms, span=14, max_blocks=6):
@@ -1986,7 +2043,8 @@ def locate_in_pdf(pdf_path, terms, exe):
     if runs:
         best = max(runs, key=lambda r: (r[1] - r[0], -r[0]))
         first = best[0]
-    return {"pages": hits[:40], "runs": [tuple(r) for r in runs[:20]],
+    return {"pages": hits[:40], "pages_total": len(hits),
+            "runs": [tuple(r) for r in runs[:20]],
             "first": first, "total": len(pages), "matched": bool(hits)}
 
 
@@ -2243,9 +2301,12 @@ class Handler(BaseHTTPRequestHandler):
         if not n:
             return {}
         try:
-            return json.loads(self.rfile.read(n).decode("utf-8"))
+            data = json.loads(self.rfile.read(n).decode("utf-8"))
         except Exception:
             return {}
+        # 只把**对象**当请求体：合法 JSON 但类型是数组 / 字符串 / 数字时，
+        # 各处理函数都按 body.get(...) 取值，会 AttributeError 把连接打断。
+        return data if isinstance(data, dict) else {}
 
     def _cfg(self):
         return STATE["cfg"]
@@ -2360,8 +2421,8 @@ class Handler(BaseHTTPRequestHandler):
             texts = dict(STATE.get("texts") or {})
             notes = STATE["data"]["notes"]
             note_name = body.get("note") or None
-        res = search_body(texts, notes, terms, note_name)
-        self._json({"ok": True, "terms": terms, "total": len(res),
+        res, total = search_body(texts, notes, terms, note_name)
+        self._json({"ok": True, "terms": terms, "total": total,
                     "results": res, "scanned": len(texts)})
 
     def _api_source(self, body):
@@ -2397,6 +2458,13 @@ class Handler(BaseHTTPRequestHandler):
         """把关键词定位到 PDF 的具体页（靠 pdftotext 抽出的每页文本）。"""
         note_name = str(body.get("note") or "")
         terms = [t for t in str(body.get("q") or "").lower().split() if t]
+        if not terms:
+            # 没有关键词时 `all(... for t in [])` 恒为真 —— 会让「每一页都命中」，
+            # 前端于是显示「PDF 里 N 页含这些词」并跳到第 1 页，纯属噪声。
+            self._json({"ok": True, "pages": [], "pages_total": 0, "runs": [],
+                        "first": 0, "total": 0, "matched": False,
+                        "message": "没有关键词"})
+            return
         note_dir = self._note_dir(note_name)
         if note_dir is None:
             self._json({"ok": False, "message": "未知笔记", "pages": [],

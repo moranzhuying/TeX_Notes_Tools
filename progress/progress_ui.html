@@ -385,6 +385,11 @@ textarea:focus,input[type=text]:focus{border-color:var(--bd2)}
 
 @media(max-width:760px){
   .layout{flex-direction:column}
+  /* 窄屏顶栏要能换行：否则标题被压成一列竖排字，窗口再窄还会横向溢出 */
+  #topbar{flex-wrap:wrap;row-gap:6px}
+  #topbar .title{white-space:nowrap;flex:0 0 auto}
+  #topbar .sp{display:none}
+  #tstamp{display:none}
   nav{width:100%;flex:auto;border-right:0;border-bottom:.5px solid var(--bd);
     padding:6px;display:flex;gap:6px;position:sticky;top:45px;background:var(--bg);z-index:19}
   nav .item{margin:0;flex:1;justify-content:center}
@@ -668,20 +673,23 @@ function noteLeaves(note) {
   return acc;
 }
 
+/* 小节的内容三态：**只看文件本身**。
+   「待补」是另一个维度（按三维标记），不参与这里 —— 否则一个已写小节只要标了
+   任一维待补，树上的蓝点就会变成「未建」的深灰空心点，还会从「已写」筛选里消失。 */
 function leafState(leaf) {
   if (leaf.status === "missing") return "missing";
   if (leaf.status === "empty") return "empty";
-  if (leaf.todo_count > 0) return "todo";
   return "written";
 }
 
 function matchFilter(leaf) {
+  /* 「待补」按标记判，与服务端的 pending 口径一致（不看内容三态） */
+  if (S.filter === "todo") return (leaf.todo_count || 0) > 0;
   const st = leafState(leaf);
   if (S.filter === "all") return true;
   if (S.filter === "written") return st === "written";
   if (S.filter === "empty") return st === "empty";
   if (S.filter === "missing") return st === "missing";
-  if (S.filter === "todo") return st === "todo";
   if (S.filter === "hint") return !!leaf.hint_level;
   return true;
 }
@@ -754,20 +762,31 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
-/* 高亮命中词：先转义，再包 <mark>。长词优先，免得短词先吃掉长词的一部分 */
+/* 高亮命中词：**在原文本上定位命中，再逐段转义**。长词优先，免得短词先吃掉长词的一部分。
+   不能先整段 esc 再替换 —— 那样 <mark> 会被插进 `&lt;` / `&amp;` 这类实体内部，
+   页面就会把实体名当字面文本显示出来（搜 "a" 之类会大面积触发）。 */
 function hiText(text, terms) {
-  const s = esc(text);
-  if (!terms || !terms.length) return s;
-  const pats = terms
-    .map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  const s = String(text == null ? "" : text);
+  const pats = (terms || [])
+    .map((t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .filter((t) => t.length)
     .sort((a, b) => b.length - a.length);
-  if (!pats.length) return s;
+  if (!pats.length) return esc(s);
+  let re = null;
   try {
-    return s.replace(new RegExp("(" + pats.join("|") + ")", "gi"), "<mark>$1</mark>");
+    re = new RegExp(pats.join("|"), "gi");
   } catch (err) {
-    return s;
+    return esc(s);
   }
+  let out = "", last = 0, m;
+  re.lastIndex = 0;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) out += esc(s.slice(last, m.index));
+    out += "<mark>" + esc(m[0]) + "</mark>";
+    last = m.index + m[0].length;
+    if (m[0] === "") re.lastIndex++;      // 零宽匹配保护
+  }
+  return out + esc(s.slice(last));
 }
 
 function fmtInt(n) { return (n || 0).toLocaleString("zh-CN"); }
@@ -791,10 +810,12 @@ function barHTML(c) {
     + '</div>';
 }
 
-const SVG_CHECK = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#8b8982" '
+/* 图标一律走主题变量（style 里才认 var()，SVG 属性不认）——
+   硬编码的 #8b8982 / #ef9f27 在亮色主题下对比度偏低。 */
+const SVG_CHECK = '<svg class="ico" viewBox="0 0 16 16" fill="none" style="stroke:var(--fg3)" '
   + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
   + '<path d="M3.2 8.4L6.4 11.6L12.8 4.6"/></svg>';
-const SVG_CIRCLE = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#ef9f27" '
+const SVG_CIRCLE = '<svg class="ico" viewBox="0 0 16 16" fill="none" style="stroke:var(--orange)" '
   + 'stroke-width="1.8"><circle cx="8" cy="8" r="5.2"/></svg>';
 const SVG_CARET = '<svg class="caret" viewBox="0 0 16 16" fill="none" '
   + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
@@ -802,7 +823,7 @@ const SVG_CARET = '<svg class="caret" viewBox="0 0 16 16" fill="none" '
 const SVG_TICK = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" '
   + 'stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
   + '<path d="M3.5 8.4L6.4 11.3L12.5 4.8"/></svg>';
-const SVG_FLAG = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="#8b8982" '
+const SVG_FLAG = '<svg class="ico" viewBox="0 0 16 16" fill="none" style="stroke:var(--fg3)" '
   + 'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
   + '<path d="M4 14.2V2.4"/><path d="M4 3.1h7.6L9.7 6.6l1.9 3.5H4"/></svg>';
 const SVG_NOTE = '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" '
@@ -944,11 +965,11 @@ function renderNotesGrid() {
     const top = n.top_name || "章";        // 顶层是「章」还是「部分」，按笔记的层级模式
     const flags = [];
     const nc = (n.tops || []).filter((t) => t.decision_reason === "not_compiled").length;
-    if (nc) flags.push('<span class="flag">' + nc + " " + top + '未编译</span>');
-    if (n.excluded_count) flags.push('<span class="flag">' + n.excluded_count + " " + top + '未启用</span>');
+    if (nc) flags.push('<span class="flag">' + nc + " " + esc(top) + '未编译</span>');
+    if (n.excluded_count) flags.push('<span class="flag">' + n.excluded_count + " " + esc(top) + '未启用</span>');
     if (n.pending_count) flags.push('<span class="flag warn">' + n.pending_count + ' 节待补</span>');
     if (n.chapter_todo_count) {
-      flags.push('<span class="flag warn">' + n.chapter_todo_count + " " + top + '待补</span>');
+      flags.push('<span class="flag warn">' + n.chapter_todo_count + " " + esc(top) + '待补</span>');
     }
     h += '<div class="ncard" data-note="' + esc(n.name) + '">'
       + '<div class="hd"><span class="nm">' + esc(n.title) + '</span>'
@@ -1165,7 +1186,10 @@ function keepSearchOpen() {
   if (!n) return;
   /* 与渲染时的自动展开同一口径：子树里存在命中的小节 */
   const hit = (node) => {
-    if (node.type === "leaf") return matchFilter(node) && matchTerms(node, terms);
+    if (node.type === "leaf") {
+      /* 与渲染时的 nodeHasVisible 同口径：标题命中或**正文命中**都算 */
+      return matchFilter(node) && (matchTerms(node, terms) || !!bodyHit(node.id));
+    }
     return (node.children || []).some(hit);
   };
   const dig = (node) => {
@@ -1181,12 +1205,24 @@ function updateHits(note, searching) {
   if (!el) return;
   if (!searching && !S.search) { el.textContent = ""; return; }
   let c = 0, b = 0;
+  const terms = queryTerms();
   if (note) {
     (note.tops || []).forEach((t) => {
       if (!t.decision && !S.showUnused) return;
       walkLeaves(t).forEach((l) => {
         if (leafVisible(l)) { c++; if (bodyHit(l.id)) b++; }
       });
+      /* 只有目录（章 / 节）标题命中、其下没有可见小节时也要计入 ——
+         否则会出现「树上明明有一行被高亮，右上角却写无匹配」。 */
+      const digDir = (node) => {
+        if (node.type === "leaf" || node.type === "missing") return 0;
+        let n = 0;
+        const hasVisible = walkLeaves(node).some(leafVisible);
+        if (!hasVisible && terms.length && matchQuery(node)) n = 1;
+        (node.children || []).forEach((k) => { n += digDir(k); });
+        return n;
+      };
+      c += digDir(t);
     });
   }
   const total = (S.search && S.search.total) || 0;
@@ -1340,7 +1376,9 @@ async function openViewer(id, noteName, title) {
     let foot = "";
     if (p.message) foot += '<span>' + esc(p.message) + '</span>';
     else if (p.matched) {
-      foot += '<span>PDF 里 ' + (p.pages || []).length + ' 页含这些词（共 '
+      /* pages 是截断到 40 条的清单，真实命中页数看 pages_total */
+      const np = (p.pages_total != null) ? p.pages_total : (p.pages || []).length;
+      foot += '<span>PDF 里 ' + np + ' 页含这些词（共 '
         + p.total + ' 页）</span>';
     } else foot += '<span>PDF 文本里没找到这些词</span>';
     if (page) foot += '<span>已定位到第 ' + page + ' 页</span>';
@@ -1382,6 +1420,7 @@ function sourceHTML(s, terms) {
 }
 
 function closeViewer() {
+  viewerSeq++;          // 让在途的源码 / PDF 响应作废，免得旧结果回写到已经关掉的层上
   document.getElementById("viewer").hidden = true;
   document.getElementById("vPdf").src = "about:blank";
   S.viewer = null;
@@ -1492,7 +1531,9 @@ function panelDirHTML(node) {
   const raw = node.view_title || node.name;
   const label = node.num ? (node.num + " " + raw) : raw;
   const leaves = walkLeaves(node);
-  const noProof = leaves.filter((l) => l.status === "written"
+  /* 只算**计入范围内**的小节 —— 与服务端 counted 的口径一致，
+     否则会把未启用章下的小节也列进「待标待补」的候选里。 */
+  const noProof = leaves.filter((l) => !l.excluded && l.status === "written"
     && !l.has_proof && !l.has_sketch
     && (l.marks || {}).proof !== "todo");
   const cm = !!node.chapter_mark;
@@ -1531,7 +1572,7 @@ function panelDirHTML(node) {
 
   if (noProof.length) {
     h += '<div class="p-sec"><div class="p-lab">批量标记</div>'
-      + '<div class="shint">本' + esc(noteTopName()) + '下已写、但既没有 proof 也没有 '
+      + '<div class="shint">本' + esc(nodeLevelWord(node)) + '下已写、但既没有 proof 也没有 '
       + 'sketch 的小节共 ' + noProof.length + ' 个。</div>'
       + '<div class="p-btns"><button id="btnProofAll">'
       + '把它们的「证明」标为待补</button></div></div>';
@@ -1550,6 +1591,18 @@ function panelDirHTML(node) {
 function noteTopName() {
   const n = currentNote();
   return (n && n.top_name) || "章";
+}
+
+/* 某个节点在它那一层叫什么（章 / 节 / 小节）—— 由笔记的层级模式 + 节点编号层数推。
+   详情面板的文案不能一律说「本章下」：在「节」的详情里那是错的。推不出来时退回
+   「层」，「本层下」不会说错。 */
+const LEVEL_WORD = {part: "部分", chapter: "章", section: "节", subsection: "小节"};
+
+function nodeLevelWord(node) {
+  const n = currentNote();
+  const lv = String((n && n.level_mode) || "").split(",").filter((x) => x && x !== "-");
+  const depth = (node && node.num) ? node.num.split(".").length - 1 : 0;
+  return LEVEL_WORD[lv[depth]] || "层";
 }
 
 function renderUnused() {
@@ -2517,9 +2570,14 @@ async function runBodySearch() {
   try {
     r = await postJSON(API.search, {q: q});
   } catch (err) {
-    return;                       /* 服务没起来时静默降级为「只搜标题」 */
+    /* 请求失败时要把旧结果清掉：否则树上的「正文 N」与计数器仍按上一个词渲染，
+       看着像是新词的命中。 */
+    if (S.search) { S.search = null; renderTree(); renderPanel(); }
+    return;
   }
-  if (q !== S.query) return;      /* 期间输入又变了，这次结果作废 */
+  /* 期间输入又变了、或用户已把范围切回「仅标题」（那时不该再采用正文结果），
+     这次结果都作废。 */
+  if (q !== S.query || !S.bodySearch) return;
   r.byId = {};
   (r.results || []).forEach((x) => { r.byId[x.id] = x; });
   S.search = r;
@@ -2920,7 +2978,7 @@ function toggleChapterMark(id) {
 function markProofAll() {
   const node = findNode(S.selected);
   if (!node || node.type === "leaf") return;
-  const ids = walkLeaves(node).filter((l) => l.status === "written"
+  const ids = walkLeaves(node).filter((l) => !l.excluded && l.status === "written"
       && !l.has_proof && !l.has_sketch && (l.marks || {}).proof !== "todo")
     .map((l) => l.id);
   if (!ids.length) { toast("这一层下没有需要标记的小节"); return; }
