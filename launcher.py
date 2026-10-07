@@ -19,6 +19,7 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
 | `check_sensitive/` | 提交前本机信息扫描（`pre-commit` 钩子模板也在这里）   |
 | `sync_paths/`      | 配置路径检查与修复                                   |
 | `commit/`          | 一键提交                                             |
+| `video2text/`      | 视频转文字（字幕优先，无字幕则本地 whisper 转写）     |
 
 **一个面板选项 = 一个同名目录**，脚本、说明与配置都放在自己目录里，互不混。
 除「提交前本机信息扫描」「配置路径检查」两项是直接带参数跑完之后回到面板，
@@ -54,6 +55,8 @@ MENU = [
     ("10", "提交前本机信息扫描（全量体检）", "check_sensitive/check_sensitive.py", "参数:--tracked", "信息安全与提交"),
     ("11", "配置路径检查与修复", "sync_paths/sync_paths.py", "参数:", "信息安全与提交"),
     ("12", "提交本工具集到 GitHub", "commit/commit.py", "面板", "信息安全与提交"),
+
+    ("13", "视频转文字（字幕优先 / 本地 whisper 兜底）", "video2text/video2text.py", "面板", "素材与转写"),
 ]
 
 SUBMIT_NO = "12"          # 打 * 标记的那一项

@@ -32,7 +32,7 @@ new_note.py — 从模板创建一本新笔记
     ---
     name: MyNote
     template: Math-Note
-    levels: part, chapter, section
+    levels: chapter, section, subsection
     ---
 
     # Description_of_Formal_Mathematic | 数学的形式化描述
@@ -48,18 +48,20 @@ new_note.py — 从模板创建一本新笔记
 命令：命令按**由外到内**排列，必须是 LaTeX 章节命令的合法递降，管几个命令就是几层
 目录；末层是 `.tex` 文件，前面各层是目录。
 
-    levels: part, chapter, section      # 1 级 \part、2 级 \chapter、3 级 \section
+    levels: chapter, section, subsection   # 1 级 \chapter、2 级 \section、3 级 \subsection
 
 也可以写下面这些简写名：
 
 | 简写名          | 等价于                                | 适用                            |
 |-----------------|---------------------------------------|---------------------------------|
-| `bourbaki`      | `part, chapter, section`              | 层1 目录＝原书章（现有笔记写法）|
-| `textbook`      | `chapter, section, subsection`        | 常见教材：层1 目录＝章          |
+| `textbook`      | `chapter, section, subsection`        | 常见教材：层1 目录＝章（默认写法）|
 | `textbook-part` | `part, chapter, section, subsection`  | 分「部」的大部头                |
 | `two-level`     | `chapter, section`                    | 两层：讲义 / 小册子             |
 | `article`       | `section, subsection`                 | 文章式：不分章                  |
 | `grouped`       | `chapter, -, section`                 | 中间层只作分组、不产生标题      |
+
+「部分-章-节」这类以 `\part` 开头的序列没有简写名，直接照写命令即可
+（`levels: part, chapter, section`）。
 
 `-` 表示「这一层只作分组、不产生标题」：
 
@@ -67,22 +69,22 @@ new_note.py — 从模板创建一本新笔记
     levels: chapter, -, section          # ＝ grouped
 
 **不写 levels 也能跑**：脚本按标题层数推一个最接近的（1 层→`section`、2 层→`chapter,
-section`、3 层及以上→`part` 起顺延），交互式会问一句「用不用 / 要不要代写进 md」，
-命令行则打印推断值并提示怎么写进 md。**写了但与结构层数不符**时同理：会告诉你按结构
-应该是什么，让你决定改 md 还是照推断走。层数实在凑不出合法序列时，才会请你改 md。
-（`--levels` 可以命令行覆盖，一般用不着。）
+section`、3 层→`chapter, section, subsection`、4 层及以上→`part` 起顺延），交互式会问
+一句「用不用 / 要不要代写进 md」，命令行则打印推断值并提示怎么写进 md。**写了但与结构
+层数不符**时同理：会告诉你按结构应该是什么，让你决定改 md 还是照推断走。层数实在凑不出
+合法序列时，才会请你改 md。（`--levels` 可以命令行覆盖，一般用不着。）
 
 标题命令的落点（本模板系既有约定）：
 
-    main.tex                          \part{层1中译} 之类 ＋ 紧跟其 \input
+    main.tex                          \chapter{层1中译} 之类 ＋ 紧跟其 \input
     Content/<层1>/index.tex           只有 \input（指向各层2）
     Content/<层1>/<层2>/index.tex     只有 \input（指向各层3）
-    Content/…/<层3>.tex               \chapter{层2中译} ＋ \section{层3中译}
+    Content/…/<层3>.tex               \section{层2中译} ＋ \subsection{层3中译}
                                       （层2 的标题写在「它第一个子项的第一个叶子」里）
 
 其余规则：
 
-- **最外层的标题命令写在 `main.tex` 里**（`\part{…}` 与它的 `\input` 配成一对），
+- **最外层的标题命令写在 `main.tex` 里**（`\chapter{…}` 与它的 `\input` 配成一对），
   与现有笔记的 main.tex 完全一致；层2 及更深层的标题写进内容文件。
 - **编号自动补**：目录名里不用手写 `1_`，脚本按出现顺序补；写了 `3_xxx` 就照用。
 - 目录名限 ASCII（字母/数字/下划线/连字符），中文只出现在 `|` 右侧。
@@ -125,9 +127,8 @@ SECTION_CMDS = ["part", "chapter", "section", "subsection",
                 "subsubsection", "paragraph", "subparagraph"]
 
 #: 层级预设：(命令序列, 说明)。面板与报错提示都读这里，改预设只动这一处。
+#: 以 `\part` 开头的序列（部分-章-节）不设简写名 —— 需要时直接写命令序列。
 LEVEL_PRESETS = {
-    "bourbaki":      ("part,chapter,section",
-                      "层1 目录＝原书章（现有笔记的写法）"),
     "textbook":      ("chapter,section,subsection",
                       "常见教材：层1 目录＝章"),
     "textbook-part": ("part,chapter,section,subsection",
@@ -152,8 +153,8 @@ def print_level_presets():
     for name, (seq, desc) in LEVEL_PRESETS.items():
         print(f"    {name:<14} = {seq:<36} {desc}")
     print()
-    print("  例：md 头部加一行 `levels: part, chapter, section`（＝ bourbaki），")
-    print("      意思是一级目录 \\part、二级 \\chapter、三级 \\section。")
+    print("  例：md 头部加一行 `levels: chapter, section, subsection`（＝ textbook），")
+    print("      意思是一级目录 \\chapter、二级 \\section、三级 \\subsection。")
     print("      `-` 表示该层只作分组、不产生标题命令。")
     print("  不写也行：脚本会按标题层数推一个最接近的，推不出才要你补。")
 
@@ -185,9 +186,9 @@ def resolve_levels(spec):
 
 # ------------------------------------------- 层级模式的「读懂 / 推断 / 写回 md」
 
-#: 按层数套用惯例起点：1 层→section，2 层→chapter，3 层及以上→part 起顺延。
-#: 3 层给 part/chapter/section 是照现有笔记的写法（Bourbaki 式）。
-LEVEL_START_BY_DEPTH = {1: 2, 2: 1, 3: 0}
+#: 按层数套用惯例起点（＝ SECTION_CMDS 的下标）：1 层→section，2 层与 3 层→chapter 起
+#: （章-节 / 章-节-小节），4 层及以上→part 起顺延。2、3 层给的正是 textbook 写法。
+LEVEL_START_BY_DEPTH = {1: 2, 2: 1, 3: 1, 4: 0}
 
 
 def describe_levels(levels):
@@ -227,8 +228,7 @@ def infer_levels(tree, text=""):
     levels = SECTION_CMDS[start:start + depth]
     if len(levels) != depth:
         return None, f"标题有 {depth} 层，凑不出合法的层级命令序列"
-    how = "与现有笔记的写法一致" if levels == ["part", "chapter", "section"] else "按层数套用"
-    return levels, f"按结构（{depth} 层）推断，{how}"
+    return levels, f"按结构（{depth} 层）推断"
 
 
 def set_levels_in_md(path, levels):
@@ -293,9 +293,9 @@ def resolve_levels_for_md(path, meta, tree, interact=True):
     def need_fix(msg):
         print(f"  ✗ {msg}")
         print("    请在 md 头部（`---` 之间）补一行，例如：")
-        print("        levels: part, chapter, section")
-        print("    含义：一级目录用 \\part、二级用 \\chapter、三级用 \\section。")
-        print("    也可写简写名（bourbaki / textbook / two-level / article / grouped），")
+        print("        levels: chapter, section, subsection")
+        print("    含义：一级目录用 \\chapter、二级用 \\section、三级用 \\subsection。")
+        print("    也可写简写名（textbook / textbook-part / two-level / article / grouped），")
         print("    或 `-` 表示某层只作分组。完整清单见 new_note.py 的模块文档。")
         return None
 

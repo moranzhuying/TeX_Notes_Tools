@@ -34,10 +34,13 @@ sys.path.insert(0, str(TOOLS_DIR / "new_note"))
 import new_note as nn          # noqa: E402
 
 INPUT_RE = re.compile(r"^\s*%?\s*\\input\{(.+?)\}\s*$")
-CMD_RE = re.compile(r"\\(part|chapter|appendixchapter|section|subsection|subsubsection)"
+CMD_RE = re.compile(r"\\(part|chapter|appendixchapter|section|subsection"
+                    r"|appendixsubsection|subsubsection)"
                     r"\*?\{([^}]*)\}")
-#: `\appendixchapter` 是模板里的自定义命令，语义等同 chapter
-ALIAS = {"appendixchapter": "chapter"}
+#: 模板自定义命令。别名按**目录结构里的位置**给，而不是按它在正文里的渲染层级：
+#: 附录目录本身就是章下的一个子目录，所以 `\appendixchapter` 归到 section 位、
+#: 它下面的 `\appendixsubsection` 归到 subsection 位（对应 chapter,section,subsection 体系）。
+ALIAS = {"appendixchapter": "section", "appendixsubsection": "subsection"}
 
 
 def cmd_name(name):
@@ -406,7 +409,7 @@ def entry_new():
         return
     print(f"\n  ✓ 已写入 {path}")
     print(f"    头部已写上 `levels: {', '.join(levels)}`；要换层级就改这一行")
-    print("    （可用简写名 bourbaki / textbook / two-level / article / grouped，")
+    print("    （可用简写名 textbook / textbook-part / two-level / article / grouped，")
     print("      或按由外到内列命令、用 `-` 表示该层只作分组）")
     files = nn.content_files(tree, levels)
     print(f"  它会生成 {len(files)} 个文件：")

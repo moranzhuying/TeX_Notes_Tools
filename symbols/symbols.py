@@ -57,6 +57,29 @@ AUTO_MARKERS = [
     "# Algebra symbols.",
 ]
 
+# 不写进补全表的符号（**仍保留在 structure.sty 里**）。用于「内核已有同名命令」的
+# 覆盖版：TeXStudio 内置补全表里本就有一条，再登记成 `\X#m` 会与之重复，
+# 编辑器会把它当成数学专用命令。目前只排除 \H（\H 是匈牙利重音，内置表按文本命令收录）。
+CWL_SKIP = {"H"}
+
+# LaTeX 内核 / plain TeX 已有定义的名字（文本重音、文本符号、内核数学字形）。
+# 拿这些名字做记号**必须** \renewcommand —— \newcommand 会以
+# 「! LaTeX Error: Command \X already defined.」直接中止编译
+# （2026-09-26 踩：通过选项 6 加 \H 生成了 \newcommand{\H}，9 份 structure.sty 全部编译失败）。
+# 名单只收内核自带的；amssymb 等**宏包**提供的名字不在内（数量太多），
+# 万一撞上，把生成的那行手工改成 \renewcommand 即可。
+LATEX_KERNEL = {
+    # 文本重音
+    "a", "b", "c", "d", "H", "i", "j", "k", "l", "L", "o", "O", "r", "t", "u", "v",
+    # 文本符号
+    "P", "S", "ss", "aa", "AA", "ae", "AE", "oe", "OE", "dag", "ddag",
+    "copyright", "pounds",
+    # 内核数学字形
+    "Re", "Im", "aleph", "hbar", "imath", "jmath", "ell", "wp", "prime",
+    "emptyset", "infty", "partial", "nabla", "surd", "top", "bot", "angle",
+    "triangle", "forall", "exists", "neg", "flat", "natural", "sharp",
+}
+
 
 # ================================================================ 基础 IO
 
@@ -522,9 +545,11 @@ def distribute(template_path, notes, quiet=False):
 
 def refresh_cwl(template_path, cwl_path):
     symbols = parse_symbols(template_path)
+    skipped = sorted(n for n in symbols if n in CWL_SKIP)
+    kept = {n: v for n, v in symbols.items() if n not in CWL_SKIP}
     entries = []
-    for name in sorted(symbols):
-        _, _, comment = symbols[name]
+    for name in sorted(kept):
+        _, _, comment = kept[name]
         entries.append(r"\{}#m {}".format(name, comment) if comment else r"\{}#m".format(name))
     section = "\n".join([AUTO_MARKERS[0]] + entries)
 
@@ -539,8 +564,10 @@ def refresh_cwl(template_path, cwl_path):
     cwl.parent.mkdir(parents=True, exist_ok=True)
     backup(cwl) if cwl.is_file() else None
     write_text(cwl, head.rstrip() + eol + eol + section + eol)
-    print(f"  已刷新补全：{len(symbols)} 个符号 -> {cwl}")
-    return len(symbols)
+    print(f"  已刷新补全：{len(kept)} 个符号 -> {cwl}")
+    if skipped:
+        print(f"  按 CWL_SKIP 跳过 {len(skipped)} 个：{' '.join(skipped)}")
+    return len(kept)
 
 
 # ================================================================ 输入辅助
@@ -993,7 +1020,7 @@ def choose_section(sections):
 
 
 def action_add(ctx):
-    """6. 引入新的记号（交互录入，规则同 LaTeX 的 \\newcommand）。"""
+    """6. 引入新的记号（交互录入，规则同 LaTeX 的 \\newcommand／\\renewcommand）。"""
     print("\n[6] 引入新的记号")
     print("  说明：命令名只允许字母；定义不能为空；注释可选。")
 
@@ -1028,7 +1055,11 @@ def action_add(ctx):
 
     comment = ask("注释", required=False)
 
-    line = f"\\newcommand{{\\{name}}}{{{definition}}}"
+    if name in LATEX_KERNEL:
+        print(f"  · 内核已有 \\{name}，自动改用 \\renewcommand。")
+        line = f"\\renewcommand{{\\{name}}}{{{definition}}}"
+    else:
+        line = f"\\newcommand{{\\{name}}}{{{definition}}}"
     if comment:
         line += f"    % {comment}"
 

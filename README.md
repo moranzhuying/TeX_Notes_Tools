@@ -16,6 +16,7 @@
 | `repo_check/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
 | `check_sensitive/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
 | `commit/commit.py` | 一键提交：`add → commit → push`，含 `--check` 模式供 git 钩子调用 | `commit.md` |
+| `video2text/video2text.py` | 视频转文字：字幕优先，无字幕则本地 whisper 转写 | `video2text.md` |
 
 ## manager.py — 笔记工作区管理面板
 
@@ -78,6 +79,8 @@ ignore =            # 额外忽略的目录名，逗号分隔
 ```
 
 选项 6 在录入命令名 / 定义 / 注释后，会列出 `structure.sty` 中 `[模块 VI]` 内的编号子段（如 `6.1 代数`、`6.2 几何`、`6.3 分析`），输入数字即插入该子段末尾；也可选择新建子段（编号默认递增）或追加到模块末尾。写入模板后自动分发到各笔记并刷新 `custom.cwl`，无需再单独执行选项 4。命令名若已存在，会先确认再**原地覆盖**，不会产生重复定义。
+
+命令名若是 LaTeX 内核已有的（`\H` `\i` `\d` `\Re` `\Im` `\S` 等），会自动生成 `\renewcommand` 而不是 `\newcommand` —— 后者对已定义命令会以 `Command \X already defined` 中止编译。另有 `CWL_SKIP` 名单：命中的符号保留在符号库中但不写进 `custom.cwl`（目前排除 `\H`，因为它由 TeXStudio 内置补全表覆盖）。
 
 ### 配置
 
@@ -253,6 +256,8 @@ Tools/
 │   └── sync_paths.py
 ├── commit/                一键提交
 │   └── commit.py / commit.md
+├── video2text/            视频转文字（字幕优先 / 本地 whisper 兜底）
+│   └── video2text.py / video2text.md / video2text.conf(.example) / _data/
 └── show_memory/           （已从面板移除；需要时单独运行）
     └── show_memory.py
 ```
@@ -449,6 +454,41 @@ python repo_check/repo_check.py --area notes # notes / template / tools / all
 有没有被跟踪的 `__pycache__`、`*.conf`、`.cwl_source`、`.sensitive-words.txt`、
 运行档案；以及未提交改动数与远程配置。**只读，不改动任何文件。**
 
+## video2text.py — 视频转文字
+
+把没有字幕的讲座视频（B站 / YouTube）转成**带时间戳的纯文本**，供大模型整理成笔记。
+全程本地、免费。**不带参数运行即交互面板**。
+
+策略是两段式：先探测有没有字幕，有就直接下字幕（秒级），没有才走本地 whisper 转写。
+两者耗时差三个数量级，所以「先探测」是默认行为。
+
+```bash
+python video2text/video2text.py                          # 交互面板
+python video2text/video2text.py <URL>                    # 直接转写
+python video2text/video2text.py <URL> --force-whisper    # 忽略字幕，强制转写
+python video2text/video2text.py --list                   # 列出已转写
+python video2text/video2text.py --status                 # 环境与模型状态
+python video2text/video2text.py --login                  # 扫码登录 B站
+```
+
+面板选项：转写视频 / 批量转写 / 已转写（预览、删除）/ 重新登录 / 环境与模型状态。
+
+产物写在 `video2text/_data/transcripts/<视频标题>/transcript.txt`，格式为
+
+```
+[00:00:02] 上次讲了什么度量空间或者维度量空间
+```
+
+**这是本工具集中唯一需要第三方依赖的工具**（`yt-dlp`、`faster-whisper`、`av<19`、
+`playwright`）。脚本启动时若发现当前解释器缺依赖，会自动改用配置里指定的解释器重跑，
+所以从总面板进来不必操心解释器问题。数据目录（模型 / 登录态 / 转写产物）与
+本机 `.conf` 均不入版本库。
+
+> 注意 `av` 必须 `<19`：PyAV 19 移除了 faster-whisper 仍在使用的参数，转写会直接报错。
+> 用 `--status` 可检查是否合规。
+
+详见 `video2text.md`。
+
 ## show_memory.py — 查看工作记录
 
 > 已从总面板移除（2026-09-24）。脚本仍在，需要时直接 `python show_memory/show_memory.py`。
@@ -468,6 +508,7 @@ python show_memory/show_memory.py MEMORY     # 看长期记忆
 | 文件 | 说明 |
 |---|---|
 | `manager.conf` / `symbols.conf` / `progress.conf` | 工具配置，含绝对路径 |
+| `video2text/video2text.conf` | 视频转文字工具配置（另见其 `_data/` 目录） |
 | `symbols_extract.json` | 符号提取记录，`{文件夹: {日期: {命令名: 定义行}}}` |
 | `notes_tree.json` | 笔记目录结构快照 |
 | `progress_marks.json` | 进度标记数据（三维标记、备注、待办、计划、章统计覆盖、章级标记），原子写入并在每次写入前留一份 `.bak` |
@@ -477,8 +518,10 @@ python show_memory/show_memory.py MEMORY     # 看长期记忆
 
 ## 环境要求
 
-- Python 3.8+，**仅用标准库**，无第三方依赖
+- Python 3.8+，**除 `video2text/` 外仅用标准库，无第三方依赖**
 - 用 `python xxx.py` 直接运行；终端与文件路径需支持 UTF-8
+- `video2text/` 需第三方依赖（`yt-dlp`、`faster-whisper`、`av<19`、`playwright`），
+  装在专用解释器里即可；脚本会自动探测并切换，见 `video2text.md`
 - 推送走 SSH（`~/.ssh/config` 中 `github.com` 指向 `ssh.github.com:443`），可用 `manager.py` 选项 3 自动配置
 - `manager.py` 选项 7 在 `gh` 可用时一步创建远程仓库，否则退化为打印手动命令
 - `progress.py` 的 TeXStudio 探测针对 Windows（查注册表 `.tex` 关联与常见安装位置）

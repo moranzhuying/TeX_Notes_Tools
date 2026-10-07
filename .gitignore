@@ -10,6 +10,9 @@ symbols_extract.json
 progress_marks.json
 progress_marks.json.bak
 progress_marks.json.tmp
+progress_settings.json
+progress_settings.json.bak
+progress_settings.json.tmp
 
 # ===== Python =====
 __pycache__/
@@ -31,7 +34,19 @@ desktop.ini
 _tools/
 _rules.txt
 _replace.txt
-_tmp_*.py
+_tmp_*
 
 # ===== 本机专用脚本（按用户要求不入库） =====
 sync_paths.py
+
+# ===== 开发中间产物与生成报告（不入库） =====
+# _ui.js 是 progress 前端的开发副本，内容已内嵌进 progress_ui.html（脚本只读后者）
+progress/_ui.js
+# 进度报告是生成物，且含本机路径
+progress/progress_report.md
+
+# ===== video2text 运行时数据（模型 / 登录态 / 浏览器官案 / 转写产物） =====
+# 模型 1.5GB、cookie 含登录凭证、profile 含浏览数据，一律不入库。
+video2text/_data/
+# 本机配置（*.conf 已在上面统一排除，这里只作显式声明）
+video2text/video2text.conf

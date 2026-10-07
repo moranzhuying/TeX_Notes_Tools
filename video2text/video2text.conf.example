@@ -1,0 +1,32 @@
+# video2text —— 配置
+# 复制本文件为 video2text.conf 后按本机情况修改。
+# 该 .conf 文件含本机信息，已在 Tools/.gitignore 里排除，不会入库。
+
+[paths]
+# 运行本工具用的 Python 解释器（需已装 yt-dlp / faster-whisper / av<19）。
+# 留空则自动探测：先看当前解释器能否 import 依赖，
+# 不行再找 ~/.workbuddy/binaries/python/envs/default。
+python =
+# 数据目录（模型 / 登录态 / 转写产物）。留空则用脚本同级的 _data。
+data =
+
+[whisper]
+# 默认模型名。若 _data/models/faster-whisper-<名字> 存在则离线加载，否则联网下载。
+model = medium
+# 设备与精度。无独立显卡用 cpu / int8。
+device = cpu
+compute_type = int8
+# 静音过滤。讲座类视频提速明显，建议开启。
+vad = true
+# 转写语言。留空表示自动识别。
+language = zh
+# 注入的领域术语。这一项对专业词汇识别影响很大，是本工具的关键设置。
+prompt = 数学 物理 化学 公式 定理 命题 引理 证明 映射 群 环 域 函子 拓扑 线性空间
+
+[download]
+# B站 字幕需要登录才可见，这里指定用于扫码登录的浏览器通道。
+# 注意：本机没有 Google Chrome，实际可用的是 Edge。
+browser = edge
+# 走 whisper 转写后是否保留音频文件。
+# 保留便于复查时间戳；设为 false 可省空间（长视频音频可达上百 MB）。
+keep_audio = true
