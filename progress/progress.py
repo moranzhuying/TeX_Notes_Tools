@@ -867,12 +867,8 @@ def content_fingerprint(path):
 
 # ---------------------------------------------------------------- 扫描层
 
+# 目录名以此开头则跳过（`_` 归档 / `.` 隐藏）
 SKIP_DIR_PREFIX = ("_", ".")
-SKIP_SUFFIX = {
-    ".aux", ".log", ".out", ".toc", ".pdf", ".synctex", ".gz", ".bak",
-    ".fls", ".fdb_latexmk", ".bbl", ".blg", ".idx", ".ilg", ".ind", ".nav",
-    ".snm", ".vrb", ".xdv", ".dvi", ".lof", ".lot", ".run.xml", ".bcf",
-}
 
 
 def list_notes(cfg):

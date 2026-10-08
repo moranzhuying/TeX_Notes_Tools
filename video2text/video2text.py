@@ -64,7 +64,8 @@ DATA = HERE / "_data"
 MODELS_DIR = DATA / "models"
 COOKIES_DIR = DATA / "cookies"
 PROFILE_DIR = DATA / "profile"
-TRANSCRIPTS = DATA / "transcripts"
+# 说明：转写产物目录不在此处固定，一律经 data_root(cp) / "transcripts" 取，
+# 以便 video2text.conf 的 [paths] data 能整体重定位数据目录。
 
 COOKIE_FILE = COOKIES_DIR / "bilibili_cookies.txt"
 STATE_FILE = COOKIES_DIR / "bilibili_state.json"
