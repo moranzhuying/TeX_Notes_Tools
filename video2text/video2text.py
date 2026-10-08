@@ -510,10 +510,15 @@ def parse_srt(text: str):
 def parse_vtt(text: str):
     out = []
     for block in re.split(r"\n\s*\n", text.strip()):
-        m = re.search(r"(\d+:\d+:\d+\.\d+)\s*-->\s*(\d+:\d+:\d+\.\d+)", block)
+        lines = block.splitlines()
+        # 定位时间戳行；cue 可能带标识行（"cue-id"），内容在时间戳行之后
+        ts = next((i for i, ln in enumerate(lines) if "-->" in ln), None)
+        if ts is None:
+            continue
+        m = re.search(r"(\d+:\d+:\d+\.\d+)\s*-->\s*(\d+:\d+:\d+\.\d+)", lines[ts])
         if not m:
             continue
-        tag = re.sub(r"<[^>]+>", "", " ".join(block.splitlines()[1:])).strip()
+        tag = re.sub(r"<[^>]+>", "", " ".join(lines[ts + 1:])).strip()
         if not tag:
             continue
         if out and out[-1][2] == tag:      # VTT 常把上一条重打一遍
@@ -743,6 +748,11 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
         )
     except Exception as e:  # noqa: BLE001
         res["error"] = f"转写失败：{type(e).__name__}: {str(e)[:150]}"
+        print(f"  ✗ {res['error']}")
+        return res
+
+    if not segs:
+        res["error"] = "转写结果为空（未识别到语音），不写出以免覆盖已有产物"
         print(f"  ✗ {res['error']}")
         return res
 

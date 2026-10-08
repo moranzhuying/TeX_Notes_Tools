@@ -120,8 +120,12 @@ def scan_file(path, label, words):
 def scan_tracked(words):
     """全量体检：扫描当前所有已跟踪文件。"""
     root = repo_root()
-    ok, out, _ = sh(["ls-files"])
-    if not ok or not root:
+    if not root:
+        return []
+    # 固定以仓库根为工作目录：否则在子目录下 `git ls-files` 只列出该子树、且给出
+    # 相对子目录的路径，拼到 root 上会指向不存在的文件 —— 会「全部通过」的假阴性。
+    ok, out, _ = sh(["-C", root, "ls-files"])
+    if not ok:
         return []
     hits = []
     for rel in out.splitlines():

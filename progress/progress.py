@@ -744,7 +744,10 @@ def file_metrics(path, min_chars=MIN_CHARS, text=None):
     }
     if text is None:
         try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
+            # utf-8-sig：无 BOM 时与 utf-8 行为完全一致；有 BOM 时自动剥离。
+            # 必需 —— BOM 会让行首锚定判定（`cstrip[:1] == "\\"`、COMMENT_RE.match）
+            # 在首行失效，导致标题文本被计入字数、首行注释/`\input` 的纳入标记判断出错。
+            text = path.read_text(encoding="utf-8-sig", errors="ignore")
         except OSError:
             m["status"] = "missing"
             return m
@@ -895,7 +898,7 @@ def note_title(note_dir):
     mt = note_dir / "main.tex"
     if not mt.exists():
         return note_dir.name
-    for ln in mt.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for ln in mt.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
         s = ln.strip()
         if COMMENT_RE.match(s):
             continue
@@ -942,7 +945,7 @@ def build_tree(note_dir, target, seen, cfg, depth=0, included=True,
         return None
     seen.add(path)
 
-    text = path.read_text(encoding="utf-8", errors="ignore")
+    text = path.read_text(encoding="utf-8-sig", errors="ignore")
     if texts is not None:
         texts[rel] = text
     subs = []                      # [(目标路径, 该条引用是否纳入编译)]
@@ -1231,7 +1234,7 @@ def scan_main(note_dir, cfg):
     if not mt.exists():
         return entries
     cur = {k: "" for k in ("part", "chapter", "section")}
-    for ln in mt.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for ln in mt.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
         stripped = ln.strip()
         for k in cur:
             mh = _TITLE_RES[k].search(ln)
@@ -1493,9 +1496,13 @@ def atomic_write_text(path, text):
     with open(tmp, "w", encoding="utf-8", newline="") as f:
         f.write(text)
     bak = path.parent / (path.name + ".bak")
+    # 备份用**复制**而不是 `os.replace`（移动）：移动会先让主文件消失，一旦此时
+    # 进程被杀（Ctrl+C）或随后的替换 6 次都失败，主文件就没了 —— 而
+    # load_marks / load_settings 见到「文件不存在」只返回默认值、不看 .bak，
+    # 于是用户数据被静默清空。复制则保证主文件在整个写入过程中始终存在。
     if path.exists():
         try:
-            os.replace(path, bak)
+            shutil.copyfile(path, bak)
         except OSError:
             pass
     for i in range(6):
@@ -1696,8 +1703,12 @@ def apply_marks(data, marks, cfg):
                 for c in node.get("children", []):
                     walk(c, True, False)
                 return
-            sm = node.get("self_metrics")
-            if sm and not node.get("children"):
+            # 末端内容单元（无子节点）自身的统计要计入 counted：内容直接写在
+            # index.tex 里的目录（带 self_metrics），以及「规划未建」的 missing
+            # 节点 —— 未建的小节同样占分母（设计 4.1 / 4.4）。原条件 `sm and ...`
+            # 会漏掉 missing（它没有 self_metrics），于是 counted.missing 恒为 0，
+            # 笔记卡片 / 报告 / --rescan 的「未建」一栏永远是 0，结构进度也被高估。
+            if not node.get("children"):
                 add_stats(counted, node["stats"])
             for c in node.get("children", []):
                 walk(c, False, False)
@@ -1722,7 +1733,7 @@ def apply_marks(data, marks, cfg):
             counted["written"] / counted["planned"] * 100
             if counted["planned"] else 0, 1)
         note["confirmed_percent"] = round(
-            (counted["written"] - n_pending) / counted["planned"] * 100
+            max(counted["written"] - n_pending, 0) / counted["planned"] * 100
             if counted["planned"] else 0, 1)
         note["planned_next"] = planned_next
 

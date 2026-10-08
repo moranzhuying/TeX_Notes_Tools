@@ -38,9 +38,13 @@ LOCAL_PAT = r".*(\.conf$|\.cwl_source$|\.sensitive-words\.txt$|_extract\.json$|n
 
 
 def sh(args, cwd=None):
-    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    return r.returncode == 0, (r.stdout or "").strip()
+    try:
+        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return r.returncode == 0, (r.stdout or "").strip()
+    except FileNotFoundError:
+        # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈
+        return False, f"未找到命令：{args[0]}"
 
 
 def read_conf(path):

@@ -836,6 +836,10 @@ def action_backfill(ctx):
 
     template_symbols = parse_symbols(ctx["template"])
     new_lines, replace_map, skipped = [], {}, []
+    # 同一个新符号可能被多本笔记各自提取（档案按「笔记」分桶），若不按命令名去重，
+    # 会在模板里插入多行同名 \newcommand，编译时以「! LaTeX Error: Command \X
+    # already defined.」中止，并随 distribute 扩散到所有笔记。此处只登记首次来源。
+    seen_new = set()
     for note in sorted(pending):
         for day in sorted(pending[note]):
             marker = f"提取自 {note}-{day}"
@@ -848,6 +852,9 @@ def action_backfill(ctx):
                     else:
                         skipped.append(name)
                     continue
+                if name in seen_new:
+                    continue
+                seen_new.add(name)
                 new_lines.append(rewrite_comment(line, marker))
 
     if not new_lines and not replace_map:
@@ -1248,7 +1255,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        sys.stdout.reconfigure(errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 

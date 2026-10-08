@@ -51,7 +51,7 @@ def human(n):
 
 def collect(root, with_pdf):
     """扫描 root 下的编译产物，返回 {仓库相对路径: [(文件, 大小), ...]}。"""
-    targets = {".pdf"} if with_pdf else set()
+    targets = PDF_EXT if with_pdf else set()
     exts = AUX_EXT | targets
     found = {}
 
@@ -194,7 +194,10 @@ def interactive():
         removed, failed, freed = delete_items(targets)
         print(f"\n  ✓ 删除 {removed} 个文件，释放 {human(freed)}"
               + (f"，{failed} 个失败" if failed else ""))
-        input("\n  按回车继续（重新扫描）…")
+        try:
+            input("\n  按回车继续（重新扫描）…")
+        except (EOFError, KeyboardInterrupt):
+            break
     return 0
 
 

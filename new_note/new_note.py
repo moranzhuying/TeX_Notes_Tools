@@ -202,10 +202,16 @@ def describe_levels(levels):
 
 
 def levels_mentioned(text):
-    """md 文本里**字面提到**的章节命令（如注释里写了 `\\chapter`），由外到内去重。"""
-    names = {("chapter" if m.group(1) == "appendixchapter" else m.group(1))
+    """md 文本里**字面提到**的章节命令（如注释里写了 `\\chapter`），由外到内去重。
+
+    模板自定义命令按它在目录结构里的位置折算：`\\appendixchapter` 归 section 位、
+    `\\appendixsubsection` 归 subsection 位 —— 与 outline_tool 的 ALIAS 保持一致。
+    """
+    names = {("section" if m.group(1) == "appendixchapter"
+              else "subsection" if m.group(1) == "appendixsubsection"
+              else m.group(1))
              for m in re.finditer(r"\\(part|chapter|appendixchapter|section"
-                                  r"|subsection|subsubsection)\b", text)}
+                                  r"|subsection|appendixsubsection|subsubsection)\b", text)}
     return [c for c in SECTION_CMDS if c in names]
 
 
@@ -356,9 +362,13 @@ def resolve_levels_for_md(path, meta, tree, interact=True):
 
 
 def sh(cmd, cwd=None):
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    return r.returncode == 0, (r.stdout or "").strip(), (r.stderr or "").strip()
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return r.returncode == 0, (r.stdout or "").strip(), (r.stderr or "").strip()
+    except FileNotFoundError:
+        # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈
+        return False, "", f"未找到命令：{cmd[0]}"
 
 
 def read_conf(path):
@@ -798,7 +808,7 @@ def interactive():
         print("  已取消。")
         return 1
 
-    push = ask("\n同时建 GitHub 仓库并推送？[y/N]", "N").lower() in ("y", "yes")
+    push = (ask("\n同时建 GitHub 仓库并推送？[y/N]", "N") or "").lower() in ("y", "yes")
 
     if paste:
         print()
@@ -849,7 +859,7 @@ def interactive():
               "\\mainmatter 下留一个空 \\part）")
     print("-" * 64)
 
-    if ask("\n  确认执行？[y/N]", "N").lower() not in ("y", "yes"):
+    if (ask("\n  确认执行？[y/N]", "N") or "").lower() not in ("y", "yes"):
         print("  已取消。")
         return 1
 
@@ -937,6 +947,9 @@ def run(name, template, target, do_push, tree, levels, dry):
     if ok:
         ok, out, err = sh(["git", "commit", "-q", "-m", f"初始化笔记：{name}"], cwd=str(target))
     print("  ✓ 首次提交完成" if ok else f"  ✗ 提交失败：{err or out}")
+    if not ok:
+        print("  已中止：提交未完成，不再建立远程仓库。")
+        return 1
 
     if do_push:
         print("\n创建远程仓库：")
@@ -948,10 +961,15 @@ def run(name, template, target, do_push, tree, levels, dry):
             print("  本地仓库已就绪，可稍后手动推送。")
             return 1
         print(f"  {out}")
-        if sh(["git", "remote", "add", "origin",
-               f"git@github.com:{account}/{name}.git"], cwd=str(target))[0]:
+        add_ok, _, add_err = sh(["git", "remote", "add", "origin",
+                                 f"git@github.com:{account}/{name}.git"], cwd=str(target))
+        if add_ok:
             ok, _, err = sh(["git", "push", "-u", "origin", "master"], cwd=str(target))
+        else:
+            ok, err = False, add_err
         print("  ✓ 已推送" if ok else f"  ✗ 推送失败：{err}")
+        if not ok:
+            return 1
 
     print(f"\n完成：{target}")
     return 0

@@ -42,9 +42,13 @@ USAGE = """用法：python commit.py [说明] [-y] [--dry-run] [--log config|con
 
 def git(args):
     """执行 git 命令，返回 (是否成功, 标准输出, 标准错误)。"""
-    r = subprocess.run(["git"] + args, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
+    try:
+        r = subprocess.run(["git"] + args, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
+    except FileNotFoundError:
+        # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈
+        return False, "", "未找到命令：git"
 
 
 def classify(msg):
@@ -152,7 +156,9 @@ def update_changelog(path, msg, mode):
     if day_head in body:
         # 统计该日已有的「第 N 次提交」数目
         seg_start = body.index(day_head)
-        nxt = re.search(r"^##### ", body[seg_start + len(day_head):], re.M)
+        # 到「下一个标题」为止（不只下一个日标题）——否则当天恰为某月末日时，
+        # 段尾会吞掉下个月的「#### N 月」标题，使新提交块被插到错误的月份下。
+        nxt = re.search(r"^#{2,} ", body[seg_start + len(day_head):], re.M)
         seg_end = seg_start + len(day_head) + (nxt.start() if nxt else len(body) - seg_start - len(day_head))
         seg = body[seg_start:seg_end]
         count = len(re.findall(r"^\*\*第 \d+ 次提交\*\*", seg, re.M))

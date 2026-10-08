@@ -21,9 +21,8 @@ from pathlib import Path
 
 CONF_NAME = "manager.conf"
 
-# 本脚本在 <Tools>/manager/ 下，向上两级即工作区根
-TOOLS_DIR = Path(__file__).resolve().parent.parent
-WORKSPACE = TOOLS_DIR.parent
+# 批量提交时「回车」采用的默认提交说明，与 commit.py 的取值保持一致
+DEFAULT_MSG = "更新笔记"
 
 # 本脚本在 <Tools>/manager/ 下，向上两级即工作区根
 TOOLS_DIR = Path(__file__).resolve().parent.parent
@@ -143,7 +142,10 @@ def push_with_fallback(d, name):
         last = err or "未知原因"
 
     # 备选通道：SSH 换端口（443 不通时试 22，反之亦然）
-    if "ssh" in (git(["remote", "get-url", "origin"], cwd=d)[1] or "").lower():
+    # 远程地址形如 git@github.com:... 或 ssh://...，前者不含 "ssh" 字样，
+    # 故需同时识别 git@ 前缀（与 commit.py 保持一致）。
+    url = (git(["remote", "get-url", "origin"], cwd=d)[1] or "").lower()
+    if url.startswith("git@") or url.startswith("ssh"):
         print("    …尝试备选通道：改用 22 端口")
         env_old = os.environ.get("GIT_SSH_COMMAND")
         os.environ["GIT_SSH_COMMAND"] = "ssh -p 22 -o StrictHostKeyChecking=accept-new"
@@ -220,38 +222,6 @@ def subdirs(root):
 
 def repos(root):
     return [d for d in subdirs(root) if (d / ".git").is_dir()]
-
-
-def zones(cfg):
-    """列出所有「区域」：[(区域名, 路径), ...]
-
-    笔记区取 manager.conf 的 root；工作区下的其它目录若其子目录里有 git 仓库，
-    也算一个区域（模板区、工具区）。这样状态总览与批量提交就能覆盖整个工作区，
-    而不只是笔记区。
-    """
-    out = []
-    notes = cfg.get("root", "")
-    notes_p = Path(notes) if notes else None
-    if notes_p and notes_p.is_dir():
-        out.append(("笔记区", notes_p))
-
-    if not WORKSPACE.is_dir():
-        return out
-    for e in sorted(WORKSPACE.iterdir()):
-        if not e.is_dir() or e.name.startswith(".") or e.name.startswith("_"):
-            continue
-        if notes_p and e == notes_p:
-            continue
-        if e == TOOLS_DIR:
-            out.append(("工具区", e))
-            continue
-        try:
-            has_repo = any(sub.is_dir() and (sub / ".git").is_dir() for sub in e.iterdir())
-        except OSError:
-            has_repo = False
-        if has_repo:
-            out.append((e.name, e))
-    return out
 
 
 def zone_repos(zpath):
@@ -504,7 +474,12 @@ def create_repo(cfg):
         if not ok:
             print(f"    ✗ git init 失败：{err[:120]}")
             continue
-        git(["add", "-A"], cwd=d)
+        ok, _, err = git(["add", "-A"], cwd=d)
+        if not ok:
+            # add 失败（如 Windows 长路径 Filename too long）时不能继续提交，
+            # 否则会漏文件甚至因「nothing to commit」而误报成功。
+            print(f"    ✗ 暂存失败：{err.splitlines()[0][:120] if err else '未知'}")
+            continue
         ok, _, err = git(["commit", "-m", "初始提交：LaTeX 笔记源码"], cwd=d)
         if not ok and "nothing to commit" not in (err + "").lower():
             print(f"    ⚠ 首次提交未完成：{err.splitlines()[0][:100] if err else '未知'}")

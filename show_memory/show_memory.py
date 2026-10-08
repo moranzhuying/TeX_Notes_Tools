@@ -73,7 +73,10 @@ def main():
     if "--last" in argv:
         i = argv.index("--last")
         n = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 1
-        for p in items[:n]:
+        # 只取按日期归档的记录：MEMORY.md 没有日期，不该占用 --last 的名额
+        # （否则 --last 3 只会显示 2 天）。
+        dated = [p for p in items if p.stem.upper() != "MEMORY"]
+        for p in dated[:n]:
             show(p)
         return 0
 
