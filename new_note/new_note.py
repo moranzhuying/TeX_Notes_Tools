@@ -107,7 +107,7 @@ HOOK_SRC = TOOLS_DIR / "check_sensitive" / "pre-commit"
 COPY_FILES = [
     ".gitignore", ".gitattributes",
     "structure.sty", "quiver.sty", "main.tex",
-    "README.md", "ChangeLog.md",
+    "README.md", "CHANGELOG.md", "Source.md",
     "commit.py", "commit.sh", "commit.md",
     "setup_mode.py", "setup_mode.md",
     "symbols.md", "术语对照表.md", "模板使用规范.md", "正文写作规范.md",
@@ -636,6 +636,65 @@ def rewrite_main_tex(main_tex, name, chapters, top_cmd=None):
     return True
 
 
+# ---------------------------------------------------------------- 资料归档
+
+def material_entries(tree, levels):
+    """三级正文大纲绑定到固定章、节、目编号；不改变 TeX 路径。"""
+    if levels != ["chapter", "section", "subsection"]:
+        raise OutlineError("资料归档需要 chapter, section, subsection 三级正文大纲")
+    entries = []
+    seen = set()
+    for c, chapter in enumerate(tree, 1):
+        cn = numbered_name(chapter, c)
+        for s, section in enumerate(chapter["children"], 1):
+            sn = numbered_name(section, s)
+            for n, item in enumerate(section["children"], 1):
+                nn = numbered_name(item, n)
+                code = tuple(int(value.split("_", 1)[0]) for value in (cn, sn, nn))
+                if min(code) < 1 or code in seen:
+                    raise OutlineError("正文资料编号必须为正整数且每目唯一")
+                seen.add(code)
+                entries.append((*code, item["label"] or nn,
+                                f"Content/{cn}/{sn}/{nn}.tex"))
+    return entries
+
+
+def build_materials(target, abbreviation, entries, outline_text=None):
+    """只补缺失资料文件；不覆盖已保存的正文稿、证明稿或核对表。"""
+    def create(path, text):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text(text, encoding="utf-8", newline="")
+
+    sections = {}
+    bindings = []
+    for c, s, n, label, tex in entries:
+        code = f"C{c:02d}-S{s:02d}-N{n:02d}"
+        ident = f"{abbreviation}-{code}"
+        folder = target / "Materials" / f"C{c:02d}" / f"S{s:02d}" / f"N{n:02d}"
+        create(folder / "images" / ".gitkeep", "")
+        create(folder / "body.md", f"# {ident} 正文\n\n## 首次完整输出\n\n## 最终采用稿\n")
+        create(folder / "proof.md", f"# {ident} 证明\n\n## 首次完整输出\n\n## 最终采用稿\n")
+        create(folder / "record.md", f"# {ident} 处理记录\n\n- TeX：{tex}\n- PDF 页序号：待填写\n- 印刷页码：待填写\n- 证明位置与待补事项：未检查\n- 待核对问题：未检查\n")
+        safe_label = label.replace("|", "\\|").replace("\n", " ")
+        sections.setdefault((c, s), []).append(
+            f"| {ident} | {safe_label} | {tex} | 未检查 | 未检查 | 未检查 | 未检查 | 未检查 | 未检查 | 未检查 |")
+        bindings.append(f"| {ident} | {tex} | Materials/C{c:02d}/S{s:02d}/N{n:02d} |")
+    for (c, s), rows in sections.items():
+        create(target / "Materials" / f"C{c:02d}" / f"S{s:02d}" / "review.md",
+               "| 目编号 | 标题 | TeX | 正文整理 | 来源对照 | 数学审核 | 证明回填 | 总结导引 | 疑点 | 结论 |\n"
+               "|---|---|---|---|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n")
+    if outline_text:
+        _, directory = parse_front_matter(outline_text)
+    else:
+        directory = "# 目录\n\n待保存并人工核对原书目录。\n"
+        for c, s, n, label, tex in entries:
+            directory += f"- C{c:02d}/S{s:02d}/N{n:02d}：{label}（{tex}）\n"
+    create(target / f"{abbreviation}_Content.md", directory.rstrip() +
+           "\n\n<!-- 以下为资料绑定，不是原书目录核定结果。编号建立后不随标题改名。 -->\n\n"
+           "| 目编号 | TeX | 资料目录 |\n|---|---|---|\n" + "\n".join(bindings) + "\n")
+
+
 # ---------------------------------------------------------------- 复制
 
 def copy_item(src, dst, dry):
@@ -863,12 +922,16 @@ def interactive():
         print("  已取消。")
         return 1
 
-    return run(name, template, target, push, tree, levels, dry=False)
+    abbreviation = ask("书籍缩写（按所选版本前言核定）", meta.get("abbreviation", ""))
+    outline_text = Path(outline_path).read_text(encoding="utf-8") if outline_path and not paste else None
+    return run(name, template, target, push, tree, levels, dry=False,
+               abbreviation=abbreviation, outline_text=outline_text)
 
 
 # ---------------------------------------------------------------- 主流程
 
-def run(name, template, target, do_push, tree, levels, dry):
+def run(name, template, target, do_push, tree, levels, dry,
+        abbreviation=None, outline_text=None):
     levels = levels or []
     if not template.is_dir():
         print(f"✗ 模板目录不存在：{template}")
@@ -884,6 +947,19 @@ def run(name, template, target, do_push, tree, levels, dry):
         if bad:
             print(f"✗ {bad}")
             return 1
+
+    archive = (template / "Source.md").is_file()
+    entries = []
+    if archive:
+        if not abbreviation or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", abbreviation):
+            print("书籍缩写未核定：请用 --abbreviation 或大纲 abbreviation 字段指定 ASCII 缩写")
+            return 1
+        if tree:
+            try:
+                entries = material_entries(tree, levels)
+            except OutlineError as e:
+                print(str(e))
+                return 1
 
     if not dry:
         target.mkdir(parents=True)
@@ -930,6 +1006,15 @@ def run(name, template, target, do_push, tree, levels, dry):
     if dry:
         print("\n[预演] 未写入任何文件。")
         return 0
+
+    if archive:
+        build_materials(target, abbreviation, entries, outline_text)
+        source = target / "Source.md"
+        source.write_text(source.read_text(encoding="utf-8").replace(
+            "- 缩写：BOOK（占位，须按所选版本前言核定）",
+            f"- 缩写：{abbreviation}（用户提供，须按所选版本前言核定）"),
+            encoding="utf-8", newline="")
+        # Materials 不复制模板示例；按新书大纲重建并随私有仓库备份。
 
     print("\ngit init：")
     ok, _, err = sh(["git", "init", "-q", "-b", "master"], cwd=str(target))
@@ -996,6 +1081,7 @@ def main():
     template = Path(template) if template else WORKSPACE / "Template" / "Math-Note"
     outline_file = opt("--outline")
     levels_spec = opt("--levels")
+    abbreviation = opt("--abbreviation")
 
     # 无参数 → 交互式引导
     if not argv:
@@ -1003,7 +1089,7 @@ def main():
 
     positional = [a for a in argv if not a.startswith("--")]
     # 剔除被 --xxx 消费掉的值，剩下的第一个才是笔记名
-    for opt_name in ("--template", "--outline", "--levels"):
+    for opt_name in ("--template", "--outline", "--levels", "--abbreviation"):
         val = opt(opt_name)
         if val in positional:
             positional.remove(val)
@@ -1052,7 +1138,10 @@ def main():
         print("✗ 未找到笔记根目录")
         return 1
 
-    return run(name, template, root / name, do_push, tree, levels, dry)
+    outline_text = Path(outline_file).read_text(encoding="utf-8") if outline_file else None
+    return run(name, template, root / name, do_push, tree, levels, dry,
+               abbreviation=abbreviation or meta.get("abbreviation"),
+               outline_text=outline_text)
 
 
 if __name__ == "__main__":

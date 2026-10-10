@@ -286,6 +286,14 @@ python new_note/new_note.py <笔记名> --dry-run            # 预演，不写�
 python new_note/new_note.py <笔记名> --outline <大纲.md> --levels textbook   # 覆盖 md 里的设置
 ```
 
+### Math-Note 资料骨架试点
+
+包含 `Source.md` 的模板启用资料模式，需 `--abbreviation <核定缩写>` 或大纲元信息 `abbreviation:`；交互引导也会获取缩写。`Source.md` 只保存书籍版本、语言等元信息；未知信息保留待填写。
+
+三级 `chapter, section, subsection` 大纲生成 `缩写_Content.md` 和 `Materials/Cxx/Sxx/Nxx/{images,body.md,proof.md,record.md}`，每§一份 `review.md`，每行一目，审核阶段默认未检查。显式数字前缀用于固定编号，无前缀按同级顺序编号，目录须人工核对原书。复制到目录文件时剥离输入元信息，不带出模板等本地路径。
+
+`Materials/` 的处理稿、记录、核对表和截图允许版本跟踪，随私有 Git 仓库备份。新书资料按大纲重建，不复制模板示例 Materials 或 BOOK_Content.md。资料补建不覆盖已有文件；无大纲只建元信息与待核对目录。试点不接受其它层级模式；不含 `Source.md` 的其它模板保持原层级流程。详见 [new_note.md](new_note/new_note.md)。
+
 ### 大纲 md 怎么写
 
 文件头是可省的元信息块（`---` 包围、`键: 值`），随后用 **Markdown 标题的层级**表示
