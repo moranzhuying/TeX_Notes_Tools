@@ -28,6 +28,12 @@ python Tools/progress/workbench_server.py --root LaTeX_Notes --port 7656 --no-br
 
 面板选项7独立启用/撤销保存；首次默认只读，allow-open互不授予权限。启用可输入已核实的书名到永久book_id的JSON对象，再输入SAVE确认当前许可根；原单个GT永久ID输入及GT确认保留。多书配置包含allow_write、write_books、绝对write_root和write_book_ids；每书独立UUID，重复ID或别名不能继承许可。不完整配置保持只读，完整失配拒绝启动；root变化清空全部许可。启动及每次POST重新核验根、书目录边界与永久身份。面板不自动初始化书、不迁移旧marks、不生成审核结论、不写TeX。
 
+### 保存许可核验与发布边界（2026-10-13）
+
+本轮在本机既有配置中核验八本登记书的许可根与独立永久ID，均已匹配，无需重新授权或初始化。正式启动面板 `Session` 在独立空闲端口提供只读GET证据：八书导航均为 `writable=true`，运行时基线均已有SHA256；未向真实书执行初始化、保存或恢复请求。页面 `enabled()` 的Node VM条件验证表明，在这些许可与初始化基线满足且无加载/冲突时，保存位置和编辑输入可用；这不冒充真实浏览器逐书点击或新的真实保存验收。
+
+本机逐书许可不随公开代码分发；新配置依然默认只读，换根清空许可，已建立永久ID保持不变。`allow-open` 独立保持原值，不因保存许可而自动开启。测试服务只停止本轮自己创建的实例，不接管或停止既有服务。发布仅提交与推送现有 `main`，不创建tag、Release或PR；本机配置、真实书内数据、旧私密备注、输出证据和其它工具未提交改动均不纳入本轮提交。
+
 ### 旧标记迁移退役（2026-10-13，现行权威）
 
 用户已弃用旧标记迁移。`workbench_legacy.py` 保留为拒绝入口，不再执行 plan/apply/confirm/archive；新版启动、读取、保存、报告和界面不使用旧 JSON、legacy 归档或退役 sidecar。启动面板与编辑页没有迁移或认领按钮。
@@ -143,13 +149,13 @@ python Tools/progress/workbench_server.py --root <隔离fixture书架目录> --p
 
 ## PDF 前台验收冻结与剩余风险（2026-10-13）
 
-本次旧入口与旧迁移退役可独立提交，不以未解决的 PDF 画布问题阻断；但工作台整体验收仍为 **PARTIAL/UNVERIFIED，不能宣称整体 PASS**。本轮 PDF 产品文件未修改，停止 GUI 重试，不安装 PDF.js 或猜测性修改阅读器生命周期。
+2026-10-14最终有界诊断：独立HTTP标签页、独立Blob标签页及产品备用按钮实际用户点击均为 **PASS**，已核对第一/第二页真实画布与页码。当前嵌入Blob与直接HTTP iframe仍为 **UNVERIFIED**（灰屏），整体保持 **PARTIAL/UNVERIFIED，不宣称全部PDF修复**；根因未确认，不归因于Blob释放或擅自调整浏览器安全设置。
 
-前台 Edge 的 Blob 第一次打开实际第一页可见，页码为 1/2；跳页确实销毁旧 viewer 并创建新 viewer，实际 DOM 为 2/2，但画布灰屏，没有第二页蓝色 marker。直接 HTTP 路线第一页也灰屏，单改 fragment 后仍复用 viewer、保持 1/2，因此不能将灰屏归因于旧 Blob revoke，也不能把 src、iframe-load 或 DOM 页码当成渲染通过。
+本轮最小产品改动仅在 `workbench_editor.html` 增加 `openPdfTab` 备用按钮。完整已验证Blob加载后才可用，目标重置即禁用；必须用户明确同步点击才以 `noopener` 打开独立标签页并带目标页码，不自动打开、不下载、不修改PDF或后端。嵌入灰屏时可使用该已实际验收的备用路线；它不代表嵌入阅读器已修复。
 
-冻结测试 `tests/test_pdf_foreground_acceptance.py` 联合核对实际页码与截图页首 marker，有界采样后输出 `overall`。**exit 0 仅表示脚本完成且保护检查通过，也允许 PARTIAL/UNVERIFIED；不是 PDF 通过码**。必须读取输出状态及画布证据。当前第二页真实渲染与根因仍未核验，冻结结论不据此判定产品 FAIL。此前较小夹具的像素检查不能取代本次最终前台证据。
+冻结测试 `tests/test_pdf_foreground_acceptance.py` 联合核对实际页码与截图页首marker，并验证备用按钮真实点击。最终脚本exit 0、无失败项且保护检查通过；**exit 0不是所有路线渲染通过码**，必须读取各路线状态与画布证据。本机证据保留在输出目录，不随公开代码提交。
 
-测试使用当前 Python、Playwright 的 `msedge` 默认安装发现与相对推导的工作区路径，不固定本机用户目录；私有配置、真实书籍身份、报告与截图不随公开仓库提交。
+测试通过默认安装位置发现普通Edge，以独立临时profile进行有界验收，不固定本机用户目录。产品与测试现已冻结；不继续GUI重试，不安装PDF.js或宣称已定位嵌入灰屏根因。
 
 ## 旧版运行方式（历史留存，不是新版入口）
 

@@ -32,7 +32,9 @@
 
 新版日常启动与读取链路不导入旧版 `progress.py`，不读取 `progress.conf`、`progress_marks.json` 或 `progress_settings.json`；`workbench_legacy.py` 仅保留退役拒绝入口，规划、迁移、确认、归档均在读取数据前拒绝；旧归档与retirement sidecar不作为运行数据源，不参与日常启动。
 
-PDF 前台验收已冻结为 **PARTIAL/UNVERIFIED，非整体 PASS**：Blob 新 viewer 虽为 2/2，第二页仍灰屏；直接 HTTP 第一页也灰屏，根因未确认。PDF 产品文件保持未修改，退役功能独立提交。`test_pdf_foreground_acceptance.py` 的 exit 0 包含 partial，只表示脚本完成及保护检查通过，不等于 PDF 渲染通过；详见 `progress/progress.md` 的剩余风险说明。
+保存许可核验：本机既有八书许可根与各永久ID匹配；正式启动面板独立端口GET确认八书可写导航及已初始化运行时基线，页面保存判定另有Node VM验证，未对真实书试写。本机许可不入公开库，新配置仍默认只读，allow-open不随保存自动开启。发布范围仅为提交并推送现有main，不创建tag、Release或PR；其它工具未提交改动原样保留。
+
+PDF最终有界验收（2026-10-14）：独立HTTP/Blob标签页及新增「独立标签页打开PDF」备用按钮实际点击均PASS，真实页码和画布已核验；当前嵌入Blob/直接HTTP iframe仍灰屏、UNVERIFIED，整体保持 **PARTIAL/UNVERIFIED，不宣称全部PDF修复**。备用按钮仅在完整已验证Blob加载后启用，需用户点击，以noopener打开目标页码，不自动打开或下载，不改PDF/后端。冻结测试exit 0仅代表完成及保护检查通过，须看各路线渲染结果；详见 `progress/progress.md`。
 
 可独立运行 `python Tools/progress/workbench_launcher.py --no-browser`，进入同一面板但显式启动时不自动打开浏览器；`--config <本机JSON路径>` 可指定隔离配置。独立服务 CLI 的默认端口同样为 `7656`，更多服务参数见 `progress/progress.md`。
 

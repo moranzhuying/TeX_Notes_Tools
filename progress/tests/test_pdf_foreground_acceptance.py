@@ -1,23 +1,32 @@
-"""独立前台Edge、有界两路线PDF验收；不写真实笔记，不启动TeXstudio。"""
+"""普通独立前台Edge、有界独立/嵌入/显式备用PDF验收；不写真实笔记，不启动TeXstudio。"""
 import base64
 import builtins
+import ctypes
+from ctypes import wintypes
+import struct
+import zlib
 import importlib
 import io
 import json
 from pathlib import Path
 import shutil
+import socket
+import subprocess
+import time
+import hashlib
 import sys
 import tempfile
 import threading
 from unittest.mock import patch
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 from playwright.sync_api import sync_playwright
 from test_clean_ui_acceptance import RejectOld, hashes, OLD
 
 WS = Path(__file__).resolve().parents[3]
 PRODUCT = WS / 'Tools/progress'
-OUT = WS / 'outputs/pdf_foreground_acceptance_20261013'
+OUT = WS / 'outputs/pdf_special_diagnosis_20261013'
 
 
 def fixture_pdf():
@@ -35,15 +44,58 @@ def fixture_pdf():
     return raw + f'trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n'.encode()
 
 
+def owned_window_png(pid, path):
+    """仅截取自有Edge可见窗口客户区，不采集用户桌面。"""
+    user = ctypes.WinDLL('user32', use_last_error=True)
+    gdi = ctypes.WinDLL('gdi32', use_last_error=True)
+    for name in ('GetDC',):
+        getattr(user, name).restype = ctypes.c_void_p
+    for name in ('CreateCompatibleDC', 'CreateCompatibleBitmap', 'SelectObject'):
+        getattr(gdi, name).restype = ctypes.c_void_p
+    handles = []
+    callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        owner = wintypes.DWORD(); user.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user.IsWindowVisible(hwnd): handles.append(hwnd)
+        return True
+    user.EnumWindows(callback(visit), 0)
+    if not handles: return {'error': '自有Edge窗口未找到，未截用户窗口'}
+    hwnd = handles[0]; rect = wintypes.RECT(); user.GetClientRect(hwnd, ctypes.byref(rect))
+    width, height = rect.right, rect.bottom
+    dc = user.GetDC(hwnd); mem = gdi.CreateCompatibleDC(ctypes.c_void_p(dc))
+    bitmap = gdi.CreateCompatibleBitmap(ctypes.c_void_p(dc), width, height)
+    old = gdi.SelectObject(ctypes.c_void_p(mem), ctypes.c_void_p(bitmap))
+    try:
+        assert gdi.BitBlt(ctypes.c_void_p(mem), 0, 0, width, height, ctypes.c_void_p(dc), 0, 0, 0x00CC0020)
+        header = struct.pack('<IiiHHIIiiII', 40, width, -height, 1, 32, 0, width * height * 4, 0, 0, 0, 0)
+        info = ctypes.create_string_buffer(header + bytes(12)); data = ctypes.create_string_buffer(width * height * 4)
+        assert gdi.GetDIBits(ctypes.c_void_p(mem), ctypes.c_void_p(bitmap), 0, height, data, info, 0)
+        raw = data.raw; rows = bytearray()
+        for y in range(height):
+            rows.append(0)
+            for x in range(width):
+                i = (y * width + x) * 4; rows.extend((raw[i + 2], raw[i + 1], raw[i]))
+        def chunk(kind, value):
+            return struct.pack('>I', len(value)) + kind + value + struct.pack('>I', zlib.crc32(kind + value))
+        png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
+        path.write_bytes(png)
+        return {'path': str(path), 'pid': pid, 'width': width, 'height': height}
+    finally:
+        gdi.SelectObject(ctypes.c_void_p(mem), ctypes.c_void_p(old))
+        gdi.DeleteObject(ctypes.c_void_p(bitmap)); gdi.DeleteDC(ctypes.c_void_p(mem)); user.ReleaseDC(hwnd, ctypes.c_void_p(dc))
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     result = {'routes': {}, 'errors': [], 'legacy_access': [], 'http': [], 'target_events': [], 'product_changes': []}
     before = hashes()
+    result['protected_snapshot'] = before
+    result['fixture_sha256'] = hashlib.sha256(fixture_pdf()).hexdigest()
     product_before = {p.name: p.read_bytes() for p in PRODUCT.glob('workbench*') if p.is_file()}
     saved_path = sys.path[:]
     saved_modules = {k: v for k, v in sys.modules.items() if k.startswith('workbench') or k in OLD}
     finder = RejectOld()
-    server = thread = browser = None
+    server = thread = browser = process = None
     original_builtin, original_io = builtins.open, io.open
 
     def guard(original):
@@ -57,7 +109,7 @@ def main():
         return opening
 
     try:
-        with tempfile.TemporaryDirectory(prefix='temp2pages-') as temp:
+        with tempfile.TemporaryDirectory(prefix='temp2pages-', ignore_cleanup_errors=True) as temp:
             base = Path(temp); runtime = base / 'cleannewmodules'; runtime.mkdir()
             for source in PRODUCT.glob('workbench*.py'):
                 if source.stem != 'workbench_legacy': shutil.copyfile(source, runtime / source.name)
@@ -88,11 +140,35 @@ def main():
                 result['origin'] = server.origin
                 with urlopen(server.origin + '/pdf?book=ProbeBook') as response:
                     result['http_pdf_bytes_match'] = response.status == 200 and response.read() == pdfbytes
+                    result['pdf_headers'] = dict(response.headers)
+                with urlopen(Request(server.origin + '/pdf?book=ProbeBook', headers={'Range': 'bytes=0-31'})) as response:
+                    result['range_valid'] = response.status == 206 and response.read() == pdfbytes[:32] and response.headers['Content-Range'] == f'bytes 0-31/{len(pdfbytes)}'
+                try:
+                    urlopen(Request(server.origin + '/pdf?book=ProbeBook', headers={'Range': 'bytes=999999-'}))
+                except HTTPError as error:
+                    result['range_invalid'] = error.code == 416 and error.headers['Content-Range'] == f'bytes */{len(pdfbytes)}'
+                    error.close()
                 with sync_playwright() as pw:
-                    browser = pw.chromium.launch(channel='msedge', headless=False, args=['--disable-features=msPdfOOUI,msPdfOOUIByDefault'])
+                    edge = Path('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')
+                    assert edge.is_file(), '未找到本机已安装Edge'
+                    with socket.socket() as sock:
+                        sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+                    process = subprocess.Popen([str(edge), '--user-data-dir=' + str(base / 'edge-profile'),
+                                                '--remote-debugging-port=' + str(port), '--no-first-run',
+                                                '--no-default-browser-check', '--window-size=1300,1000', 'about:blank'])
+                    deadline = time.monotonic() + 15
+                    while True:
+                        try:
+                            with urlopen(f'http://127.0.0.1:{port}/json/version', timeout=1): break
+                        except OSError:
+                            if time.monotonic() >= deadline: raise
+                            time.sleep(0.1)
+                    browser = pw.chromium.connect_over_cdp(f'http://127.0.0.1:{port}')
+                    result['launch'] = '普通已安装Edge，独立临时profile，非Playwright launch默认flags'
                     try:
                         result['browser_version'] = browser.version
-                        page = browser.new_page(viewport={'width': 1300, 'height': 1000})
+                        page = browser.contexts[0].new_page()
+                        page.set_viewport_size({'width': 1300, 'height': 1000})
                         page.on('pageerror', lambda e: result['errors'].append(str(e)))
                         page.on('response', lambda r: result['http'].append({'url': r.url, 'status': r.status, 'method': r.request.method}))
                         page.goto(server.origin); page.bring_to_front()
@@ -128,7 +204,7 @@ def main():
                                 except Exception as error: states.append({'targetId': info['targetId'], 'error': str(error)})
                             return states
 
-                        image_page = browser.new_page()
+                        image_page = browser.contexts[0].new_page()
                         page.bring_to_front()
 
                         def pixels(raw):
@@ -136,7 +212,7 @@ def main():
 
                         def capture(route, number):
                             samples = []; path = OUT / f'{route}-page{number}.png'
-                            for sample in range(6):
+                            for sample in range(2):
                                 page.wait_for_timeout(1500)
                                 raw = page.screenshot(path=str(path)); color = pixels(raw); states = viewer_state()
                                 expected, other = ('red', 'blue') if number == 1 else ('blue', 'red')
@@ -144,8 +220,29 @@ def main():
                                          and any(s.get('page') == str(number) and s.get('total', '').strip() == '/ 2' for s in states))
                                 samples.append({'pixels': color, 'viewer': states, 'ready': ready})
                                 if ready: break
-                            return {'ready': ready, 'screenshot': str(path), 'samples': samples, 'src': page.locator('#pdfViewer').get_attribute('src')}
+                            native = owned_window_png(process.pid, OUT / f'{route}-page{number}-native.png')
+                            if native.get('path'):
+                                native['pixels'] = pixels(Path(native['path']).read_bytes())
+                                expected, other = ('red', 'blue') if number == 1 else ('blue', 'red')
+                                native['marker_ready'] = native['pixels'][expected]['count'] > 10000 and native['pixels'][other]['count'] == 0
+                            return {'ready': ready, 'screenshot': str(path), 'native': native, 'samples': samples, 'url': page.url}
 
+                        workbench = page
+                        for route in ('standalone-http', 'standalone-blob'):
+                            current = result['routes'][route] = {}
+                            for number in (1, 2):
+                                page = browser.contexts[0].new_page()
+                                if route == 'standalone-http':
+                                    page.goto(server.origin + '/pdf?book=ProbeBook#page=' + str(number), wait_until='commit')
+                                else:
+                                    blob = workbench.evaluate("async () => {const r=await fetch('/pdf?book=ProbeBook');return URL.createObjectURL(await r.blob());}")
+                                    page.goto(blob + '#page=' + str(number), wait_until='commit')
+                                page.bring_to_front()
+                                current['page' + str(number)] = capture(route, number)
+                                page.close()
+                                if route == 'standalone-blob': workbench.evaluate('u => URL.revokeObjectURL(u)', blob)
+                            current['status'] = 'PASS' if all(current['page' + str(n)]['ready'] for n in (1, 2)) else 'UNVERIFIED'
+                        page = workbench; page.bring_to_front()
                         page.evaluate("() => showPdf('ProbeBook',1)")
                         page.wait_for_function("() => !document.querySelector('#pdfViewer').hidden && document.querySelector('#pdfViewer').src.startsWith('blob:')")
                         page.locator('#pdfViewer').evaluate("el => {el.style.position='fixed';el.style.left='30px';el.style.top='20px';el.style.width='1040px';el.style.height='880px';el.style.zIndex='99999';}")
@@ -161,12 +258,28 @@ def main():
                         page.locator('#pdfViewer').evaluate("el => el.src='/pdf?book=ProbeBook#page=2'")
                         direct['page2'] = capture('direct', 2)
                         direct['status'] = 'PASS' if direct['page1']['ready'] and direct['page2']['ready'] else 'UNVERIFIED'
+                        workbench.evaluate("() => showPdf('ProbeBook',1)")
+                        workbench.wait_for_function("() => !document.querySelector('#openPdfTab').disabled")
+                        fallback = result['routes']['fallback-click'] = {}
+                        for number in (1, 2):
+                            workbench.locator('#pdfPage').fill(str(number))
+                            with workbench.expect_popup() as opened:
+                                workbench.locator('#openPdfTab').click()
+                            page = opened.value; page.bring_to_front()
+                            fallback['page' + str(number)] = capture('fallback-click', number)
+                            page.close(); page = workbench; page.bring_to_front()
+                        fallback['status'] = 'PASS' if all(fallback['page' + str(n)]['ready'] for n in (1, 2)) else 'UNVERIFIED'
                         result['pdf_events'] = page.evaluate('pdfEvents')
                         result['final_targets'] = cdp.send('Target.getTargets')['targetInfos']
                     finally:
-                        browser.close(); browser = None; result['owned_browser_closed'] = True
+                        try: browser.new_browser_cdp_session().send('Browser.close')
+                        except Exception: pass
+                        browser.close(); browser = None
+                        process.wait(timeout=10); result['owned_browser_closed'] = True
     except Exception as error:
+        import traceback
         result['failure'] = repr(error)
+        result['traceback'] = traceback.format_exc()
     finally:
         if server:
             server.shutdown(); server.server_close(); thread.join(10)
