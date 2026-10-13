@@ -13,6 +13,9 @@ progress_marks.json.tmp
 progress_settings.json
 progress_settings.json.bak
 progress_settings.json.tmp
+progress/workbench_local.json
+progress/workbench_local.json.*.tmp
+progress/._data/
 
 # ===== Python =====
 __pycache__/

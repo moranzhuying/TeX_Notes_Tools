@@ -10,7 +10,7 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
 | `git_setup/`       | Git 基本信息（环境检测 / 账户 / SSH）                |
 | `manager/`         | 笔记工作区管理（仓库状态 / 批量提交 / 建仓库）        |
 | `symbols/`         | 符号库管理（提取 / 回填 / 刷新补全 / 分发）           |
-| `progress/`        | 写作进度追踪表（浏览器查看）                          |
+| `progress/`        | 新版写作工作台 / 旧版进度追踪表（浏览器查看）          |
 | `new_note/`        | 从模板新建笔记                                       |
 | `outline_tool/`    | 大纲的创建 / 导出 / 校验                              |
 | `note_tools/`      | 单本笔记的入口（提交 / 习题模式）                     |
@@ -22,6 +22,7 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
 | `video2text/`      | 视频转文字（字幕优先，无字幕则本地 whisper 转写）     |
 
 **一个面板选项 = 一个同名目录**，脚本、说明与配置都放在自己目录里，互不混。
+选项 4 与 15 为同一 progress/ 工具的新旧入口，共用该目录。
 除「提交前本机信息扫描」「配置路径检查」两项是直接带参数跑完之后回到面板，
 其余各项都是**进入自己的交互面板**，在里面就能完成操作（不必再敲命令行参数）。
 
@@ -29,6 +30,7 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
     python launcher.py
 """
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -38,13 +40,13 @@ WORKSPACE = TOOLS_ROOT.parent
 
 # (序号, 标题, 相对脚本路径, 运行方式, 分组)
 #   面板 = 前台运行，退出后回到本面板
-#   后台 = 启动后立即返回（服务类）
+#   后台 / 后台:附加参数 = 启动后立即返回（服务类）
 #   参数 = 前台运行并附加命令行参数
 MENU = [
     ("1", "设置 git 基本信息（环境检测 / 账户 / SSH）", "git_setup/git_setup.py", "面板", "核心工具"),
     ("2", "笔记工作区管理（仓库状态 / 批量提交 / 建仓库）", "manager/manager.py", "面板", "核心工具"),
     ("3", "符号库管理", "symbols/symbols.py", "面板", "核心工具"),
-    ("4", "写作进度追踪表", "progress/progress.py", "后台", "核心工具"),
+    ("4", "写作工作台（启动配置 / 默认只读）", "progress/workbench_launcher.py", "面板", "核心工具"),
 
     ("5", "从模板新建笔记", "new_note/new_note.py", "面板", "创建与维护"),
     ("6", "大纲工具（创建 / 导出 / 校验）", "outline_tool/outline_tool.py", "面板", "创建与维护"),
@@ -57,6 +59,9 @@ MENU = [
     ("12", "提交本工具集到 GitHub", "commit/commit.py", "面板", "信息安全与提交"),
 
     ("13", "视频转文字（字幕优先 / 本地 whisper 兜底）", "video2text/video2text.py", "面板", "素材与转写"),
+
+
+    ("15", "写作进度追踪表（旧版）", "progress/progress.py", "后台", "旧版兼容"),
 ]
 
 SUBMIT_NO = "12"          # 打 * 标记的那一项
@@ -98,21 +103,18 @@ def run(item):
         return True
 
     args = [sys.executable, str(script)]
-    if mode.startswith("参数"):
-        extra = mode.split(":", 1)[1].strip() if ":" in mode else ""
-        if extra:
-            args += extra.split()
-
     try:
-        if mode == "后台":
+        if mode.startswith(("参数:", "后台:")):
+            args += shlex.split(mode.split(":", 1)[1])
+        if mode == "后台" or mode.startswith("后台:"):
             subprocess.Popen(args, cwd=str(script.parent))
             print("  已在后台启动，本面板可继续使用。")
             return False
         subprocess.run(args, cwd=str(script.parent))
     except KeyboardInterrupt:
         print("\n  已中断。")
-    except OSError as e:
-        print(f"  ✗ 启动失败：{e}")
+    except (OSError, ValueError) as e:
+        print(f"  启动失败：{e}")
     return True
 
 
