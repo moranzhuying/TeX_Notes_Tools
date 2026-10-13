@@ -1,5 +1,6 @@
-"""多书许可与legacy归档隔离测试，不写真实笔记。"""
-import json
+"""多书许可与 legacy 退役隔离测试，不写真实笔记。"""
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 from pathlib import Path
 import shutil
 import sys
@@ -77,33 +78,42 @@ class LegacyTests(unittest.TestCase):
                             'Content/unique.tex': {'marks': {'proof': 'done'}}}, 'nodes': {}})
         self.source.write_bytes(self.raw)
 
-    def test_ambiguity_no_promotion_idempotency(self):
+    def snapshot(self):
+        return {p.relative_to(self.base).as_posix(): p.read_bytes()
+                for p in self.base.rglob('*') if p.is_file()}
+
+    def test_ambiguity_no_read_no_promotion_repeated_rejection(self):
         private = self.base / 'private'
-        result = legacy.migrate(self.root, self.source, private)
-        records = {r['key']: r for r in result['records']}
-        self.assertEqual(records['Content/shared.tex']['status'], 'pending_claim')
-        self.assertEqual(records['Content/unique.tex']['book'], 'One')
-        self.assertNotIn('私密备注', json.dumps(result, ensure_ascii=False))
-        before = {str(p): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
-        self.assertEqual(result, legacy.migrate(self.root, self.source, private))
-        self.assertEqual(before, {str(p): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        before = self.snapshot()
+        for _ in range(2):
+            with patch.object(Path, 'read_bytes', side_effect=AssertionError('不得读取旧标记')):
+                with self.assertRaises(legacy.RetiredError):
+                    legacy.plan(self.root, self.raw)
+                with self.assertRaises(legacy.RetiredError):
+                    legacy.migrate(self.root, self.source, private)
+        self.assertEqual(before, self.snapshot())
         self.assertEqual(self.source.read_bytes(), self.raw)
         self.assertFalse(list(self.root.rglob('review.md')))
-        original = next((self.root / 'One').rglob('original.json'))
-        self.assertEqual(original.read_bytes(), self.raw)
-        self.assertFalse((self.root / 'Two/Materials/workbench/legacy').exists())
+        self.assertFalse(private.exists())
+        for name in ('One', 'Two'):
+            self.assertFalse((self.root / name / 'Materials/workbench/legacy').exists())
 
-    def test_interrupted_and_concurrent_publish(self):
-        from concurrent.futures import ThreadPoolExecutor
+    def test_interrupted_and_concurrent_publish_rejected_preserves_archive(self):
         target = self.base / 'private/original.json'
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            list(pool.map(lambda _: legacy.publish(target, self.raw), range(2)))
-        self.assertEqual(target.read_bytes(), self.raw)
-        with self.assertRaises(st.Conflict):
-            legacy.publish(target, b'changed')
-        # 孤立临时文件留证，不影响同bytes断点重跑。
+        target.parent.mkdir()
+        target.write_bytes(self.raw)
         (target.parent / '.interrupted.tmp').write_bytes(b'partial')
-        legacy.publish(target, self.raw)
+        before = self.snapshot()
+
+        def reject(_):
+            with self.assertRaises(legacy.RetiredError):
+                legacy.publish(target, self.raw)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(reject, range(2)))
+        with self.assertRaises(legacy.RetiredError):
+            legacy.publish(target, b'changed')
+        self.assertEqual(before, self.snapshot())
         self.assertEqual(target.read_bytes(), self.raw)
 
 

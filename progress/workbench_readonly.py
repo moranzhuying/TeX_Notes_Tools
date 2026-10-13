@@ -95,7 +95,7 @@ def discover(root):
 
 def navigation_titles(book, units, resolve):
     """只读标题层：按实际 input 路径继承上下文，不以资料章号猜 TeX 章。"""
-    import progress as titles
+    import workbench_tex as titles
     cache = {}
     def text(relative):
         path = resolve(relative)
@@ -144,7 +144,7 @@ def navigation_titles(book, units, resolve):
                     context.pop('subsection', None)
         contexts[relative] = (own, context)
         return context
-    # 复用旧解析的主文件 input 标题映射；只取标题，不调用进度统计或保存。
+    # 纯 TeX 解析的主文件 input 标题映射，不读取旧面板配置或状态。
     resolve('main.tex')
     entries = titles.scan_main(book, {})
     main = titles.main_headings(book, entries)
@@ -325,26 +325,7 @@ def scan(root):
                 conflict("todo_number_conflict", issue_id=rid, references=todos)
         result["books"].append(data)
         result["conflicts"].extend(conflicts)
-    marks = root / "Tools/progress/progress_marks.json"
-    if marks.exists():
-        raw = json.loads(read(marks))
-        candidates = []
-        for category in ("entries", "nodes"):
-            for path in raw.get(category, {}):
-                matches = []
-                for book in result["books"]:
-                    bp = shelf / book["name"]
-                    try:
-                        exact = safe(bp, path)
-                    except ValueError:
-                        continue
-                    if exact.is_file():
-                        matches.append({"book_id": book["book_id"], "path": path, "unit_ids": [u["id"] for u in book["units"] if u["tex_path"] == path]})
-                candidates.append({"category": category, "path": path, "matches": matches, "candidate": matches[0] if len(matches) == 1 else None, "status": "待确认" if len(matches) == 1 else "无匹配或歧义"})
-        result["legacy"] = {"raw": raw, "candidates": candidates, "migration_performed": False, "done_policy": "保留历史标记，不升级审核状态"}
-        for book in result["books"]:
-            for unit in book["units"]:
-                unit["legacy_candidates"] = [c for c in candidates if any(m["book_id"] == book["book_id"] and unit["id"] in m["unit_ids"] for m in c["matches"])]
+    result["legacy"] = {"active": False, "raw": {}, "candidates": [], "migration_performed": False, "done_policy": "旧标记不参与新版工作台数据；显式归档工具另行使用"}
     units = [u for b in result["books"] for u in b["units"]]
     result["summary"] = {"books": len(result["books"]), "units": len(units), "conflicts": len(result["conflicts"]), "content_states": dict(Counter(u["content_state"]["state"] for u in units)), "stages": {k: dict(Counter(u["statuses"][k] for u in units)) for k in STAGES}, "todos": sum(len(u["todos"]) for u in units), "audit_scope": "全量现行登记绑定核查，非原书目录逐目核定"}
     return result

@@ -1,9 +1,19 @@
 # 写作进度追踪表 · 设计文档
 
-> 本文档是「写作进度追踪表」（`progress.py`）的设计依据，记录 2026-09-21 至 09-22 讨论中确定的全部规则。
-> 实现前若有改动，先更新本文档；后续新增功能也在此追加。
+> 前部记录新版工作台边界；后部旧版规则是「写作进度追踪表」（`progress.py`）的历史设计依据，不作为新版审核语义。
+> 2026-10-13：总面板只保留选项 4 新版前台入口，旧版选项 15 撤下；1–14 编号及提交项 12 不变。旧版脚本、页面、配置、marks/settings 与备份留存，不删除、不隐式迁移；旧标记迁移彻底退役，legacy工具仅保留拒绝入口，已有旧服务不接管、不停止。
 
 ---
+
+## 2026-10-13 旧迁移退役边界（现行权威）
+
+用户弃用旧标记迁移，不再规划、迁移、确认、归档或建立任何认领任务。`workbench_legacy.py` 保留退役拒绝入口，在访问数据前拒绝全部旧操作。启动面板及编辑页无迁移按钮；工作台运行数据不读取旧标记、legacy 归档或退役 sidecar。
+
+历史文件全部原字节保留：源 JSON、书内及本机完整 original.json、记录正文、provenance/hash、旧 manifest 不改写、不删除、不再次复制。独立本机 `._data/legacy/<源hash>/retirement.json` 与工作区 `outputs/legacy_retirement_20261013/retirement.json` 声明当前状态，覆盖全源14条旧记录；7条 pending_claim 与7条 confirmable_exact_unique 全部 abandoned，待认领任务为0。原 manifest status 仅为历史快照，该声明是现行人工核查权威；无原私密备注，仅记录身份、路径、旧/新状态、用户弃用理由及日期。独占创建、已存在时核验一致，不覆盖。声明不是运行数据，缺失也不能恢复迁移能力。下文涉及旧候选或旧自动路径迁移的内容仅是历史设计，不授权任何新旧迁移操作。
+
+## 2026-10-13 PDF 前台冻结边界
+
+PDF 实际渲染仍为 PARTIAL/UNVERIFIED，不是整体验收 PASS。Blob 新 viewer 实际 DOM 为 2/2，但第二页画布灰屏；直接 HTTP 第一页同样灰屏，不能认定旧 URL revoke 是根因。PDF 产品不改、不继续 GUI 重试；退役功能按其独立证据交付。冻结前台测试 exit 0 允许 partial，仅说明运行完成及保护检查通过，必须联合读取 overall、viewer 页码与真实截图 marker，不能仅以 fragment、load 或 DOM 页码断言成功。
 
 ## 2026-10-13 日常工作台读取边界
 
@@ -17,7 +27,7 @@
 
 全文搜索与源码只读登记文件，实时请求不维护全局正文缓存。问题聚合只读，review疑点不混结论，未检查不计欠账；TODO编号book作用域，审核解决不改TeX注释，主动计划单列。统计与Markdown报告使用同一aggregate函数，四阶段按目/直接节/附录适用单位，总结仅已有summaries按章/§分表；缺basis和stale不能冒称核验完成，无单一总完成率。默认报告不读旧私有备注或源码全文。
 
-PDF书根main.pdf流读、单Range、固定pdftotext文本层定位并清楚降级；iframe限定CSP frame-src self，PDF不保证与源码同步。TeXstudio须独立allow-open和confirm true、POST原CSRF/Host/Origin保护、登记TeX白名单、subprocess list无shell；不因此开放TeX写接口。所有慢扫描和OS打开均非首页动作，旧入口与launcher不替换。
+PDF书根main.pdf流读、单Range、固定pdftotext文本层定位并清楚降级；iframe限定CSP frame-src self，PDF不保证与源码同步。TeXstudio须独立allow-open和confirm true、POST原CSRF/Host/Origin保护、登记TeX白名单、subprocess list无shell；不因此开放TeX写接口。所有慢扫描和OS打开均非首页动作；旧版文件留存，但总面板旧入口已撤下，新版选项 4 保持前台启动配置。
 
 ## 2026-10-10 已确认的新工作台方向
 

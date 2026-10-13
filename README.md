@@ -8,11 +8,11 @@
 | `git_setup/git_setup.py` | Git 基本信息：环境检测 / 配置账户 / 配置 SSH | 见下 |
 | `manager/manager.py` | 笔记工作区管理：仓库状态 / 批量提交 / 建仓库 | `manager.md` |
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 | 见下 |
-| `progress/progress.py` | 总面板选项 15：旧版写作进度追踪，保留原配置与启动行为 | `progress.md`、`progress_design.md` |
+| `progress/workbench_launcher.py` | 总面板选项 4：新版工作台专属启动面板，本机root/端口/独立打开权限配置，默认只读、逐书保存独立根/永久ID许可 | 见下 |
+| `progress/workbench_server.py` | 新版工作台HTTP服务：默认只读、禁止调起编辑器；实时轻量导航、按需全文/问题/阶段统计/报告/PDF；受控写入与TeXstudio打开须另行显式授权 | `progress.md` |
 | `progress/workbench_readonly.py` | 新工作台只读原型：校验资料绑定与审核记录，导出快照；不迁移或修改笔记 | `progress.md` |
 | `progress/workbench_store.py` | 受控保存底层：书籍身份、按书计划、审核补丁、版本检查与备份恢复 | `progress.md` |
-| `progress/workbench_launcher.py` | 总面板选项 4：新版工作台专属启动面板，本机root/端口/独立打开权限配置，默认只读、逐书保存独立根/永久ID许可 | 见下 |
-| `progress/workbench_server.py` | 新版工作台HTTP服务：默认只读、禁止调起编辑器；实时轻量导航、按需全文/问题/阶段统计/报告/PDF；受控写入与TeXstudio打开须另行显式授权，旧服务保留在选项 15 | `progress.md` |
+| `progress/progress.py` | 旧版留存文件：已退出总面板；原脚本、页面、配置及数据不删除 | `progress.md`、`progress_design.md` |
 | `new_note/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
 | `outline_tool/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
 | `note_tools/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
@@ -28,11 +28,15 @@
 
 面板可配置单个 `root`、端口（统一默认 `7656`）、独立 `allow-open` 开关和 TeXstudio 可执行文件路径。首次 root 从工具目录相对推导到工作区的 `LaTeX_Notes`；可改为其他书架目录或含 `LaTeX_Notes` 的工作区，含空格路径可直接输入，无需引号。空路径、文件、不存在目录、无 `*_Content.md` 书籍登记入口、登记冲突或绑定路径越界的目录均会拒绝；启动前逐本进行轻量导航校验。TeXstudio 留空时由服务自动查找，`allow-open` 默认关闭，开启不授予写入权限。
 
-配置自动原子保存到 `progress/workbench_local.json`，已加入 `.gitignore`；相对 root 以配置文件所在目录为基准。配置损坏时显示可读错误并保留原文件，不回退后覆盖。改变 root 会清空旧写白名单、写入及打开权限。默认仍只读；选项7提供逐书保存许可，输入已初始化的书名到永久book_id的JSON对象并以SAVE确认许可根；原单GT输入方式保留。仅write_books不授予保存权限；需allow_write、逐书独立ID、绝对write_root完整匹配。外部同名书、复制ID的别名或不同根均不继承许可；启动及每次写请求重新核验根与身份，root变化清空许可根和全部ID。面板不初始化书、不迁移旧标记、不自动修改审核结论。显式legacy迁移工具仅归档原JSON/provenance/hash，歧义待认领、done不提升，未知归属与本机原档保存在gitignore的非公开目录，详见progress/progress.md。界面区分持久配置与当前服务的实际 root、端口、打开和写入权限；配置在下次显式启动时生效，运行期间禁止修改。
+配置自动原子保存到 `progress/workbench_local.json`，已加入 `.gitignore`；相对 root 以配置文件所在目录为基准。配置损坏时显示可读错误并保留原文件，不回退后覆盖。改变 root 会清空旧写白名单、写入及打开权限。默认仍只读；选项7提供逐书保存许可，输入已初始化的书名到永久book_id的JSON对象并以SAVE确认许可根；原单GT输入方式保留。仅write_books不授予保存权限；需allow_write、逐书独立ID、绝对write_root完整匹配。外部同名书、复制ID的别名或不同根均不继承许可；启动及每次写请求重新核验根与身份，root变化清空许可根和全部ID。面板不初始化书、不迁移旧标记、不自动修改审核结论。旧标记迁移已彻底退役：legacy及原JSON/provenance/hash原字节留存，7条历史pending_claim和7条confirmable记录全部abandoned，不再有任何认领任务，也不纳入工作台运行数据。独立退役sidecar位于本机gitignore目录，详见progress/progress.md。界面区分持久配置与当前服务的实际 root、端口、打开和写入权限；配置在下次显式启动时生效，运行期间禁止修改。
+
+新版日常启动与读取链路不导入旧版 `progress.py`，不读取 `progress.conf`、`progress_marks.json` 或 `progress_settings.json`；`workbench_legacy.py` 仅保留退役拒绝入口，规划、迁移、确认、归档均在读取数据前拒绝；旧归档与retirement sidecar不作为运行数据源，不参与日常启动。
+
+PDF 前台验收已冻结为 **PARTIAL/UNVERIFIED，非整体 PASS**：Blob 新 viewer 虽为 2/2，第二页仍灰屏；直接 HTTP 第一页也灰屏，根因未确认。PDF 产品文件保持未修改，退役功能独立提交。`test_pdf_foreground_acceptance.py` 的 exit 0 包含 partial，只表示脚本完成及保护检查通过，不等于 PDF 渲染通过；详见 `progress/progress.md` 的剩余风险说明。
 
 可独立运行 `python Tools/progress/workbench_launcher.py --no-browser`，进入同一面板但显式启动时不自动打开浏览器；`--config <本机JSON路径>` 可指定隔离配置。独立服务 CLI 的默认端口同样为 `7656`，更多服务参数见 `progress/progress.md`。
 
-选项 15 保留旧版 `progress/progress.py` 的无附加参数后台入口及旧配置；原选项 1–14 编号不变，提交项仍为 12。两个入口共同归属 `progress/`。其他后台模式仍支持 `后台:<附加参数>`，脚本以参数列表调用，不经过 shell。
+旧版选项 15 已退出总面板，原选项 1–14 编号不变，提交项仍为 12；选项 4 保持新版前台配置入口。旧版 `progress/progress.py`、`progress_ui.html`、`progress.conf`、marks/settings 及备份仅留存，本轮不删除、不清理、不隐式迁移，也不停止已有旧服务。后台模式仍支持 `后台:<附加参数>`，脚本以参数列表调用，不经过 shell。
 
 ## manager.py — 笔记工作区管理面板
 
@@ -130,9 +134,9 @@ python symbols.py --drop NAME --distribute --write     # 弃用某符号并同�
 - 目录结构统计会跳过隐藏目录、备份文件与 LaTeX 编译产物（`aux/log/out/toc/pdf` 等）
 - 每个选项执行前清屏，画面只保留当前选项的内容
 
-## progress.py — 写作进度追踪
+## progress.py — 旧版留存说明（无总面板入口）
 
-扫描本地 LaTeX 笔记的写作进度，在浏览器中查看。
+以下为保留的旧版脚本使用说明，不是当前日常入口；日常使用上文选项 4 的新版工作台。旧版扫描本地 LaTeX 笔记的写作进度，在浏览器中查看。
 
 面向「每个笔记目录一个 Git 仓库」的工作区：从各笔记的 `main.tex` 出发递归解析 `\input` 树，统计每个小节写了多少、哪些还没动、哪些定理环境是空的，并把结果呈现为一个可交互的本地页面。
 
@@ -254,7 +258,8 @@ Tools/
 │   └── manager.py / manager.md / manager.conf(.example)
 ├── symbols/               符号库管理
 │   └── symbols.py / symbols.md / symbols.conf(.example)
-├── progress/              写作进度追踪
+├── progress/              新版写作工作台（选项 4；旧版文件留存）
+│   ├── workbench_launcher.py / workbench_server.py / workbench_editor.html
 │   └── progress.py / progress.md / progress_design.md / progress_ui.html / progress.conf(.example)
 ├── new_note/              从模板新建笔记
 │   └── new_note.py / outline_example.md

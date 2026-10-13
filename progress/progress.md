@@ -1,8 +1,8 @@
-# progress.py — 写作进度追踪表
+# 写作工作台与旧版进度工具留存说明
 
-扫描 LaTeX 笔记的写作进度，在浏览器中查看。设计依据见 `progress_design.md`。
+日常入口为新版 `workbench_launcher.py`，设计依据见 `progress_design.md`。新版默认只读；逐书保存和打开编辑器须分别显式授权。
 
-**不联网、不上传、不写笔记目录**：服务只监听 `127.0.0.1`，只读取 tex 文件，标记数据写在脚本同目录。
+旧版 `progress.py` 扫描 LaTeX 笔记写作进度，已退出总面板，仅保留脚本、页面、配置与数据。下文旧版规则中的“不联网、不上传、不写笔记目录”只描述旧实现，不覆盖新版已授权的受控保存。
 
 ---
 
@@ -11,8 +11,10 @@
 从工作区运行 `python Tools/launcher.py`：
 
 - **选项 4「写作工作台（默认只读）」**：打开前台日常配置面板 `progress/workbench_launcher.py`，检查root、端口和TeXstudio路径后启动本面板托管的服务。默认端口 `7656`，默认不授权保存、初始化或调起编辑器；allow-open须单独开启。
-- **选项 15「写作进度追踪表（旧版）」**：保留原 `progress/progress.py` 无附加参数的后台入口，继续使用旧配置；选项 1–14 的编号与提交项 12 不变。
-- 两个入口均归属 `progress/`，是同一写作工具目录内的新版与旧版入口，不拆出重复目录。两个服务独立，不迁移旧标记，不停止或替换已运行的服务。新版端口被占用时报告错误，不结束占用进程；需另选端口可使用下面的独立命令。
+- **旧版选项 15 已撤下**：选项 1–14 的编号与提交项 12 不变；旧版脚本、页面、配置、marks/settings 及备份不删除、不清理，旧标记迁移已彻底退役，legacy 文件仅留存，不再归档、规划或认领。
+- 新旧文件仍同属 `progress/`，不拆出重复目录。新版不隐式迁移旧标记，不停止或替换已运行的服务。新版端口被占用时报告错误，不结束占用进程；需另选端口可使用下面的独立命令。
+
+新版日常启动与读取链路不导入旧版 `progress.py`，不读取 `progress.conf`、`progress_marks.json` 或 `progress_settings.json`；`workbench_legacy.py` 仅保留退役拒绝入口，任何规划、迁移、确认或归档调用均在读取调用方数据前拒绝，不参与日常启动。
 
 在工作区独立启动新版（不打开浏览器）：
 
@@ -26,7 +28,13 @@ python Tools/progress/workbench_server.py --root LaTeX_Notes --port 7656 --no-br
 
 面板选项7独立启用/撤销保存；首次默认只读，allow-open互不授予权限。启用可输入已核实的书名到永久book_id的JSON对象，再输入SAVE确认当前许可根；原单个GT永久ID输入及GT确认保留。多书配置包含allow_write、write_books、绝对write_root和write_book_ids；每书独立UUID，重复ID或别名不能继承许可。不完整配置保持只读，完整失配拒绝启动；root变化清空全部许可。启动及每次POST重新核验根、书目录边界与永久身份。面板不自动初始化书、不迁移旧marks、不生成审核结论、不写TeX。
 
-旧标记迁移由`workbench_legacy.py`显式执行，默认仅规划；按完整相对路径唯一且basename无歧义的映射归档到书内`Materials/workbench/legacy/<源hash>/`，保留原JSON、记录子集及provenance/hash。其余记录只列待认领，不能猜同basename归属；done不提升为审核通过，review原bytes不动。完整原JSON及未知归属保存在通过`--private`指定的工作区非公开目录；本机`progress/._data/`已gitignore。归档通过同bytes硬链接零覆盖发布、书锁及源hash核对支持并发/断点幂等；manifest不包含原备注全文。
+### 旧标记迁移退役（2026-10-13，现行权威）
+
+用户已弃用旧标记迁移。`workbench_legacy.py` 保留为拒绝入口，不再执行 plan/apply/confirm/archive；新版启动、读取、保存、报告和界面不使用旧 JSON、legacy 归档或退役 sidecar。启动面板与编辑页没有迁移或认领按钮。
+
+既有源 JSON、书内 `Materials/workbench/legacy/<源hash>/`、完整 `original.json`、记录正文、provenance/hash 与旧 manifest 全部原字节保留，不删除、不重新复制、不改写历史证据。旧 manifest 的 `pending_claim` / `confirmable_exact_unique` 只代表退役前历史，不再具有运行或待办意义。
+
+本机 `progress/._data/legacy/<源hash>/retirement.json` 是独立现行退役声明，覆盖该源全部14条记录：7条 `pending_claim` 和7条 `confirmable_exact_unique` 均为 `abandoned`，理由为用户弃用，待认领任务数为0。该声明不含旧备注正文，原 manifest 的 provenance/hash 不变；仅零覆盖独占创建，已有声明必须内容核验，不覆盖。工作区 `outputs/legacy_retirement_20261013/retirement.json` 保存同一声明及旧文件哈希证据。sidecar 仅供人工核查，不作为工作台数据源；即使它缺失，退役拒绝入口也不恢复旧功能。不要再认领、确认、迁移或提升任何旧记录。
 
 配置使用临时文件fsync及原子替换，配置与临时文件均gitignore；损坏配置不自动覆盖。运行期间须先停止服务再修改配置，配置只在下次显式启动生效。隔离测试位于`Tools/progress/tests/test_gt_daily.py`，覆盖GT runtime/review/summary、三类409、永久ID替换拒绝及七书六类写端点（含恢复）拒绝；默认只读原测试保留。
 
@@ -92,7 +100,7 @@ python Tools/progress/workbench_store.py --root <隔离root> --book <书目录> 
 python Tools/progress/workbench_store.py --root <隔离root> --book <书目录> patch-review C05/S02 --patch '{"body":"进行中"}' --expected <完整SHA256>
 ```
 
-保存模块不提供 TeX 编辑接口；HTTP/UI 由下述独立服务提供。初始化和旧数据迁移均须显式操作。
+保存模块不提供 TeX 编辑接口；HTTP/UI 由下述独立服务提供。初始化须显式操作；旧数据迁移已退役，不能执行。
 
 ## 独立HTTP/UI（隔离验收阶段）
 
@@ -133,7 +141,19 @@ python Tools/progress/workbench_server.py --root <隔离fixture书架目录> --p
 
 「刷新基线」重新获取导航和详情，更新新增/消失书及单位列表，同书输入保留；刷新后旧审计标为须重跑。无跨请求导航缓存，POST 锁内 fresh 核验保持。完整扫描仍有 I/O 开销，拆分首屏不等于完整扫描加速。
 
-## 运行方式
+## PDF 前台验收冻结与剩余风险（2026-10-13）
+
+本次旧入口与旧迁移退役可独立提交，不以未解决的 PDF 画布问题阻断；但工作台整体验收仍为 **PARTIAL/UNVERIFIED，不能宣称整体 PASS**。本轮 PDF 产品文件未修改，停止 GUI 重试，不安装 PDF.js 或猜测性修改阅读器生命周期。
+
+前台 Edge 的 Blob 第一次打开实际第一页可见，页码为 1/2；跳页确实销毁旧 viewer 并创建新 viewer，实际 DOM 为 2/2，但画布灰屏，没有第二页蓝色 marker。直接 HTTP 路线第一页也灰屏，单改 fragment 后仍复用 viewer、保持 1/2，因此不能将灰屏归因于旧 Blob revoke，也不能把 src、iframe-load 或 DOM 页码当成渲染通过。
+
+冻结测试 `tests/test_pdf_foreground_acceptance.py` 联合核对实际页码与截图页首 marker，有界采样后输出 `overall`。**exit 0 仅表示脚本完成且保护检查通过，也允许 PARTIAL/UNVERIFIED；不是 PDF 通过码**。必须读取输出状态及画布证据。当前第二页真实渲染与根因仍未核验，冻结结论不据此判定产品 FAIL。此前较小夹具的像素检查不能取代本次最终前台证据。
+
+测试使用当前 Python、Playwright 的 `msedge` 默认安装发现与相对推导的工作区路径，不固定本机用户目录；私有配置、真实书籍身份、报告与截图不随公开仓库提交。
+
+## 旧版运行方式（历史留存，不是新版入口）
+
+以下仅记录旧实现使用方式，不建议重新加入总面板，也不授权恢复旧标记迁移。现行入口及退役规则以上文为准。
 
 **直接启动**
 

@@ -163,17 +163,22 @@ class StartupTests(unittest.TestCase):
 
     def test_main_menu_compatibility(self):
         four = next(x for x in launcher.MENU if x[0] == '4')
-        fifteen = next(x for x in launcher.MENU if x[0] == '15')
         self.assertEqual(four[2:4], ('progress/workbench_launcher.py', '面板'))
-        self.assertEqual(fifteen[2:4], ('progress/progress.py', '后台'))
+        self.assertFalse(any(x[0] == '15' or x[2] == 'progress/progress.py' for x in launcher.MENU))
         numbers = [int(x[0]) for x in launcher.MENU]
-        expected = list(range(1, 14)) + ([14] if any(x[2] == 'spec_sync/spec_sync.py' for x in launcher.MENU) else []) + [15]
+        expected = list(range(1, 14)) + ([14] if any(x[2] == 'spec_sync/spec_sync.py' for x in launcher.MENU) else [])
         self.assertEqual(numbers, expected)
         self.assertEqual(launcher.SUBMIT_NO, '12')
         with patch.object(launcher.subprocess, 'run') as run, patch.object(launcher.subprocess, 'Popen') as popen:
             self.assertTrue(launcher.run(four))
-            run.assert_called_once()
+            run.assert_called_once_with([sys.executable, str(TOOLS / four[2])], cwd=str(TOOLS / 'progress'))
             popen.assert_not_called()
+        with patch.object(sys, 'stdin', io.StringIO('15\n4\n\n0\n')), patch.object(launcher, 'clear'), patch.object(launcher.subprocess, 'run') as run, patch.object(launcher.subprocess, 'Popen') as popen, contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(launcher.main(), 0)
+            run.assert_called_once_with([sys.executable, str(TOOLS / four[2])], cwd=str(TOOLS / 'progress'))
+            popen.assert_not_called()
+            self.assertNotIn('写作进度追踪表（旧版）', output.getvalue())
+            self.assertIn('已退出工具集面板', output.getvalue())
         for path in (TOOLS / 'launcher.py', TOOLS / 'progress/workbench_launcher.py', TOOLS / 'README.md', TOOLS / '.gitignore'):
             self.assertNotIn(b'\r', path.read_bytes())
 
