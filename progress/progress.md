@@ -40,7 +40,7 @@ python Tools/progress/workbench_server.py --root LaTeX_Notes --port 7656 --no-br
 
 2026-10-15 起旧版本体与拒绝入口一并删除：`progress.py`、`progress_ui.html`、`progress.conf(.example)`、`progress_marks.json(+.bak)`、`progress_settings.json(+.bak)`、`progress_report.md`、`workbench_legacy.py`。本机不再保留任何旧状态文件。
 
-仍留存的历史证据只有两处，均仅供人工核查、不是工作台数据源：书内 `Materials/workbench/legacy/<源hash>/` 原字节归档（`original.json`、记录正文、provenance/hash 与旧 manifest 不改写），以及本机 `progress/._data/legacy/<源hash>/retirement.json` 退役声明（覆盖该源全部旧记录，均为 `abandoned`，不含旧备注正文，仅零覆盖独占创建、已存在时核验一致不覆盖）。工作区 `outputs/legacy_retirement_20261013/retirement.json` 保存同一声明及旧文件哈希。旧 manifest 的 `pending_claim` / `confirmable_exact_unique` 只代表退役前历史。不要再认领、确认、迁移或提升任何旧记录。
+2026-10-15 用户要求彻底清空，残留的历史证据也已删除：书内 `Materials/workbench/legacy/<源hash>/` 归档（仅 Algebra、General_Topology 两本有）与本机 `progress/._data/` 退役声明一并清除；工作区 `outputs/legacy_retirement_20261013/` 此前已随 outputs 目录清理消失。工作台侧不再保留任何旧标记数据、归档或声明，书内 `Materials/workbench/` 只剩工作台自己的身份、运行、总结与备份文件。
 
 配置使用临时文件fsync及原子替换，配置与临时文件均gitignore；损坏配置不自动覆盖。运行期间须先停止服务再修改配置，配置只在下次显式启动生效。隔离测试位于`Tools/progress/tests/test_gt_daily.py`，覆盖GT runtime/review/summary、三类409、永久ID替换拒绝及七书六类写端点（含恢复）拒绝；默认只读原测试保留。
 

@@ -9,7 +9,6 @@ notes_tree.json
 symbols_extract.json
 progress/workbench_local.json
 progress/workbench_local.json.*.tmp
-progress/._data/
 
 # ===== Python =====
 __pycache__/

@@ -11,7 +11,7 @@
 
 2026-10-15 起旧版文件全部删除：`progress.py`、`progress_ui.html`、`progress.conf(.example)`、`progress_marks.json(+.bak)`、`progress_settings.json(+.bak)`、`progress_report.md`、`workbench_legacy.py`；本机不再保留旧状态文件，也不再有拒绝入口。
 
-仅存的历史证据不参与运行：书内 `Materials/workbench/legacy/<源hash>/` 原字节归档（`original.json`、记录正文、provenance/hash、旧 manifest 不改写），以及本机 `._data/legacy/<源hash>/retirement.json` 与工作区 `outputs/legacy_retirement_20261013/retirement.json` 退役声明（覆盖该源全部旧记录，均 `abandoned`，不含旧私密备注，独占创建、已存在时核验一致不覆盖）。旧 manifest status 仅为历史快照，声明是现行人工核查权威；缺失也不恢复迁移能力。
+历史证据同样已清空：书内 `Materials/workbench/legacy/<源hash>/` 归档（仅 Algebra、General_Topology 两本有）与本机 `._data/` 退役声明已删除；工作区 `outputs/legacy_retirement_20261013/` 此前已随 outputs 目录清理消失。工作台侧不留任何旧标记数据、归档或声明，书内 `Materials/workbench/` 只剩工作台自己的身份、运行、总结与备份文件。
 
 ## 2026-10-13 PDF 前台冻结边界
 

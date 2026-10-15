@@ -5,7 +5,7 @@
 - 删除旧版写作进度追踪表的全部文件：`progress.py`、`progress_ui.html`、`progress.conf(.example)`、`progress_marks.json(+.bak)`、`progress_settings.json(+.bak)`、`progress_report.md`，以及退役拒绝入口 `workbench_legacy.py`；`progress/` 下只保留工作台（总面板选项 4）。
 - 同步清理文档中的旧版章节：`README.md`、`progress.md`、`progress_design.md`、`launcher.py` 注释与 `.gitignore` 规则；旧版使用说明与设计正文不再保留。
 - 测试相应调整：删除 `test_legacy_retired.py`，从 `test_multi_permission_legacy.py`、`test_retirement_independent.py` 移除依赖旧模块的用例；其余「旧名不得出现」的守卫测试保留。
-- 全量测试无新增回归（唯一失败项与改动前一致，为环境缺 jsdom 所致）。书内 legacy 归档与本机退役声明仅作历史证据，不参与运行。
+- 连残留旧数据一并清空：书内 `Materials/workbench/legacy` 归档（Algebra、General_Topology 两本）与本机 `progress/._data` 退役声明删除；全量测试无新增回归（唯一失败项与改动前一致，为环境缺 jsdom 所致）。
 
 ## 2026-10-14 · PDF独立标签页备用路线
 
