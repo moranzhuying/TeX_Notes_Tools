@@ -14,7 +14,7 @@
 | `progress/workbench_store.py` | 受控保存底层：书籍身份、按书计划、审核补丁、版本检查与备份恢复 | `progress.md` |
 | `new_note/new_note.py` | 从模板创建一本新笔记（复制骨架 → 清测试内容 → `git init`） | 见下 |
 | `outline_tool/outline_tool.py` | 大纲的创建 / 导出 / 校验 | 见下 |
-| `note_tools/note_tools.py` | 单本笔记的入口：提交 / 切换习题编排模式 | 见下 |
+| `note_tools/note_tools.py` | 单本笔记的入口：提交 / 习题模式 / 补导引与小结 | 见下 |
 | `clean_aux/clean_aux.py` | 清理编译产物（aux / log / xdv / fls / synctex …），无参数即交互面板 | 见下 |
 | `repo_check/repo_check.py` | 仓库体检：规范文件 / 误跟踪 / 未提交 | 见下 |
 | `check_sensitive/check_sensitive.py` | 提交前扫描本机信息（用户名 / 本机路径 / 专有词） | 见下 |
@@ -223,6 +223,7 @@ python new_note/new_note.py <笔记名> --outline <大纲.md>   # 按 md 大纲�
 python new_note/new_note.py <笔记名> --template <目录>
 python new_note/new_note.py <笔记名> --dry-run            # 预演，不写任何文件
 python new_note/new_note.py <笔记名> --outline <大纲.md> --levels textbook   # 覆盖 md 里的设置
+python new_note/new_note.py <笔记名> --outline <大纲.md> --intro --summary  # 一并建导引与小结
 ```
 
 ### Math-Note 资料骨架试点
@@ -324,6 +325,30 @@ levels: chapter, section, subsection   # 1 级 \chapter、2 级 \section、3 级
 - 仓库分支用 `master`（与既有笔记仓库一致）。
 - 若模板列表可用，交互式引导会列出 `Template/` 下所有含 `main.tex` 的目录供选择。
 
+### 导引与小结（可选）
+
+`--intro` / `--summary` 让骨架按 Math-Note 模板的既有约定带上这两样，**默认都不带**：
+
+| 位置 | 内容 |
+|---|---|
+| `Content/<层1>/intro.tex` | **本章导引**——无编号标题 ＋ `\phantomsection` ＋ `\addcontentsline`，手工进目录 |
+| `Content/<层1>/Summary/` | **本章小结**——`\section{本章小结}` ＋ `Summary/intro.tex`（导引）＋ `Summary/01_summary.tex`（条目） |
+| `Content/<层1>/<层2>/Summary/` | **本节小结**——同上，标题降为 `\subsection`，条目为 `\subsubsection` |
+
+规则：
+
+- **导引只加在最外层**（章 / 节）；**小结加在所有会产生目录的层** —— 末层是 `.tex` 文件，不加。
+- 小结自己占**下一级**的编号标题，内部的导引与条目再降一级（带 `*` 与不带 `*` 区分），
+  所以节的小结用到 `\subsubsection`，与正文只到 `\subsection` 并不冲突。
+- 每份新文件里留一行 `%` 注释写「这一节该写什么」，不占版面、不进目录。
+- 对应的 `\input` 插进该层 `index.tex`：导引在**第一条 `\input` 之前**（开头的注释行留在最上面），
+  小结在**附录之前**（没有附录就接在最后一条 `\input` 之后）。
+- 交互式引导会问一句「骨架里一并建导引与小结？」（`y` 都建 / `i` 只建导引 / `s` 只建小结）。
+
+**已有的笔记**也能补：走「笔记工具 → 补导引与小结」（`note_tools.py`）。它扫描 `Content/`
+现有结构、按内容推断层级命令，先给清单、确认后写入；**已存在的文件与 `\input` 行都不动**，
+可以反复跑。
+
 ## outline_tool.py — 大纲的创建 / 导出 / 校验
 
 `new_note.py` 按大纲 md 建骨架，本工具负责**把大纲弄出来**。三个入口：
@@ -367,7 +392,11 @@ md 没写 `levels:` 或写的与结构不符时，按结构推断并给出「改
 笔记目录里的 `commit.py` / `setup_mode.py` 必须**在笔记目录内**运行（前者依赖同目录的 `.git`，
 后者读写同目录的 `Content/`）。本工具让你不必先 `cd` 过去。
 
-列表会显示每本笔记的未提交改动数，选中后可选「提交并推送」或「切换习题编排模式」。
+列表会显示每本笔记的未提交改动数，选中后可选「提交并推送」「切换习题编排模式」
+或「补导引与小结」。最后一项按 `new_note.py` 的同一套规则，给选中的那本补
+`intro.tex`（本章导引）与各级 `Summary/`（小结），并把 `\input` 插进对应的 `index.tex`：
+先扫现有结构、给出「将新建几个文件、改动几个 index.tex」的清单，确认后才写入；
+已存在的文件与 `\input` 行都不动，可以反复跑。
 
 ## clean_aux.py — 清理编译产物
 

@@ -5,7 +5,22 @@
 ```bash
 python new_note.py MyNote --outline outline.md --abbreviation ABC
 python new_note.py MyNote --outline outline.md --abbreviation ABC --dry-run
+python new_note.py MyNote --outline outline.md --intro --summary
 ```
+
+## 导引与小结（可选）
+
+`--intro` / `--summary` 让骨架按 Math-Note 模板的既有约定带上这两样，默认都不带。交互式引导会问一句（`y` 都建 / `i` 只建导引 / `s` 只建小结）。
+
+- `Content/<层1>/intro.tex`：本章导引，无编号标题 ＋ `\phantomsection` ＋ `\addcontentsline`。
+- `Content/<层1>/Summary/`：本章小结，`index.tex` ＋ `intro.tex`（导引）＋ `01_summary.tex`（条目）。
+- `Content/<层1>/<层2>/Summary/`：本节小结，标题降一级（`\subsection{本节小结}`，条目用 `\subsubsection`）。
+
+**导引只加在最外层**（章 / 节）；**小结加在所有会产生目录的层**——末层是 `.tex` 文件，不加。小结自己占下一级的编号标题，内部导引与条目再降一级（带 `*` 与不带 `*` 区分）。每份新文件里留一行 `%` 注释写「这一节该写什么」，不占版面、不进目录。
+
+对应的 `\input` 插进该层 `index.tex`：导引在第一条 `\input` 之前（开头的注释行留在最上面），小结在附录之前（没有附录就接在最后一条 `\input` 之后）。
+
+已有的笔记要在事后补，走工具面板的「笔记工具」（`note_tools.py`）→「补导引与小结」：扫描 `Content/` 现有结构、按内容推断层级命令，只补缺、不覆盖，可以反复跑。
 
 ## 资料模式
 

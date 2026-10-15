@@ -51,7 +51,7 @@ MENU = [
 
     ("5", "从模板新建笔记", "new_note/new_note.py", "面板", "创建与维护"),
     ("6", "大纲工具（创建 / 导出 / 校验）", "outline_tool/outline_tool.py", "面板", "创建与维护"),
-    ("7", "笔记工具（提交 / 切换习题编排模式）", "note_tools/note_tools.py", "面板", "创建与维护"),
+    ("7", "笔记工具（提交 / 习题模式 / 补导引小结）", "note_tools/note_tools.py", "面板", "创建与维护"),
     ("8", "清理编译产物（aux / log / xdv …）", "clean_aux/clean_aux.py", "面板", "创建与维护"),
 
     ("9", "仓库体检（规范 / 误跟踪 / 未提交）", "repo_check/repo_check.py", "面板", "信息安全与提交"),

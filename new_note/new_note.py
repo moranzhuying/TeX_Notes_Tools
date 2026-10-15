@@ -21,6 +21,7 @@ new_note.py — 从模板创建一本新笔记
     python new_note.py <笔记名> --template <目录>
     python new_note.py <笔记名> --outline <大纲.md>  # 按 md 大纲生成骨架
     python new_note.py <笔记名> --outline <大纲.md> --levels textbook
+    python new_note.py <笔记名> --outline <大纲.md> --intro --summary
     python new_note.py <笔记名> --dry-run      # 只显示将要做什么
 
 大纲 md 的写法
@@ -90,6 +91,25 @@ section`、3 层→`chapter, section, subsection`、4 层及以上→`part` 起�
 - 目录名限 ASCII（字母/数字/下划线/连字符），中文只出现在 `|` 右侧。
 - 某层节点下面没有更细的标题时，它的标题写进**该层自己的 index.tex**（占位，便于先建骨架）。
 - 标题层级数必须与 levels 的命令数相同，且不能跳级（`#` 之后只能接 `##`）。
+
+导引与小结（可选）
+------------------
+`--intro` / `--summary` 让骨架按模板（Math-Note）的既有约定带上这两样，**默认都不带**：
+
+    Content/<层1>/intro.tex            \section*{本章导引} ＋ \phantomsection ＋ \addcontentsline
+    Content/<层1>/Summary/index.tex     \section{本章小结} ＋ \input 导引 ＋ \input 条目
+    Content/<层1>/<层2>/Summary/…       \subsection{本节小结} ＋ …
+
+- **导引**只加在最外层（章 / 节），**小结**加在所有**会产生目录**的层（末层是 .tex 文件，不加）。
+- 小结自己是**下一级**的编号标题，小结内部的导引与条目再降一级（带 `*` 与不带 `*` 区分）——
+  所以节的小结用到 `\subsubsection`，与正文只到 `\subsection` 不冲突。
+- 两个标题都是辅助线索：导引用无编号标题 ＋ `\addcontentsline` 手工进目录。
+- 新文件里留一行 `%` 注释写「这一节该写什么」，不占版面。
+- 对应的 `\input` 会插进该层 index.tex：导引在**第一条 `\input` 之前**，
+  小结在**附录之前**（没有附录就接在最后一条 `\input` 之后）。
+
+对**已有的笔记**做同样的调整，走工具面板的「笔记工具 (note_tools.py) → 补导引与小结」：
+它扫描 `Content/` 现有结构、按层推断层级命令，只补缺、不覆盖已有文件，可以反复跑。
 """
 import os
 import re
@@ -517,7 +537,7 @@ def title_cmd(level, label):
     return f"\\{level}{{{label}}}"
 
 
-def content_files(tree, levels):
+def content_files(tree, levels, with_intro=False, with_summary=False):
     """列出结构将产生的文件（预览用）。"""
     out, depth = [], len(levels)
 
@@ -528,9 +548,15 @@ def content_files(tree, levels):
             mark = f"   \\{levels[i]}" if levels[i] != "-" else "   （无标题）"
             out.append(f"Content/{here}.tex{mark}")
             return
+        if with_intro and i == 0 and levels[i] != "-":
+            out.append(f"Content/{here}/{INTRO_FILE}   （{level_prefix(levels[i])}导引）")
         out.append(f"Content/{here}/index.tex")
         for k, child in enumerate(node["children"], 1):
             walk(child, here, i + 1, k)
+        if with_summary and levels[i] != "-":
+            out.append(f"Content/{here}/{SUMMARY_DIR}/index.tex   （{level_prefix(levels[i])}小结）")
+            out.append(f"Content/{here}/{SUMMARY_DIR}/intro.tex")
+            out.append(f"Content/{here}/{SUMMARY_DIR}/{SUMMARY_ENTRY}")
 
     for j, chap in enumerate(tree, 1):
         walk(chap, "", 0, j)
@@ -558,13 +584,17 @@ def tree_depth(tree):
     return 1 + max((tree_depth(n["children"]) for n in tree), default=0)
 
 
-def build_content(content_dir, tree, levels):
+def build_content(content_dir, tree, levels, with_intro=False, with_summary=False):
     """按树与层级命令生成章节目录、index.tex 与叶子文件。
 
     标题命令的落点：层1 的进 main.tex（见 rewrite_main_tex）；层2 及更深层的
     标题只在**该子树的第一个文件**里出现一次 —— 所以 `pending` 是所有兄弟共用
     的一个列表，被第一个叶子取走后清空。若某层节点下面没有更细的标题，
     它自己的标题就落在它自己的 index.tex 里（占位，便于先建骨架）。
+
+    `with_intro` 给最外层建导引、`with_summary` 给所有会产生目录的层建小结，
+    并把对应的 `\\input` 插进该层的 index.tex（导引在前、小结在最后一条 `\\input`
+    之后，与模板 Math-Note 的既有写法一致）。
     """
     depth = len(levels)
 
@@ -578,9 +608,7 @@ def build_content(content_dir, tree, levels):
             body = pending + ([title] if title else [])
             pending.clear()
             path = content_dir / f"{here}.tex"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(("\n".join(body) + "\n\n") if body else "",
-                            encoding="utf-8", newline="")
+            write_text_file(path, ("\n".join(body) + "\n\n") if body else "")
             return f"\\input{{./Content/{here}}}"
 
         cur = content_dir / here                              # 目录
@@ -589,14 +617,26 @@ def build_content(content_dir, tree, levels):
             pending.append(title)
         inputs = [emit(child, here, i + 1, k, pending)
                   for k, child in enumerate(node["children"], 1)]
+
+        head, tail = [], []
+        if with_intro and i == 0 and levels[i] != "-":
+            write_text_file(content_dir / f"{here}/{INTRO_FILE}",
+                            intro_text(levels[i], i))
+            head.append(intro_input(here))
+        if with_summary and levels[i] != "-":
+            for rel_path, text in summary_files(here, levels[i]):
+                write_text_file(content_dir / rel_path, text)
+            tail.append(summary_input(here))
+
         if inputs:
-            text = "\n".join(inputs) + "\n"
+            body = head + inputs + tail
         elif pending:                                         # 空节点：就地落标题
-            text = "\n".join(pending) + "\n"
+            body = pending + head + tail
             pending.clear()
         else:
-            text = ""
-        (cur / "index.tex").write_text(text, encoding="utf-8", newline="")
+            body = head + tail
+        (cur / "index.tex").write_text(
+            ("\n".join(body) + "\n") if body else "", encoding="utf-8", newline="")
         return f"\\input{{./Content/{here}/index}}"
 
     for j, chap in enumerate(tree, 1):
@@ -693,6 +733,274 @@ def build_materials(target, abbreviation, entries, outline_text=None):
     create(target / f"{abbreviation}_Content.md", directory.rstrip() +
            "\n\n<!-- 以下为资料绑定，不是原书目录核定结果。编号建立后不随标题改名。 -->\n\n"
            "| 目编号 | TeX | 资料目录 |\n|---|---|---|\n" + "\n".join(bindings) + "\n")
+
+
+# ---------------------------------------------------------------- 导引与小结
+
+#: 各级命令对应的中文前缀，用来拼「本章导引」「本节小结」这类标题。
+LEVEL_PREFIX = {
+    "part": "本部分", "chapter": "本章", "section": "本节",
+    "subsection": "本小节", "subsubsection": "本目",
+    "paragraph": "本段", "subparagraph": "本小段",
+}
+
+INTRO_FILE = "intro.tex"                 #: 层内导引的文件名
+SUMMARY_DIR = "Summary"                  #: 小结目录名
+SUMMARY_ENTRY = "01_summary.tex"         #: 小结条目的默认文件名
+
+#: `Content/` 下与正文脉络无关的目录：扫描已有笔记时一律跳过。
+IGNORE_DIRS = {"Summary", "Exercise", "Materials", "Figures", "Preface", "Appendix"}
+
+INTRO_HINT = {
+    0: "交代本章要解决的问题、与前后章的关系、以及阅读顺序建议",
+    1: "交代本节要解决的问题、与前后节的衔接",
+}
+DEFAULT_INTRO_HINT = "交代这一层要解决的问题、与相邻部分的关系、以及阅读顺序建议"
+SUMMARY_HINT = "汇总本层的主要结论与引入的记号，便于回查"
+
+
+def level_prefix(cmd):
+    """章节命令 → 中文层名前缀（chapter → 本章）。"""
+    return LEVEL_PREFIX.get(cmd, f"本{cmd}")
+
+
+def next_cmd(cmd, offset=1):
+    """命令的下一（下二…）级；越出 LaTeX 层级上限时退回最末一级。"""
+    i = min(SECTION_CMDS.index(cmd) + offset, len(SECTION_CMDS) - 1)
+    return SECTION_CMDS[i]
+
+
+def summary_cmds(cmd):
+    r"""小结用的三个命令：(小结标题, 小结内导引, 小结内条目)。
+
+    模板的写法是：小结本身占**下一级**编号标题（章的小结是 `\section{本章小结}`），
+    而小结内部的导引与条目再降一级、用带 `*` 与不带 `*` 区分 —— 节的小结因此用到
+    `\subsubsection`，与正文只到 `\subsection` 并不冲突。
+    """
+    return next_cmd(cmd, 1), next_cmd(cmd, 2), next_cmd(cmd, 2)
+
+
+def is_ignored_dir(name):
+    """`Content/` 下的目录是否与正文脉络无关（小结、习题、附录、图表、隐藏目录）。"""
+    return (name in IGNORE_DIRS or name.startswith("Appendix")
+            or name.startswith("_") or name.startswith("."))
+
+
+def write_text_file(path, text):
+    """建父目录并写文件（LF）；写不成时抛 OSError 交给调用方。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="")
+
+
+def intro_text(cmd, layer=0):
+    """层内导引的文件内容：无编号标题 ＋ 手工进目录 ＋ 一行写作提示。"""
+    sub = next_cmd(cmd, 1)
+    title = level_prefix(cmd) + "导引"
+    return (f"\\{sub}*{{{title}}}\n"
+            f"\\phantomsection\n"
+            f"\\addcontentsline{{toc}}{{{sub}}}{{{title}}}\n\n"
+            f"% {title}：{INTRO_HINT.get(layer, DEFAULT_INTRO_HINT)}。\n")
+
+
+def intro_input(rel):
+    """层内导引的 `\\input` 行；rel 是该层目录在 Content 下的相对路径。"""
+    return f"\\input{{./Content/{rel}/intro}}"
+
+
+def summary_input(rel):
+    """小结的 `\\input` 行。"""
+    return f"\\input{{./Content/{rel}/{SUMMARY_DIR}/index}}"
+
+
+def summary_files(rel, cmd):
+    """小结三件套：[(相对 Content 的路径, 内容), …]。rel 为该层目录的相对路径。"""
+    head, sub, entry = summary_cmds(cmd)
+    pre = level_prefix(cmd)
+    stem = SUMMARY_ENTRY[:-4]                  # 去掉 .tex
+    return [
+        (f"{rel}/{SUMMARY_DIR}/index.tex",
+         f"\\{head}{{{pre}小结}}\n\n"
+         f"\\input{{./Content/{rel}/{SUMMARY_DIR}/intro}}\n"
+         f"\\input{{./Content/{rel}/{SUMMARY_DIR}/{stem}}}\n"),
+        (f"{rel}/{SUMMARY_DIR}/intro.tex",
+         f"\\{sub}*{{导引}}\n"
+         f"\\phantomsection\n"
+         f"\\addcontentsline{{toc}}{{{sub}}}{{导引}}\n\n"
+         f"% 交代小结的取舍与范围。\n"),
+        (f"{rel}/{SUMMARY_DIR}/{SUMMARY_ENTRY}",
+         f"\\{entry}{{小结内容}}\n\n% {SUMMARY_HINT}。\n"),
+    ]
+
+
+# ------------------------------------------- 已有笔记：扫描结构并补上
+
+def scan_content(content_dir):
+    """读 `Content/` 的目录层级。返回 (layers, depth)。
+
+    `layers[i]` 是第 i+1 层的目录（i=0 即章目录），`depth` 是正文层数。
+    末层有两种落点：目录下面还有普通 `.tex` 时，那些文件就是末层；目录里只有
+    `index.tex`（正文直接写在里面）时，它自己充当末层 —— 所以不能只看有没有
+    普通 `.tex`，否则「节即叶子」的笔记会被判成 0 层。
+    """
+    layers, depth = {}, 0
+
+    def walk(d, i):
+        nonlocal depth
+        has_plain_tex = False
+        for child in sorted(d.iterdir()):
+            if child.is_dir():
+                if is_ignored_dir(child.name):
+                    continue
+                layers.setdefault(i, []).append(child)
+                walk(child, i + 1)
+            elif child.suffix == ".tex" and child.name != "index.tex":
+                has_plain_tex = True
+                depth = max(depth, i + 1)
+        if not has_plain_tex and i >= 1:      # 只有 index.tex：它就是落点
+            depth = max(depth, i)
+
+    walk(content_dir, 0)
+    return layers, depth
+
+
+def guess_levels_for_note(target, depth):
+    """就地从笔记文件推层级命令。返回 (levels 或 None, 依据)。
+
+    先看 `main.tex` 与正文里**实际出现过**的命令（被 `%` 注释掉的章也算，它仍占一层）；
+    数目对不上层数时，按层数套惯例起点。**不从目录名或标题文字猜**。
+    """
+    chunks = []
+    main = target / "main.tex"
+    if main.is_file():
+        try:
+            chunks.append(main.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+    content = target / "Content"
+    for p in sorted(content.rglob("*.tex")) if content.is_dir() else []:
+        if any(is_ignored_dir(part) for part in p.relative_to(content).parts[:-1]):
+            continue
+        try:
+            chunks.append(p.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+
+    mentioned = levels_mentioned("\n".join(chunks))
+    if len(mentioned) == depth:
+        return mentioned, f"正文与 main.tex 里出现过的命令正好是这 {depth} 个"
+
+    start = LEVEL_START_BY_DEPTH.get(depth, 0)
+    levels = SECTION_CMDS[start:start + depth]
+    if len(levels) == depth:
+        return levels, f"按结构（{depth} 层）推断"
+    return None, f"正文有 {depth} 层，凑不出合法的层级命令序列"
+
+
+def insert_input_line(text, line, before_appendix):
+    """把一行 `\\input` 插进 index.tex 文本。返回 (新文本, 是否改动)。
+
+    已存在同一行时原样返回。`before_appendix=False`（导引）插在**第一条 `\\input`
+    之前**——开头的注释行留在最上面；`True`（小结）插在**第一条指向附录的 `\\input`
+    之前**，没有附录则接在最后一条 `\\input` 之后。
+    """
+    if line in text.splitlines():
+        return text, False
+    lines = text.splitlines()
+    inputs = [i for i, ln in enumerate(lines) if re.match(r"\s*\\input\{", ln)]
+    if before_appendix:
+        pos = next((i for i in inputs if "Appendix" in lines[i]), None)
+        if pos is None:
+            pos = inputs[-1] + 1 if inputs else len(lines)
+    else:
+        pos = inputs[0] if inputs else len(lines)
+    lines.insert(pos, line)
+    return "\n".join(lines) + "\n", True
+
+
+def add_intro_summary(target, levels=None, do_intro=True, do_summary=True,
+                      dry=False, log=print):
+    """对**已有笔记**补导引与小结：建文件 ＋ 在各级 index.tex 里插 `\\input`。
+
+    - 导引只加在最外层（章 / 节）；小结加在所有**会产生目录**的层（末层是 .tex，不加）。
+    - 已存在的文件与已存在的 `\\input` 行都不动，所以可以反复跑。
+    - `dry=True` 只统计，不落盘。
+
+    返回 (levels, depth, created, touched, skipped)；日志按行打印。
+    """
+    content = target / "Content"
+    if not content.is_dir():
+        raise OutlineError(f"{target.name} 下没有 Content/ 目录")
+    layers, depth = scan_content(content)
+    if not depth:
+        raise OutlineError(f"{target.name}/Content 下没找到正文 .tex 文件")
+
+    why = ""
+    if not levels:
+        levels, why = guess_levels_for_note(target, depth)
+        if not levels:
+            raise OutlineError(why)
+    elif len(levels) != depth:
+        raise OutlineError(f"层级模式给了 {len(levels)} 个命令（{', '.join(levels)}），"
+                           f"但正文有 {depth} 层，两者必须一致")
+    log(f"  层级模式：{describe_levels(levels)}"
+        + (f"（{why}）" if why else ""))
+
+    created, touched, skipped = [], [], []
+
+    def ensure(rel_path, text):
+        p = content / rel_path
+        if p.exists():
+            skipped.append(rel_path)
+            return
+        if not dry:
+            write_text_file(p, text)
+        created.append(rel_path)
+
+    def touch(index_path, line, before_appendix):
+        if not index_path.is_file():
+            if not dry:
+                write_text_file(index_path, line + "\n")
+            touched.append(f"{index_path.relative_to(target).as_posix()}（新建）")
+            return
+        old = index_path.read_text(encoding="utf-8")
+        new, changed = insert_input_line(old, line, before_appendix)
+        if not changed:
+            skipped.append(index_path.relative_to(target).as_posix())
+            return
+        if not dry:
+            index_path.write_text(new, encoding="utf-8", newline="")
+        touched.append(index_path.relative_to(target).as_posix())
+
+    # 层 0：导引
+    if do_intro and levels[0] != "-":
+        for d in layers.get(0, []):
+            rel = d.relative_to(content).as_posix()
+            ensure(f"{rel}/{INTRO_FILE}", intro_text(levels[0], 0))
+            touch(d / "index.tex", intro_input(rel), before_appendix=False)
+
+    # 小结：所有会产生目录的层
+    if do_summary:
+        for i in range(depth - 1):
+            cmd = levels[i] if i < len(levels) else None
+            if not cmd or cmd == "-":
+                continue
+            for d in layers.get(i, []):
+                rel = d.relative_to(content).as_posix()
+                for rel_path, text in summary_files(rel, cmd):
+                    ensure(rel_path, text)
+                touch(d / "index.tex", summary_input(rel), before_appendix=True)
+
+    log(f"  {'将新建' if dry else '已新建'} {len(created)} 个文件，"
+        f"{'将改动' if dry else '已改动'} {len(touched)} 个 index.tex，"
+        f"跳过已存在 {len(skipped)} 处")
+    for r in created:
+        log(f"    ＋ {r}")
+    for r in touched:
+        log(f"    ~ {r}")
+    if skipped:
+        shown = skipped[:6]
+        log("    = " + "、".join(shown) + ("…" if len(skipped) > len(shown) else ""))
+    return levels, depth, created, touched, skipped
 
 
 # ---------------------------------------------------------------- 复制
@@ -896,6 +1204,17 @@ def interactive():
             print(f"  ✗ {bad}")
             return 1
 
+    with_intro = with_summary = False
+    if tree:
+        ans = (ask("\n骨架里一并建「导引」与「小结」？[y] 都建 / [i] 只建导引"
+                   " / [s] 只建小结", "N") or "").strip().lower()
+        if ans in ("y", "yes", "both", "都建"):
+            with_intro = with_summary = True
+        elif ans in ("i", "intro", "导引", "引言"):
+            with_intro = True
+        elif ans in ("s", "summary", "小结"):
+            with_summary = True
+
     target = notes_root() / name if notes_root() else None
     template = tdir / tpl
 
@@ -906,8 +1225,12 @@ def interactive():
     print(f"  目标     ：{target}")
     print(f"  远程     ：{'创建并推送' if push else '不创建'}")
     if tree:
-        files = content_files(tree, levels)
+        files = content_files(tree, levels, with_intro, with_summary)
+        extra = ("导引＋小结" if with_intro and with_summary else
+                 "只建导引" if with_intro else
+                 "只建小结" if with_summary else "不建")
         print(f"  层级模式 ：{', '.join(levels)}")
+        print(f"  导引与小结：{extra}")
         print(f"  章节结构 ：{len(tree)} 个顶层节点 / {len(files)} 个文件")
         for f in files[:12]:
             print(f"             {f}")
@@ -925,13 +1248,15 @@ def interactive():
     abbreviation = ask("书籍缩写（按所选版本前言核定）", meta.get("abbreviation", ""))
     outline_text = Path(outline_path).read_text(encoding="utf-8") if outline_path and not paste else None
     return run(name, template, target, push, tree, levels, dry=False,
-               abbreviation=abbreviation, outline_text=outline_text)
+               abbreviation=abbreviation, outline_text=outline_text,
+               with_intro=with_intro, with_summary=with_summary)
 
 
 # ---------------------------------------------------------------- 主流程
 
 def run(name, template, target, do_push, tree, levels, dry,
-        abbreviation=None, outline_text=None):
+        abbreviation=None, outline_text=None,
+        with_intro=False, with_summary=False):
     levels = levels or []
     if not template.is_dir():
         print(f"✗ 模板目录不存在：{template}")
@@ -991,12 +1316,12 @@ def run(name, template, target, do_push, tree, levels, dry,
         print("  （未找到 main.tex，跳过）")
 
     if tree:
-        files = content_files(tree, levels)
+        files = content_files(tree, levels, with_intro, with_summary)
         print(f"\n生成章节骨架（层级：{', '.join(levels)}）：")
         if not dry:
             content = target / "Content"
             content.mkdir(parents=True, exist_ok=True)
-            build_content(content, tree, levels)
+            build_content(content, tree, levels, with_intro, with_summary)
         for f in files:
             print(f"  {f}")
     else:
@@ -1069,6 +1394,8 @@ def main():
     argv = sys.argv[1:]
     dry = "--dry-run" in argv
     do_push = "--push" in argv
+    with_intro = "--intro" in argv          # 骨架里建最外层导引
+    with_summary = "--summary" in argv      # 骨架里建各级小结
 
     def opt(name, default=None):
         if name in argv:
@@ -1141,7 +1468,8 @@ def main():
     outline_text = Path(outline_file).read_text(encoding="utf-8") if outline_file else None
     return run(name, template, root / name, do_push, tree, levels, dry,
                abbreviation=abbreviation or meta.get("abbreviation"),
-               outline_text=outline_text)
+               outline_text=outline_text,
+               with_intro=with_intro, with_summary=with_summary)
 
 
 if __name__ == "__main__":
