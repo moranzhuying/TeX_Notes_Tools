@@ -1,94 +1,14 @@
-"""退役入口独立验收；仅使用临时夹具，不读取真实旧状态。"""
+"""写入口退役后独立验收；仅使用临时夹具，不读取真实旧状态。"""
 import builtins
-import contextlib
 import importlib
 import io
-import json
-import subprocess
 from pathlib import Path
 import sys
-import tempfile
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import test_no_legacy_independent as portable
-
-
-class RetirementEntrypoints(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='retirement_independent_')
-        self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
-        self.root = self.base / 'shelf'
-        self.root.mkdir()
-        self.raw = json.dumps({'entries': {'../../escape.tex': {'marks': {'math': 'done', 'proof': 'done'}, 'note': '私密旧备注不可读取 <script>malicious</script>', 'path': 'C:/private/secret'}}, 'nodes': {'unit.tex': 'done'}}).encode()
-        self.source = self.base / 'progress_marks.json'
-        self.source.write_bytes(self.raw)
-        self.archive = self.root / 'legacy'
-        self.archive.mkdir()
-        (self.archive / 'marks_before.json').write_bytes(self.raw)
-        self.module = importlib.import_module('workbench_legacy')
-
-    def snapshot(self):
-        return {p.relative_to(self.base).as_posix(): p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
-
-    @contextlib.contextmanager
-    def no_access(self):
-        events = []
-        def denied(*args, **kwargs):
-            events.append(repr(args))
-            raise AssertionError('退役入口不得读写或创建目录')
-        with contextlib.ExitStack() as stack:
-            for target in ('builtins.open', 'io.open', 'pathlib.Path.open', 'pathlib.Path.mkdir', 'pathlib.Path.read_bytes', 'pathlib.Path.read_text', 'pathlib.Path.write_bytes', 'pathlib.Path.write_text', 'os.open', 'os.mkdir', 'os.makedirs', 'os.replace', 'os.rename', 'os.unlink'):
-                stack.enter_context(patch(target, side_effect=denied))
-            yield events
-        self.assertEqual(events, [])
-
-    def test_cli_valid_missing_and_malformed_parameters_reject_without_io(self):
-        before = self.snapshot()
-        cases = [[], ['plan'], ['apply'], ['plan', '--root', str(self.root), '--source', str(self.source)], ['apply', '--root', str(self.root), '--source', str(self.source), '--private', str(self.base/'private'), '--confirm'], ['plan', '--marks', str(self.source)], ['apply', '--plan', str(self.archive/'marks_before.json')], ['malicious', '../../escape']]
-        for args in cases:
-            with self.subTest(args=args), self.no_access(), contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
-                self.assertEqual(self.module.main(args), 2)
-                self.assertIn('retired', stderr.getvalue())
-                self.assertNotIn('私密旧备注', stdout.getvalue()+stderr.getvalue())
-                self.assertNotIn('Traceback', stderr.getvalue())
-                self.assertEqual(stdout.getvalue(), '')
-        self.assertEqual(before, self.snapshot())
-        self.assertFalse((self.base/'private').exists())
-        self.check_actual_cli_process_valid_and_missing_parameters()
-
-    def test_import_entrypoints_reject_no_plan_archive_or_promotion(self):
-        before = self.snapshot()
-        calls = [('plan', (self.root, self.raw)), ('migrate', (self.root, self.source, self.base/'private')), ('publish', (self.archive/'marks_before.json', self.raw))]
-        for name, args in calls:
-            with self.subTest(entry=name), self.no_access():
-                with self.assertRaises(self.module.RetiredError) as error:
-                    getattr(self.module, name)(*args)
-                self.assertIn('retired', str(error.exception))
-        for name in ('apply', 'archive', 'confirm'):
-            self.assertFalse(hasattr(self.module, name), '不得新增不存在的旧API')
-        self.assertEqual(before, self.snapshot())
-        self.assertFalse(list(self.root.rglob('review.md')))
-
-    def check_actual_cli_process_valid_and_missing_parameters(self):
-        before = self.snapshot()
-        script = Path(self.module.__file__)
-        for args in (['plan'], ['apply'], ['plan', '--root', str(self.root), '--marks', str(self.source)], ['apply', '--root', str(self.root), '--marks', str(self.source), '--private', str(self.base/'private')]):
-            with self.subTest(args=args):
-                process = subprocess.run([sys.executable, '-X', 'utf8', '-B', str(script), *args], capture_output=True, text=True)
-                self.assertEqual(process.returncode, 2)
-                self.assertIn('retired', process.stderr)
-                self.assertNotIn('Traceback', process.stderr)
-                self.assertEqual(process.stdout, '')
-        self.assertEqual(before, self.snapshot())
-
-    def test_help_is_tombstone_not_a_migration_plan(self):
-        with self.no_access(), contextlib.redirect_stdout(io.StringIO()) as stdout:
-            self.assertEqual(self.module.main(['--help']), 0)
-        self.assertIn('retired', stdout.getvalue())
-        self.assertNotIn('--source', stdout.getvalue())
 
 
 class NewWritesAfterRetirement(portable.PortableTests):

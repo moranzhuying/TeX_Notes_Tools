@@ -7,12 +7,6 @@
 # ===== 运行时档案与本机数据 =====
 notes_tree.json
 symbols_extract.json
-progress_marks.json
-progress_marks.json.bak
-progress_marks.json.tmp
-progress_settings.json
-progress_settings.json.bak
-progress_settings.json.tmp
 progress/workbench_local.json
 progress/workbench_local.json.*.tmp
 progress/._data/
@@ -41,12 +35,11 @@ _tmp_*
 
 # ===== 本机专用脚本（按用户要求不入库） =====
 sync_paths.py
-
-# ===== 开发中间产物与生成报告（不入库） =====
-# _ui.js 是 progress 前端的开发副本，内容已内嵌进 progress_ui.html（脚本只读后者）
-progress/_ui.js
-# 进度报告是生成物，且含本机路径
-progress/progress_report.md
+# 项目规范副本同步：默认配对指向工作区内部文档（项目规范.md / .workbuddy/refs/），
+# 属工作区专用，不随公开库分发。
+spec_sync/
+# TeXstudio 行定位验证的探测脚本：本机专用，含本机绝对路径（解释器 / 证据目录），不入库。
+progress/tests/texstudio_*
 
 # ===== video2text 运行时数据（模型 / 登录态 / 浏览器官案 / 转写产物） =====
 # 模型 1.5GB、cookie 含登录凭证、profile 含浏览数据，一律不入库。

@@ -27,6 +27,11 @@ prompt = 数学 物理 化学 公式 定理 命题 引理 证明 映射 群 环 
 # B站 字幕需要登录才可见，这里指定用于扫码登录的浏览器通道。
 # 注意：本机没有 Google Chrome，实际可用的是 Edge。
 browser = edge
+# subtitles = 仅字幕（默认）；auto = 无字幕时转写；whisper = 强制转写。
+# 字幕下载/解析失败始终记录失败，不静默切换到长时间语音识别。
+mode = subtitles
+# 探测/字幕下载额外重试次数（0–5）。
+subtitle_retries = 2
 # 走 whisper 转写后是否保留音频文件。
 # 保留便于复查时间戳；设为 false 可省空间（长视频音频可达上百 MB）。
 keep_audio = true

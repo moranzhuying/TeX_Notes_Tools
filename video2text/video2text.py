@@ -8,7 +8,7 @@ LaTeX 笔记。策略是**两段式**：
 
   1. 先探测该视频有没有字幕（B站 的 AI 字幕语言码是 `ai-zh`）
   2. **有字幕** → 直接下字幕转文本（秒级完成）
-     **无字幕** → 下音频流 → faster-whisper (CPU/int8) 转写（慢，实时率约 0.5x）
+     **无字幕** → 默认停止该集；显式允许后才下音频 → 分块可恢复 faster-whisper 转写
 
 > 有字幕时 1.9 秒，跑 whisper 要约 85 分钟（170 分钟视频）—— **差约 2700 倍**。
 > 所以「先探测」是第一原则，不要习惯性直接开转写。
@@ -32,6 +32,11 @@ B站 字幕需要登录才可见，本工具用专用 profile 扫码登录一次
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import hashlib
+import tempfile
+import urllib.parse
 import configparser
 import json
 import os
@@ -42,6 +47,11 @@ import time
 import unicodedata
 import urllib.request
 from pathlib import Path
+
+# 支持直接运行及 importlib 探针加载同级模块。
+_MODULE_DIR = str(Path(__file__).resolve().parent)
+if _MODULE_DIR not in sys.path:
+    sys.path.insert(0, _MODULE_DIR)
 
 # --- 必须在 import faster_whisper 之前设好镜像与传输协议 ---
 # HF_ENDPOINT 只影响传统 HTTP 分发端点；Xet 走独立端点且国内返回 401，
@@ -91,6 +101,8 @@ DEFAULTS = {
     },
     "download": {
         "browser": "edge",
+        "mode": "subtitles",
+        "subtitle_retries": "2",
         "keep_audio": "true",
     },
 }
@@ -122,8 +134,8 @@ def data_root(cp: configparser.ConfigParser) -> Path:
 # --------------------------------------------------------------------------- #
 def deps_ok() -> bool:
     try:
-        import yt_dlp  # noqa: F401
-        import faster_whisper  # noqa: F401
+        __import__("yt_dlp")
+        __import__("faster_whisper")
         return True
     except ImportError:
         return False
@@ -193,8 +205,16 @@ def safe_name(name: str, limit: int = 80) -> str:
 def write_text(path: Path, text: str) -> None:
     """统一 UTF-8 + LF（newline='' 防止 Windows 下写成 CRLF）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
+    fd, tmp = tempfile.mkstemp(prefix=".text-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def dir_size(p: Path) -> int:
@@ -383,6 +403,7 @@ def ydl_opts(nocookie: bool, browser: str, cookies: str | None, quiet: bool) -> 
         # 返回的 subtitles 永远是空 dict（即使已登录）。命令行 --list-subs
         # 之所以能拿到，正是因为它会置位该参数。
         "listsubtitles": True,
+        "noplaylist": True,
     }
     if cookies:
         opts["cookiefile"] = cookies
@@ -408,14 +429,11 @@ def probe_subtitles(url: str, *, nocookie: bool, browser: str,
             with yt_dlp.YoutubeDL(ydl_opts(nocookie, browser, cookies, quiet)) as ydl:
                 info = ydl.extract_info(url, download=False)
     except Exception:
-        captured = buf.getvalue().strip()
-        if captured:
-            for ln in captured.splitlines()[-12:]:
-                print(f"    | {ln}")
+        # extractor 输出可能含请求信息，不回显原始日志。
         raise
 
-    if info.get("_type") == "playlist" and info.get("entries"):
-        info = info["entries"][0]
+    if not info or info.get("_type") == "playlist":
+        raise RuntimeError("单集探测返回合集，拒绝误取首集")
     return {
         "info": info,
         "subtitles": info.get("subtitles") or {},
@@ -424,53 +442,27 @@ def probe_subtitles(url: str, *, nocookie: bool, browser: str,
 
 
 def pick_subtitle_lang(subtitles: dict, auto: dict, prefer: str | None):
-    """按优先级挑一个语言 → (lang, items)"""
-    if prefer:
-        for table in (subtitles, auto):
-            if prefer in table:
-                return prefer, table[prefer]
-        return None
-    for lang in LANG_PRIORITY:
-        for table in (subtitles, auto):
-            if lang in table:
-                return lang, table[lang]
-    for table in (subtitles, auto):
-        if table:
-            lang = next(iter(table))
-            return lang, table[lang]
-    return None
+    """兼容旧调用；使用经过格式过滤的字幕选择器。"""
+    from subtitle_support import pick_track
+    return pick_track(subtitles, auto, prefer)
 
 
 # --------------------------------------------------------------------------- #
 # 字幕解析
 # --------------------------------------------------------------------------- #
 def cookie_header(cookiefile: str | None) -> str | None:
-    if not cookiefile:
-        return None
-    p = Path(cookiefile)
-    if not p.exists():
-        return None
-    pairs = []
-    with open(p, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("\t")
-            if len(parts) >= 7 and "bilibili" in parts[0]:
-                pairs.append(f"{parts[5]}={parts[6]}")
-    return "; ".join(pairs) if pairs else None
+    """旧裸凭据接口禁用；新下载器直接接收 Cookie 文件路径。"""
+    if cookiefile:
+        raise ValueError("不再导出裸 Cookie 字符串，请使用安全字幕接口")
+    return None
 
 
 def fetch_url(url: str, cookies: str | None = None) -> bytes:
-    if url.startswith("//"):
-        url = "https:" + url
-    headers = {"User-Agent": UA, "Referer": "https://www.bilibili.com/"}
+    """公开元数据下载；禁止旧接口通过裸字符串传播凭据。"""
     if cookies:
-        headers["Cookie"] = cookies
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read()
+        raise ValueError("禁止裸 Cookie 请求；请使用按域匹配的字幕下载接口")
+    from subtitle_support import fetch_subtitle
+    return fetch_subtitle(url, retries=2)
 
 
 def parse_bili_json(raw: bytes):
@@ -558,7 +550,7 @@ def parse_subtitle_items(items: list, cookies: str | None):
                 pass
         except Exception as e:  # noqa: BLE001
             last_err = e
-    return [], f"字幕下载/解析失败：{last_err}"
+    return [], f"字幕下载/解析失败：{type(last_err).__name__}"
 
 
 def segments_to_text(segments, header: str) -> str:
@@ -573,85 +565,18 @@ def segments_to_text(segments, header: str) -> str:
 # --------------------------------------------------------------------------- #
 def download_audio(url: str, outdir: Path, *, nocookie: bool, browser: str,
                    cookies: str | None) -> Path:
-    import yt_dlp
-
-    print()
-    print("-" * 64)
-    print("  下载音频流（yt-dlp -f ba，不转码 → 不需要 ffmpeg）")
-    print("-" * 64)
-    opts = {
-        "format": "ba",                  # bestaudio；不加 -x，所以不需要 ffmpeg
-        "outtmpl": str(outdir / "audio.%(ext)s"),
-        "quiet": False,
-        "noprogress": False,
-        "socket_timeout": 30,
-        "retries": 3,
-    }
-    if cookies:
-        opts["cookiefile"] = cookies
-    elif not nocookie:
-        opts["cookiesfrombrowser"] = (browser,)
-
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.extract_info(url, download=True)
-
-    cand = [c for c in sorted(outdir.glob("audio.*"))
-            if c.suffix.lower() not in (".part", ".ytdl")]
-    if not cand:
-        raise RuntimeError("音频下载失败：未找到音频文件")
-    audio = max(cand, key=lambda p: p.stat().st_size)
-    print(f"  >> 音频文件：{audio.name}  {human(audio.stat().st_size)}")
-    return audio
+    from audio_support import download_audio_cached
+    print("  检查音频缓存；未命中时下载或续传", flush=True)
+    return download_audio_cached(url, outdir, nocookie=nocookie, browser=browser, cookies=cookies)
 
 
 def transcribe(audio: Path, *, model_name: str, model_dir: Path | None,
                device: str, compute_type: str, vad: bool,
-               prompt: str, language: str | None):
-    if model_dir and model_dir.is_dir():
-        source, origin = str(model_dir), "本地目录（离线，免联网）"
-    else:
-        source = model_name
-        origin = f"HuggingFace（走 {os.environ.get('HF_ENDPOINT')}）"
-
-    print()
-    print("-" * 64)
-    print(f"  faster-whisper 转写（{device}/{compute_type}）")
-    print("-" * 64)
-    print(f"  模型来源：{origin}")
-    print(f"  模型    ：{source}")
-    print(f"  术语提示：{prompt}")
-    if not (model_dir and model_dir.is_dir()):
-        print("  ⚠ 未命中本地模型目录，将联网下载；若卡住请检查")
-        print("    HF_ENDPOINT 与 HF_HUB_DISABLE_XET（后者才是强制走镜像的开关）")
-
-    from faster_whisper import WhisperModel
-
-    t0 = time.time()
-    model = WhisperModel(source, device=device, compute_type=compute_type)
-    print(f"  >> 模型就绪，用时 {time.time() - t0:.1f}s")
-
-    seg_iter, info = model.transcribe(
-        str(audio),
-        language=language,
-        initial_prompt=prompt,
-        vad_filter=vad,
-        vad_parameters=dict(min_silence_duration_ms=500) if vad else None,
-        condition_on_previous_text=False,   # 长讲座：避免陷入重复幻觉
-        beam_size=5,
-    )
-    print(f"  >> 检测语言：{info.language} (p={info.language_probability:.2f})，"
-          f"音频时长 {fmt_ts(info.duration)}")
-
-    segs, t1, last = [], time.time(), time.time()
-    for seg in seg_iter:
-        segs.append((seg.start, seg.end, seg.text.strip()))
-        if time.time() - last > 20:
-            pct = (seg.end / info.duration * 100) if info.duration else 0
-            print(f"     ... 转写中 {fmt_ts(seg.end)} / {fmt_ts(info.duration)}  "
-                  f"({pct:.1f}%)", flush=True)
-            last = time.time()
-    print(f"  >> 转写完成：{len(segs)} 条，用时 {time.time() - t1:.1f}s")
-    return segs
+               prompt: str, language: str | None, refresh: bool = False):
+    from transcription_support import transcribe_resumable
+    return transcribe_resumable(audio, model_name=model_name, model_dir=model_dir,
+                                device=device, compute_type=compute_type, vad=vad,
+                                prompt=prompt, language=language, refresh=refresh)
 
 
 # --------------------------------------------------------------------------- #
@@ -662,26 +587,43 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
             outdir: Path | None, keep_audio: bool | None,
             cookies_file: Path | None = None,
             model_dir: Path | None = None,
-            verbose: bool = True) -> dict:
+            verbose: bool = True,
+            target_dir: Path | None = None,
+            mode: str | None = None, refresh_transcription: bool = False) -> dict:
     """转写一个视频。返回 {'ok', 'title', 'mode', 'path', 'segments', 'seconds', 'error'}"""
     t0 = time.time()
     res = {"ok": False, "title": "", "mode": "", "path": None,
            "segments": 0, "seconds": 0.0, "error": None}
 
+    from subtitle_support import SubtitleFetchError, SubtitleParseError, pick_track, parse_track_items
+
+    selected_mode = "whisper" if force_whisper else (mode or cp.get("download", "mode", fallback="subtitles"))
+    if selected_mode not in ("subtitles", "auto", "whisper"):
+        res.update(error="处理模式非法", error_code="invalid_mode")
+        return res
+    retries = max(0, min(5, cp.getint("download", "subtitle_retries", fallback=2)))
     browser = cp.get("download", "browser", fallback="edge")
-    print(f"  探测中：{url}")
+    parsed_display = urllib.parse.urlsplit(url)
+    display_url = urllib.parse.urlunsplit((parsed_display.scheme, parsed_display.hostname or "", parsed_display.path, "", ""))
+    print(f"  模式：{selected_mode}；探测中：{display_url}（查询参数已隐藏）")
     cf = cookies_file if cookies_file is not None else COOKIE_FILE
     cookies = None
     if not nocookie and cf.is_file():
         cookies = str(cf)
 
-    try:
-        probe = probe_subtitles(url, nocookie=nocookie, browser=browser,
-                               cookies=cookies, quiet=True)
-    except Exception as e:  # noqa: BLE001
-        res["error"] = f"探测失败：{type(e).__name__}: {str(e)[:150]}"
-        print(f"  ✗ {res['error']}")
-        return res
+    for attempt in range(retries + 1):
+        try:
+            probe = probe_subtitles(url, nocookie=nocookie, browser=browser,
+                                   cookies=cookies, quiet=True)
+            break
+        except Exception as e:  # noqa: BLE001
+            if attempt < retries:
+                print(f"  字幕探测重试 {attempt + 1}/{retries}", flush=True)
+                continue
+            res.update(error=f"探测失败：{type(e).__name__}（不回显请求详情）",
+                       error_code="probe_failed")
+            print(f"  ✗ {res['error']}")
+            return res
 
     info = probe["info"]
     title = safe_name(info.get("title") or "video")
@@ -694,17 +636,27 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
           f"AI {sorted(probe['auto']) or '（无）'}")
 
     base = outdir or (data_root(cp) / "transcripts")
-    target = base / title
+    identity = str(info.get("id") or hashlib.sha256(url.encode()).hexdigest()[:20])
+    target = target_dir if target_dir is not None else base / (title + "--" + safe_name(identity))
     target.mkdir(parents=True, exist_ok=True)
 
-    picked = None if force_whisper else pick_subtitle_lang(
+    picked = None if selected_mode == "whisper" else pick_track(
         probe["subtitles"], probe["auto"], lang)
+    if lang and not picked and selected_mode != "whisper":
+        res.update(error="指定字幕语言不可用", error_code="language_unavailable")
+        return res
 
     # ---------- 分支 A：字幕（秒级） ----------
     if picked:
         sub_lang, items = picked
         print(f"  → 走字幕路线（语言码 {sub_lang}）")
-        segs, note = parse_subtitle_items(items, cookie_header(cookies))
+        try:
+            segs, note = parse_track_items(items, cookiefile=cookies, retries=retries)
+        except (SubtitleFetchError, SubtitleParseError) as exc:
+            code = "subtitle_fetch_failed" if isinstance(exc, SubtitleFetchError) else "subtitle_parse_failed"
+            res.update(error="字幕获取或解析失败，已保留已有文件；不自动转语音识别", error_code=code)
+            print(f"  ✗ {res['error']}")
+            return res
         print(f"    {note}，共 {len(segs)} 条")
         if segs:
             header = (f"# 转写来源：B站/YouTube 字幕（语言码 {sub_lang}）\n"
@@ -716,19 +668,25 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
                        segments=len(segs), seconds=time.time() - t0)
             print(f"  ✓ 完成：{txt}")
             return res
-        print("    ⚠ 字幕解析失败，回退 whisper。")
+        res.update(error="字幕内容为空，不自动转语音识别", error_code="subtitle_empty")
+        return res
+
+    if selected_mode == "subtitles":
+        res.update(error="未取得可用字幕；仅字幕模式不启动语音转写", error_code="no_subtitles")
+        print(f"  {res['error']}")
+        return res
 
     if not picked:
-        print("  → 无可用字幕，走 whisper 转写")
+        print("  → 已允许语音转写，走 whisper 路线")
         if duration:
-            print(f"    预估耗时约 {duration * 0.5 / 60:.0f} 分钟（实测实时率约 0.5x）")
+            print(f"    音频 {duration / 60:.1f} 分钟；耗时取决于硬件，心跳将持续报告阶段。")
 
     # ---------- 分支 B：whisper ----------
     try:
         audio = download_audio(url, target, nocookie=nocookie,
                                browser=browser, cookies=cookies)
     except Exception as e:  # noqa: BLE001
-        res["error"] = f"音频下载失败：{type(e).__name__}: {str(e)[:150]}"
+        res["error"] = f"音频下载失败：{type(e).__name__}；可用 --lock-status 检查主锁及缓存锁（不回显请求详情）"
         print(f"  ✗ {res['error']}")
         return res
 
@@ -746,9 +704,10 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
             vad=cp.getboolean("whisper", "vad", fallback=True),
             prompt=cp.get("whisper", "prompt", fallback=DEFAULTS["whisper"]["prompt"]),
             language=(cp.get("whisper", "language", fallback="") or None),
+            refresh=refresh_transcription,
         )
     except Exception as e:  # noqa: BLE001
-        res["error"] = f"转写失败：{type(e).__name__}: {str(e)[:150]}"
+        res["error"] = f"转写失败：{type(e).__name__}（不回显请求详情）；请检查该集检查点及运行日志"
         print(f"  ✗ {res['error']}")
         return res
 
@@ -770,16 +729,403 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
         keep_audio = cp.getboolean("download", "keep_audio", fallback=True)
     if not keep_audio and audio.exists():
         try:
-            audio.unlink()
-            print(f"    已删除音频（keep_audio = false）")
+            from audio_support import drop_cached_audio
+            if ".audio-cache" in audio.parts:
+                drop_cached_audio(audio)
+            else:
+                audio.unlink()
+            print("    已删除音频（keep_audio = false）")
         except OSError:
             pass
     return res
 
 
 # --------------------------------------------------------------------------- #
+# 合集识别与增量状态
+# --------------------------------------------------------------------------- #
+def bili_input(url: str):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.hostname not in ("www.bilibili.com", "bilibili.com", "m.bilibili.com"):
+        return None
+    match = re.fullmatch(r"/video/(BV[0-9A-Za-z]+)/*", parsed.path)
+    if not match:
+        return None
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    part = None
+    if "p" in query:
+        if len(query["p"]) != 1 or not query["p"][0].isdigit() or int(query["p"][0]) < 1:
+            raise ValueError("p 必须是一个正整数")
+        part = int(query["p"][0])
+    return match.group(1), part
+
+
+def bili_view(bvid: str) -> dict:
+    raw = fetch_url("https://api.bilibili.com/x/web-interface/view?" +
+                    urllib.parse.urlencode({"bvid": bvid}))
+    reply = json.loads(raw)
+    if reply.get("code") != 0 or not isinstance(reply.get("data"), dict):
+        raise RuntimeError("B站公开 view 元数据请求失败")
+    data = reply["data"]
+    if data.get("bvid") != bvid:
+        raise ValueError("元数据 BV 身份不匹配")
+    return data
+
+
+def bili_episodes(data: dict) -> list:
+    bvid = data.get("bvid")
+    if not isinstance(bvid, str) or not re.fullmatch(r"BV[0-9A-Za-z]+", bvid):
+        raise ValueError("元数据缺少有效 BV")
+    pages = data.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("元数据缺少分P列表")
+    episodes = []
+    for page in pages:
+        cid, part = page.get("cid"), page.get("page")
+        if type(cid) is not int or cid < 1 or type(part) is not int or part < 1:
+            raise ValueError("分P缺少有效 cid/page")
+        episodes.append({"id": f"{bvid}-cid-{cid}", "bvid": bvid, "cid": cid,
+                         "part": part, "title": page.get("part") or data.get("title") or bvid,
+                         "url": f"https://www.bilibili.com/video/{bvid}?p={part}"})
+    if len({e["id"] for e in episodes}) != len(episodes):
+        raise ValueError("分P cid 重复")
+    return episodes
+
+
+def discover_bili(url: str, *, all_parts: bool = False, single: bool = False) -> dict:
+    selected = bili_input(url)
+    if selected is None:
+        identity = "url-" + hashlib.sha256(url.encode()).hexdigest()[:32]
+        return {"id": identity, "title": "单集", "episodes": [
+            {"id": identity, "title": "单集", "url": url}]}
+    bvid, part = selected
+    data = bili_view(bvid)
+    own = bili_episodes(data)
+    if single and part is None:
+        part = 1
+    if part is not None and not all_parts:
+        episodes = [e for e in own if e["part"] == part]
+        if not episodes:
+            raise ValueError("指定 p 不在当前分P列表中")
+        return {"id": "bili-video-" + bvid, "title": data.get("title"), "episodes": episodes}
+    season = data.get("ugc_season")
+    if season:
+        sid = season.get("id")
+        if type(sid) is not int or sid < 1:
+            raise ValueError("ugc_season 缺少稳定 ID")
+        members = []
+        provided_count = 0
+        for section in season.get("sections") or []:
+            for episode in section.get("episodes") or []:
+                provided_count += 1
+                member = episode.get("bvid") or (episode.get("arc") or {}).get("bvid")
+                if not member:
+                    raise ValueError("ugc_season 成员缺少 BV，拒绝不完整展开")
+                if member not in members:
+                    members.append(member)
+        expected_count = season.get("episode_count")
+        if type(expected_count) is int and expected_count > provided_count:
+            raise ValueError("ugc_season 成员数量少于 episode_count，拒绝不完整展开")
+        if not members:
+            raise ValueError("ugc_season 未提供成员列表")
+        episodes = []
+        for member in members:
+            episodes.extend(bili_episodes(data if member == bvid else bili_view(member)))
+        return {"id": f"bili-season-{sid}", "title": season.get("title"), "episodes": episodes}
+    return {"id": "bili-video-" + bvid, "title": data.get("title"), "episodes": own}
+
+
+
+def flat_playlist(url: str, *, nocookie: bool = False, browser: str = "edge",
+                  cookies: str | None = None, single: bool = False) -> dict:
+    """仅展开元信息；禁止下载，并完整消费分页列表，不限制集数。"""
+    import yt_dlp
+
+    opts = ydl_opts(nocookie, browser, cookies, True)
+    opts.update(extract_flat="in_playlist", noplaylist=single, listsubtitles=False)
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    if not info:
+        raise ValueError("未取得视频或合集元信息")
+    if single and info.get("_type") in ("playlist", "multi_video"):
+        raise ValueError("该链接仅指向合集；--single 需要具体视频链接")
+    return info
+
+
+def canonical_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username:
+        raise ValueError("条目缺少有效 HTTP 视频链接")
+    query = [(k, v) for k, v in urllib.parse.parse_qsl(parsed.query)
+             if not k.startswith("utm_") and k not in ("spm_id_from", "vd_source")]
+    return urllib.parse.urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(),
+                                   parsed.path, urllib.parse.urlencode(sorted(query)), ""))
+
+
+def discover(url: str, *, all_parts: bool = False, single: bool = False,
+             nocookie: bool = False, browser: str = "edge", cookies: str | None = None) -> dict:
+    # BV公开view补足extractor不自动展开ugc_season的限制，并以cid跨重排识别分P。
+    selected = bili_input(url)
+    if selected is not None:
+        return discover_bili(url, all_parts=all_parts, single=single)
+    info = flat_playlist(url, nocookie=nocookie, browser=browser, cookies=cookies, single=single)
+    entries = list(info.get("entries") or []) if info.get("_type") in ("playlist", "multi_video") else [info]
+    if not entries:
+        raise ValueError("合集为空，拒绝记录不完整成功")
+    episodes, seen = [], set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("合集含不可访问条目，拒绝不完整展开")
+        entry_url = entry.get("webpage_url") or entry.get("url")
+        if not entry_url and entry is info:
+            entry_url = url
+        if not isinstance(entry_url, str):
+            raise ValueError("合集成员缺少规范链接")
+        entry_url = canonical_url(entry_url)
+        bili = bili_input(entry_url)
+        if bili:
+            # 合集内不同BV成员也可能各自有分P，但不递归展开其所属season。
+            found = discover_bili(entry_url, single=single) if bili[1] else None
+            if found is None:
+                data = bili_view(bili[0])
+                members = bili_episodes(data)
+                if single:
+                    members = members[:1]
+            else:
+                members = found["episodes"]
+        else:
+            source = entry.get("ie_key") or entry.get("extractor_key") or info.get("extractor_key")
+            stable = f"{source}:{entry['id']}" if source and entry.get("id") else entry_url
+            key = "url-" + hashlib.sha256(stable.encode()).hexdigest()[:32]
+            members = [{"id": key, "title": entry.get("title") or "单集", "url": entry_url}]
+        for member in members:
+            if member["id"] not in seen:
+                seen.add(member["id"])
+                episodes.append(member)
+    source = info.get("extractor_key") or info.get("ie_key")
+    stable = f"{source}:{info['id']}" if source and info.get("id") else canonical_url(url)
+    identity = "playlist-" + hashlib.sha256(stable.encode()).hexdigest()[:32]
+    return {"id": identity, "title": info.get("title") or "视频", "episodes": episodes}
+
+
+
+def relative_output(root: Path, value: str) -> Path:
+    if not isinstance(value, str) or not value or "\\" in value or ":" in value:
+        raise ValueError("manifest 产物路径非法")
+    path = Path(value)
+    if path.is_absolute() or any(p in (".", "..", "") for p in value.split("/")):
+        raise ValueError("manifest 产物路径必须是安全相对路径")
+    target = (root / path).resolve()
+    if not target.is_relative_to(root.resolve()):
+        raise ValueError("manifest 产物路径越界（含符号链接）")
+    return target
+
+
+def load_manifest(path: Path, root: Path) -> dict:
+    if not path.exists():
+        return {"version": 1, "collections": {}, "episodes": {}}
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict) or state.get("version") != 1:
+            raise ValueError("版本或根结构错误")
+        for table in ("collections", "episodes"):
+            if not isinstance(state.get(table), dict):
+                raise ValueError("状态表结构错误")
+        for key, entry in state["episodes"].items():
+            if not re.fullmatch(r"(?:BV[0-9A-Za-z]+-cid-[1-9][0-9]*|url-[0-9a-f]{32})", key):
+                raise ValueError("集 ID 非法")
+            if not isinstance(entry, dict) or entry.get("status") not in ("success", "failed", "pending"):
+                raise ValueError("集状态非法")
+            expected = f"episodes/{key}/transcript.txt"
+            if entry.get("path") != expected:
+                raise ValueError("集 ID 与产物路径不匹配")
+            relative_output(root, entry["path"])
+        for entry in state["collections"].values():
+            if not isinstance(entry, dict) or not isinstance(entry.get("episode_ids"), list):
+                raise ValueError("合集结构非法")
+            if any(not isinstance(k, str) or k not in state["episodes"] for k in entry["episode_ids"]):
+                raise ValueError("合集引用未知集")
+        return state
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError("manifest 损坏或不安全，拒绝覆盖；请人工检查并恢复") from exc
+
+
+def atomic_json(path: Path, state: dict) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=".manifest-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            json.dump(state, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def process(url: str, *, cp: configparser.ConfigParser, all_parts: bool = False,
+            refresh: bool = False, single: bool = False, outdir: Path | None = None,
+            only_failed: bool = False, **options) -> dict:
+    """识别合集并增量转写；convert 仍是单集接口。失败返回非零 exit_code。"""
+    result = {"ok": False, "completed": 0, "skipped": 0, "failed": 0,
+              "results": [], "error": None, "exit_code": 1}
+    root = (outdir or (data_root(cp) / "transcripts")).resolve()
+    lock = root / ".video2text.lock"
+    locked = False
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        with lock.open("x", encoding="utf-8", newline="") as stream:
+            locked = True
+            stream.write(str(os.getpid()) + "\n")
+        manifest = root / ".video2text-manifest.json"
+        if manifest.is_symlink():
+            raise ValueError("manifest 不得是符号链接")
+        state = load_manifest(manifest, root)
+        if single and all_parts:
+            raise ValueError("--single 与 --all-parts 不可同时使用")
+        if only_failed and refresh:
+            raise ValueError("--only-failed 与 --force 不可同时使用")
+        cf = options.get("cookies_file") or COOKIE_FILE
+        cookie = str(cf) if not options.get("nocookie", False) and cf.is_file() else None
+        collection = discover(url, all_parts=all_parts, single=single,
+                              nocookie=options.get("nocookie", False),
+                              browser=cp.get("download", "browser", fallback="edge"), cookies=cookie)
+        episodes = collection["episodes"]
+        print(f"  合集/单集：{collection['id']}，本次 {len(episodes)} 集")
+        if refresh:
+            print("  refresh：强制重做本次所选全部集（包括已有成功产物）")
+        # 显式单集选择不抹掉同 BV 的已知其它成员；移除集记录/文件始终留存。
+        old = state["collections"].get(collection["id"], {})
+        known = list(dict.fromkeys(old.get("episode_ids", []) + [e["id"] for e in episodes]))
+        state["collections"][collection["id"]] = {
+            "title": collection["title"], "episode_ids": known,
+            "selected_ids": [e["id"] for e in episodes]}
+        retry_ids = {key for key, entry in state["episodes"].items()
+                     if entry.get("status") in ("failed", "pending")}
+        for episode in episodes:
+            key = episode["id"]
+            if only_failed and key not in state["episodes"]:
+                continue
+            state["episodes"].setdefault(key, {
+                "status": "pending", "path": f"episodes/{key}/transcript.txt"})
+        if only_failed:
+            # 未选择的新条目不得污染为 pending，影响下一次“仅失败”处理。
+            state["collections"][collection["id"]]["episode_ids"] = [
+                key for key in known if key in state["episodes"]]
+            state["collections"][collection["id"]]["selected_ids"] = [
+                e["id"] for e in episodes if e["id"] in state["episodes"]]
+        for episode_number, episode in enumerate(episodes, 1):
+            key = episode["id"]
+            print(f"  [{episode_number}/{len(episodes)}] {episode.get('title') or key}", flush=True)
+            if only_failed and key not in retry_ids:
+                result["skipped"] += 1
+                continue
+            path = f"episodes/{key}/transcript.txt"
+            target = relative_output(root, path)
+            entry = state["episodes"].setdefault(key, {"status": "pending", "path": path})
+            entry.update({k: v for k, v in episode.items() if k != "url"})
+            entry["path"] = path
+            valid = (target.is_file() and target.stat().st_size > 0
+                     and entry.get("sha256") == hashlib.sha256(target.read_bytes()).hexdigest())
+            if not refresh and entry["status"] == "success" and valid:
+                result["skipped"] += 1
+                result["results"].append({"id": key, "ok": True, "skipped": True})
+                continue
+            entry["status"] = "pending"
+            atomic_json(manifest, state)
+            try:
+                res = convert(episode["url"], cp=cp, outdir=root,
+                              target_dir=target.parent, refresh_transcription=refresh, **options)
+                if res["ok"] and (not target.is_file() or target.stat().st_size == 0):
+                    res = {"ok": False, "error": "转换未写出非空产物"}
+            except Exception as exc:
+                res = {"ok": False, "error": f"单集异常：{type(exc).__name__}"}
+            entry["status"] = "success" if res["ok"] else "failed"
+            if res["ok"]:
+                entry["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+                entry["size"] = target.stat().st_size
+            else:
+                entry.pop("sha256", None)
+                entry.pop("size", None)
+            # 不存原始异常/请求或凭据；日志仅给出失败类别和稳定集 ID。
+            safe_codes = {"invalid_mode", "probe_failed", "language_unavailable", "subtitle_fetch_failed",
+                          "subtitle_parse_failed", "subtitle_empty", "no_subtitles"}
+            entry["error_code"] = None if res["ok"] else (
+                res.get("error_code") if res.get("error_code") in safe_codes else "conversion_failed")
+            entry["error"] = None if res["ok"] else "转换失败，下一次自动重试"
+            if res["ok"]:
+                entry["mode"] = res.get("mode", "unknown")
+                entry["segments"] = res.get("segments")
+            result["completed" if res["ok"] else "failed"] += 1
+            result["results"].append({"id": key, "ok": res["ok"], "skipped": False})
+            atomic_json(manifest, state)
+        atomic_json(manifest, state)
+        # 人类可读标题层由内部哈希校验产物生成；失败不会推翻已成功的内部转写。
+        from title_layout import materialize_collection
+        try:
+            layout = materialize_collection(root, collection["id"], lock_held=True)
+            print(f"  标题目录：{layout['directory']}（新增/更新 {layout['written']}，已有 {layout['skipped']}）")
+            if layout.get('stale'):
+                print(f"  旧标题副本仍保留 {len(layout['stale'])} 份；请看标题视图索引，不自动删除。")
+        except (OSError, ValueError, RuntimeError) as exc:
+            result["error"] = f"文字已保存在内部目录，但标题视图生成失败：{type(exc).__name__}；可稍后重试"
+            result["failed"] += 1
+        result.update(ok=result["failed"] == 0, exit_code=0 if result["failed"] == 0 else 1)
+    except Exception as exc:
+        if isinstance(exc, FileExistsError) and lock.exists():
+            from collection_support import inspect_lock
+            diagnosis = inspect_lock(root)
+            result["error"] = f"输出目录有运行锁；诊断 {diagnosis.get('status', 'unknown')}，可用 --lock-status 查看；不会自动删除锁"
+        else:
+            result["error"] = str(exc) if isinstance(exc, ValueError) else f"处理失败：{type(exc).__name__}"
+        result["failed"] += 1
+    finally:
+        if locked:
+            lock.unlink()
+    print(f"  汇总：完成 {result['completed']}，跳过 {result['skipped']}，失败 {result['failed']}")
+    for item in result["results"]:
+        if not item["ok"]:
+            print(f"  失败集：{item['id']}（下次自动补做）")
+    if result["error"]:
+        print(f"  {result['error']}")
+    return result
+
+
+# --------------------------------------------------------------------------- #
 # 面板各项
 # --------------------------------------------------------------------------- #
+def panel_collections(cp) -> None:
+    from collection_support import list_collections, export_collection, inspect_lock
+    root = data_root(cp) / "transcripts"
+    try:
+        collections = list_collections(root)
+        print("  合集管理（按当前选择顺序）")
+        for number, item in enumerate(collections, 1):
+            print(f"  {number}. {item['title']} | 完整 {item['success']}/{item['total']} | {item['id']}")
+        value = ask("  输入序号查看并导出，或 l 诊断锁，回车返回：").strip()
+        if value == "l":
+            print(inspect_lock(root))
+        elif value.isdigit() and 1 <= int(value) <= len(collections):
+            selected = collections[int(value) - 1]
+            for episode in selected["episodes"]:
+                label = episode['status'] if episode.get('verified') else (episode.get('reason') or episode['status'])
+                print(f"  {episode['number']:02d} {episode['title']} [{label}]")
+            if ask("  生成/同步标题文件夹？[y/N] ").strip().lower() in ("y", "yes"):
+                from title_layout import materialize_collection
+                layout = materialize_collection(root, selected['id'])
+                print(f"  标题目录：{layout['directory']}")
+                if layout.get('stale'):
+                    print(f"  提醒：旧标题副本留存 {len(layout['stale'])} 份，未自动删除。")
+            destination = ask("  导出到新 ZIP 路径（回车不导出）：").strip()
+            if destination:
+                result = export_collection(root, selected['id'], Path(destination))
+                print(f"  导出：{result['path']}；完整：{result['complete']}")
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"  合集操作失败：{type(exc).__name__}；请检查路径或状态")
+    ask("  按回车返回…")
+
+
 def panel_transcribe(cp) -> None:
     print("=" * 64)
     print("  转写视频")
@@ -795,17 +1141,8 @@ def panel_transcribe(cp) -> None:
 
     print()
     t0 = time.time()
-    res = convert(url, cp=cp, nocookie=False, force_whisper=False,
-                  lang=None, model=None, outdir=None, keep_audio=None)
-    print()
-    print("-" * 64)
-    if res["ok"]:
-        print(f"  ✓ {res['title']}")
-        print(f"    路线：{res['mode']}　条数：{res['segments']}　"
-              f"耗时：{res['seconds']:.1f}s")
-        print(f"    输出：{res['path']}")
-    else:
-        print(f"  ✗ 失败：{res['error']}")
+    process(url, cp=cp, nocookie=False, force_whisper=False,
+            lang=None, model=None, outdir=None, keep_audio=None)
     print(f"  （总耗时 {time.time() - t0:.1f}s）")
     ask("\n  按回车返回…")
 
@@ -841,7 +1178,7 @@ def panel_batch(cp) -> None:
         print(f"  [{n}/{len(urls)}] {u}")
         print("=" * 64)
         try:
-            results.append((u, convert(u, cp=cp, nocookie=False,
+            results.append((u, process(u, cp=cp, nocookie=False,
                                        force_whisper=False, lang=None,
                                        model=None, outdir=None, keep_audio=None)))
         except KeyboardInterrupt:
@@ -855,8 +1192,7 @@ def panel_batch(cp) -> None:
     ok = sum(1 for _u, r in results if r["ok"])
     for n, (u, r) in enumerate(results, 1):
         if r["ok"]:
-            print(f"  ✓ {n:>2}. [{r['mode']}] {r['title']}　"
-                  f"{r['segments']} 条　{r['seconds']:.1f}s")
+            print(f"  {n:>2}. 完成 {r['completed']}，跳过 {r['skipped']}，失败 {r['failed']}")
         else:
             print(f"  ✗ {n:>2}. {u}")
             print(f"        {r['error']}")
@@ -876,8 +1212,11 @@ def panel_list(cp) -> None:
             ask("\n  按回车返回…")
             return
 
-        items = sorted(base.glob("*/transcript.txt"),
+        # 可读标题层不计入内部已转写清单，避免同一集重复显示。
+        items = sorted((base / "episodes").glob("*/transcript.txt"),
                        key=lambda p: p.stat().st_mtime, reverse=True)
+        items += sorted((p for p in base.glob("*/transcript.txt") if p.is_file()),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
         if not items:
             print("  还没有任何转写产物。")
             ask("\n  按回车返回…")
@@ -892,11 +1231,13 @@ def panel_list(cp) -> None:
             size = p.stat().st_size
             mtime = time.strftime("%m-%d %H:%M", time.localtime(p.stat().st_mtime))
             src = "字幕" if "字幕" in first else "whisper"
-            print(f"  {i:>2}. {p.parent.name[:44]:<46}")
+            title = next((ln[len("# 标题："):].strip() for ln in lines
+                          if ln.startswith("# 标题：")), p.parent.name)
+            print(f"  {i:>2}. {title[:44]:<46}")
             print(f"      {n_lines:>5} 条　{human(size):>9}　{src:<7} {mtime}")
         print()
         print("     序号    看预览（前 15 条）")
-        print("     d 序号  删掉某个（连同音频）")
+        print("     删除入口已停用：先核对索引与备份，再单独处理")
         print("     回车    返回")
         ans = ask("\n  选择：").strip().lower()
         if not ans:
@@ -904,23 +1245,18 @@ def panel_list(cp) -> None:
 
         m = re.match(r"^d\s*(\d+)$", ans)
         if m:
-            idx = int(m.group(1))
-            if not (1 <= idx <= len(items)):
-                continue
-            tgt = items[idx - 1].parent
-            if ask(f"  确认删除「{tgt.name}」？ [y/N] ").strip().lower() not in ("y", "yes"):
-                continue
-            import shutil
-            shutil.rmtree(tgt, ignore_errors=True)
-            print("  ✓ 已删除。")
-            time.sleep(1)
+            print("  删除已停用：需先核对索引、完整列出影响文件并备份。")
+            ask("  按回车返回…")
             continue
 
         if ans.isdigit() and 1 <= int(ans) <= len(items):
             p = items[int(ans) - 1]
             clear()
             print("=" * 64)
-            print(f"  {p.parent.name}")
+            with p.open(encoding="utf-8", errors="replace") as f:
+                title = next((ln[len("# 标题："):].strip() for ln in f
+                              if ln.startswith("# 标题：")), p.parent.name)
+            print(f"  {title}")
             print("=" * 64)
             with p.open(encoding="utf-8", errors="replace") as f:
                 for i, ln in enumerate(f):
@@ -986,8 +1322,9 @@ def panel_status(cp) -> None:
     print()
     print("  转写产物：")
     base = data_root(cp) / "transcripts"
-    items = list(base.glob("*/transcript.txt")) if base.is_dir() else []
-    print(f"    {len(items)} 份　{human(dir_size(base))}")
+    items = (list((base / "episodes").glob("*/transcript.txt"))
+             + list(base.glob("*/transcript.txt"))) if base.is_dir() else []
+    print(f"    {len(items)} 份　{human(dir_size(base))}（含标题副本）")
 
     print()
     print("  关键环境变量（脚本已内置，无需手动设）：")
@@ -1006,9 +1343,10 @@ def panel_status(cp) -> None:
 MENU = [
     ("1", "转写视频（粘贴链接）"),
     ("2", "批量转写（多个链接）"),
-    ("3", "已转写（查看 / 预览 / 删除）"),
+    ("3", "已转写（查看 / 预览）"),
     ("4", "重新登录 B站（扫码）"),
     ("5", "环境与模型状态"),
+    ("6", "合集管理 / 导出 / 锁诊断"),
 ]
 
 
@@ -1022,7 +1360,8 @@ def interactive(cp) -> int:
         print(f"  数据目录：{data_root(cp)}")
         print(f"  登录态  ：{cookie_status_line()}")
         base = data_root(cp) / "transcripts"
-        n_done = len(list(base.glob("*/transcript.txt"))) if base.is_dir() else 0
+        n_done = (len(list((base / "episodes").glob("*/transcript.txt")))
+                  + len(list(base.glob("*/transcript.txt")))) if base.is_dir() else 0
         models = [d.name for d in MODELS_DIR.iterdir()
                   if d.is_dir()] if MODELS_DIR.is_dir() else []
         print(f"  本地模型：{', '.join(models) if models else '（无）'}")
@@ -1051,6 +1390,8 @@ def interactive(cp) -> int:
             ask("\n  按回车返回…")
         elif choice == "5":
             panel_status(cp)
+        elif choice == "6":
+            panel_collections(cp)
     clear()
     print("  已退出 video2text。")
     return 0
@@ -1072,6 +1413,14 @@ def main() -> int:
         description="视频 → 带时间戳纯文本（不带参数运行则是交互面板）")
     ap.add_argument("url", nargs="?")
     ap.add_argument("-o", "--outdir", default=None, help="输出根目录")
+    ap.add_argument("--mode", choices=("subtitles", "auto", "whisper"), default=None,
+                    help="subtitles仅字幕(默认)；auto无字幕时转写；whisper强制转写")
+    ap.add_argument("--only-failed", action="store_true", help="仅补做已记录failed/pending项，不处理新增集")
+    ap.add_argument("--collections", action="store_true", help="列出已记录合集")
+    ap.add_argument("--sync-titles", default=None, metavar="ID", help="从已校验产物同步指定合集的标题文件夹，不联网、不转写")
+    ap.add_argument("--export-collection", default=None, metavar="ID", help="导出指定合集ZIP")
+    ap.add_argument("--export-to", default=None, metavar="PATH", help="ZIP新文件路径，不覆盖已有文件")
+    ap.add_argument("--lock-status", action="store_true", help="只读诊断运行锁，不删除锁")
     ap.add_argument("--model", default=None, help="whisper 模型名，默认取配置 medium")
     ap.add_argument("--model-dir", default=None, help="本地模型目录")
     ap.add_argument("--device", default=None)
@@ -1079,7 +1428,10 @@ def main() -> int:
     ap.add_argument("--cookies", default=None, help="Netscape cookie 文件")
     ap.add_argument("--no-cookies", action="store_true", help="匿名探测")
     ap.add_argument("--lang", default=None, help="指定字幕语言码，如 ai-zh")
-    ap.add_argument("--force-whisper", action="store_true", help="忽略字幕，强制转写")
+    ap.add_argument("--force-whisper", action="store_true", help="忽略字幕，强制转写；已有成功集仍跳过，重做需 --refresh")
+    ap.add_argument("--single", action="store_true", help="只处理当前视频；无 p 的BV选择第1P，不展开所属合集")
+    ap.add_argument("--refresh", "--force", action="store_true", help="强制重做本次所选全部集，包括已成功产物")
+    ap.add_argument("--all-parts", action="store_true", help="显式 p 也展开全部分P及同页 ugc_season")
     ap.add_argument("--keep-audio", dest="keep_audio", action="store_true", default=None)
     ap.add_argument("--drop-audio", dest="keep_audio", action="store_false")
     ap.add_argument("--no-vad", dest="vad", action="store_false", default=None)
@@ -1088,6 +1440,34 @@ def main() -> int:
     ap.add_argument("--status", action="store_true", help="显示环境与模型状态")
     ap.add_argument("--login", action="store_true", help="扫码登录 B站")
     args = ap.parse_args()
+
+    if args.export_to and not args.export_collection:
+        ap.error("--export-to 必须与 --export-collection 同用")
+    if args.collections or args.export_collection or args.lock_status or args.sync_titles:
+        from collection_support import list_collections, export_collection, inspect_lock
+        root = Path(args.outdir) if args.outdir else data_root(cp) / "transcripts"
+        try:
+            if args.lock_status:
+                print(json.dumps(inspect_lock(root), ensure_ascii=False, indent=2))
+            if args.collections:
+                for item in list_collections(root):
+                    print(f"{item['id']} | {item['title']} | {item['success']}/{item['total']}")
+            if args.sync_titles:
+                from title_layout import materialize_collection
+                layout = materialize_collection(root, args.sync_titles)
+                print(json.dumps(layout, ensure_ascii=False, indent=2))
+            if args.export_collection:
+                if not args.export_to:
+                    ap.error("--export-collection 必须指定 --export-to")
+                exported = export_collection(root, args.export_collection, Path(args.export_to))
+                print(json.dumps(exported, ensure_ascii=False, indent=2))
+                return 0 if exported['complete'] else 1
+            return 0
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"合集操作失败：{type(exc).__name__}；未覆盖已有产物")
+            return 1
+    if args.force_whisper and args.mode == "subtitles":
+        ap.error("--force-whisper 与 --mode subtitles 冲突")
 
     if args.status:
         rc = relaunch_if_needed(cp)
@@ -1123,8 +1503,10 @@ def main() -> int:
     if args.whisper_language is not None:
         cp.set("whisper", "language", args.whisper_language)
 
-    res = convert(
+    res = process(
         args.url, cp=cp, nocookie=args.no_cookies,
+        refresh=args.refresh, all_parts=args.all_parts, single=args.single,
+        mode=args.mode, only_failed=args.only_failed,
         force_whisper=args.force_whisper, lang=args.lang,
         model=args.model,
         outdir=Path(args.outdir) if args.outdir else None,
