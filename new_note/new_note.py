@@ -902,9 +902,13 @@ def insert_input_line(text, line, before_appendix):
     已存在同一行时原样返回。`before_appendix=False`（导引）插在**第一条 `\\input`
     之前**——开头的注释行留在最上面；`True`（小结）插在**第一条指向附录的 `\\input`
     之前**，没有附录则接在最后一条 `\\input` 之后。
+
+    末尾有没有换行**按原样保留**：只往里插行，不顺手改文件末行的结构（改了他人的
+    文件，diff 里就会多出一对莫名其妙的「删末行 ＋ 加末行」）。
     """
     if line in text.splitlines():
         return text, False
+    trailing = text == "" or text.endswith("\n")
     lines = text.splitlines()
     inputs = [i for i, ln in enumerate(lines) if re.match(r"\s*\\input\{", ln)]
     if before_appendix:
@@ -914,7 +918,7 @@ def insert_input_line(text, line, before_appendix):
     else:
         pos = inputs[0] if inputs else len(lines)
     lines.insert(pos, line)
-    return "\n".join(lines) + "\n", True
+    return "\n".join(lines) + ("\n" if trailing else ""), True
 
 
 def add_intro_summary(target, levels=None, do_intro=True, do_summary=True,
