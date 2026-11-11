@@ -1,0 +1,12 @@
+# symbols.py 配置模板
+# 复制为 symbols.conf 后按本机情况填写（symbols.conf 已被 .gitignore 忽略）
+# 格式：键 = 值，以 # 或 ; 开头的行是注释，支持 %APPDATA% 等环境变量
+
+# 笔记根目录：其下每个含 structure.sty 的子目录都被视为一本笔记
+root = D:\你的笔记目录
+
+# 符号来源（模板的 structure.sty）：刷新补全与回填均以它为基准
+template = D:\你的模板目录\笔记写作\structure.sty
+
+# TeXStudio 补全文件（留空或删除则用默认位置）
+cwl = %APPDATA%\texstudio\completion\user\custom.cwl

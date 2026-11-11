@@ -1,0 +1,38 @@
+#!/bin/sh
+# 提交前把关：拦截本机信息（用户名 / 本机路径 / 专有词）
+#
+# 由工具仓库的 check_sensitive/check_sensitive.py 提供。本钩子不含任何本机绝对路径，
+# 靠「相对位置 + 通配」找脚本，所以工具目录改名、挪窝都不用重装：
+#   1) 仓库根目录下摆着 check_sensitive.py
+#   2) 仓库根目录下的任意一级子目录（工具仓库自身：Tools/check_sensitive/…）
+#   3) ../Tools/*/check_sensitive.py       （仓库与 Tools 平级）
+#   4) ../../Tools/*/check_sensitive.py    （笔记仓库、模板：LaTeX_Notes/<笔记>）
+# 词表来自沿途的 .sensitive-words.txt（脚本会逐级向上收集合并）。
+#
+# 装法（每个仓库一次）：
+#   cp Tools/check_sensitive/pre-commit <仓库>/.git/hooks/pre-commit
+#   chmod +x <仓库>/.git/hooks/pre-commit
+# 卸载：删掉该文件即可。临时跳过单次检查：git commit --no-verify
+
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+SCRIPT=""
+for CAND in "$REPO/check_sensitive.py" \
+            "$REPO"/*/check_sensitive.py \
+            "$REPO"/../Tools/*/check_sensitive.py \
+            "$REPO"/../../Tools/*/check_sensitive.py; do
+    if [ -f "$CAND" ]; then
+        SCRIPT="$CAND"
+        break
+    fi
+done
+
+# 找不到脚本就放行 —— 绝不让检查本身阻断提交
+[ -z "$SCRIPT" ] && exit 0
+
+if command -v python >/dev/null 2>&1; then
+    python "$SCRIPT" || exit 1
+elif command -v py >/dev/null 2>&1; then
+    py -3 "$SCRIPT" || exit 1
+fi
+exit 0
