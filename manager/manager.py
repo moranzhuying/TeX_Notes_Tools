@@ -111,8 +111,9 @@ def run(cmd, cwd=None, timeout=120):
         r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout)
         return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
-    except FileNotFoundError:
-        return False, "", f"未找到命令：{cmd[0]}"
+    except FileNotFoundError as e:
+        # cwd 不存在时也会抛 FileNotFoundError，别一律报成「未找到命令」
+        return False, "", f"路径或命令不存在：{e.filename or cmd[0]}"
     except subprocess.TimeoutExpired:
         return False, "", "命令超时"
 
@@ -168,7 +169,7 @@ def diagnose(err):
     """把 git 的报错归类成可读的提示。"""
     low = (err or "").lower()
     if "permission denied" in low or "publickey" in low:
-        return "认证失败 —— SSH 密钥未被 GitHub 接受。请用面板选项 3 检查密钥与连通性。"
+        return "认证失败 —— SSH 密钥未被 GitHub 接受。请用总面板的「设置 git 基本信息」检查密钥与连通性。"
     if "could not resolve" in low or "name or service not known" in low:
         return "域名解析失败 —— 检查网络与 DNS 设置。"
     if "timed out" in low or "timeout" in low or "connection refused" in low:
@@ -324,7 +325,7 @@ def show_status(cfg):
             _, br, _ = git(["branch", "--show-current"], cwd=d)
             _, st, _ = git(["status", "--porcelain"], cwd=d)
             _, rem, _ = git(["remote", "get-url", "origin"], cwd=d)
-            ahead = behind = "-"
+            ahead = behind = "?"   # ? = 无法比较（无上游/未 fetch/detached），不能当作已同步
             if rem:
                 ok, out, _ = git(["rev-list", "--left-right", "--count",
                                   f"origin/{br or 'master'}...HEAD"], cwd=d)
@@ -334,8 +335,8 @@ def show_status(cfg):
                         behind, ahead = parts[0], parts[1]
             repo = rem.rstrip("/").split("/")[-1].replace(".git", "") if rem else "✗ 无远程"
             n = len(st.splitlines()) if st else 0
-            mark = "✓" if (rem and n == 0 and ahead in ("0", "-")) else ("!" if n else "")
-            track = f"{ahead}/{behind}" if ahead != "-" else "—"
+            mark = "✓" if (rem and n == 0 and ahead == "0") else ("!" if n else "")
+            track = f"{ahead}/{behind}" if ahead != "?" else "—"
             print(f"    {d.name:<34} {br or '-':<8} {n:>4} {track:>9}  {repo} {mark}")
         total += len(rs)
         print()
@@ -502,13 +503,20 @@ def create_repo(cfg):
             # 否则会漏文件甚至因「nothing to commit」而误报成功。
             print(f"    ✗ 暂存失败：{err.splitlines()[0][:120] if err else '未知'}")
             continue
+        has_commit = True
         ok, _, err = git(["commit", "-m", "初始提交：LaTeX 笔记源码"], cwd=d)
-        if not ok and "nothing to commit" not in (err + "").lower():
-            print(f"    ⚠ 首次提交未完成：{err.splitlines()[0][:100] if err else '未知'}")
-        else:
+        if ok:
             print("    ✓ 已建立本地仓库并首次提交")
+        elif "nothing to commit" in (err + "").lower():
+            has_commit = False
+            print("    · 无可提交内容（可能全被 .gitignore 忽略），跳过首次提交")
+        else:
+            print(f"    ⚠ 首次提交未完成：{err.splitlines()[0][:100] if err else '未知'}")
 
         if gh_ok:
+            if not has_commit:
+                print("    · 无提交内容，跳过 GitHub 建仓")
+                continue
             ok, out, err = run(["gh", "repo", "create", d.name, "--public",
                                 "--source", ".", "--remote", "origin", "--push"],
                                cwd=d, timeout=180)

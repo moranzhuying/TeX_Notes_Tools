@@ -103,17 +103,28 @@ def scan_sensitive():
 
     只查新增行：被删掉的内容不会造成泄露，这样「清理本机信息」这类提交不会被误拦。
     """
-    ok, out, _ = git(["diff", "--cached", "--unified=0"])
-    if not ok or not out:
+    ok, out, err = git(["-c", "core.quotepath=false",
+                        "diff", "--cached", "--unified=0"])
+    if not ok:
+        # 不能把「git 执行失败」当成「无命中」静默放行
+        print("[警告] 无法读取暂存区，本次跳过扫描：\n  %s"
+              % (err or "")[:200], file=sys.stderr)
+        return []
+    if not out:
         return []
     words = load_sensitive_words()
     hits = []
     cur = ""
     for ln in out.splitlines():
+        if ln.startswith('+++ "b/'):
+            cur = ln[7:].rstrip('"')
+            continue
         if ln.startswith("+++ b/"):
             cur = ln[6:]
             continue
-        if not ln.startswith("+") or ln.startswith("+++"):
+        if ln.startswith("diff --git ") or ln.startswith("@@") or ln.startswith("--- "):
+            continue
+        if not ln.startswith("+"):
             continue
         text = ln[1:]
         for pat, label in SENSITIVE_PATTERNS:
@@ -180,11 +191,13 @@ def update_changelog(path, msg, mode):
             if f"#### {month}" in body[yi:]:
                 mi = yi + body[yi:].index(f"#### {month}")
                 # 插到该月下最前（倒序）
-                line_end = body.index("\n", mi) + 1
+                line_end = body.find("\n", mi)
+                line_end = len(body) if line_end < 0 else line_end + 1
                 body = body[:line_end] + "\n" + new_block + body[line_end:].lstrip("\n")
             else:
                 # 该年存在但本月没有：插到该年标题行之后
-                line_end = body.index("\n", yi) + 1
+                line_end = body.find("\n", yi)
+                line_end = len(body) if line_end < 0 else line_end + 1
                 body = body[:line_end] + "\n" + block + new_block + body[line_end:].lstrip("\n")
         else:
             # 该年不存在：插到本分类段最前
@@ -248,6 +261,11 @@ def push_with_fallback():
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     argv = sys.argv[1:]
     if any(a in ("-h", "--help") for a in argv):
         print(USAGE)

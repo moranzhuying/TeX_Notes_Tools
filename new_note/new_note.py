@@ -267,7 +267,7 @@ def set_levels_in_md(path, levels):
     line = "levels: " + ", ".join(levels)
     lines = text.splitlines()
 
-    if lines and lines[0].strip() == "---":
+    if lines and lines[0].lstrip("\ufeff").strip() == "---":
         end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
         if end is None:
             return False, "md 头部的 `---` 没有配对的结束标记，先手工补上"
@@ -922,7 +922,8 @@ def insert_input_line(text, line, before_appendix):
     末尾有没有换行**按原样保留**：只往里插行，不顺手改文件末行的结构（改了他人的
     文件，diff 里就会多出一对莫名其妙的「删末行 ＋ 加末行」）。
     """
-    if line in text.splitlines():
+    if re.search(r"^\s*" + re.escape(line.strip()) + r"\s*(?:%.*)?$",
+                 text, re.M):
         return text, False
     trailing = text == "" or text.endswith("\n")
     lines = text.splitlines()
@@ -1027,7 +1028,9 @@ def add_intro_summary(target, levels=None, do_intro=True, do_summary=True,
 
 def copy_item(src, dst, dry):
     if src.is_file():
-        if src.suffix.lower() in SKIP_SUFFIX or src.name in SKIP_NAMES:
+        if (src.suffix.lower() in SKIP_SUFFIX
+                or src.name.endswith(".synctex.gz")
+                or src.name in SKIP_NAMES):
             return
         if not dry:
             shutil.copy2(src, dst)
@@ -1301,7 +1304,7 @@ def run(name, template, target, do_push, tree, levels, dry,
     if target.exists():
         print(f"✗ 目标已存在：{target}")
         return 1
-    if not re.fullmatch(r"[A-Za-z][\w\-]*", name):
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\-]*", name):
         print("✗ 笔记名建议用字母开头、仅含字母数字下划线连字符（会作为仓库名）")
         return 1
     if tree:
@@ -1385,6 +1388,14 @@ def run(name, template, target, do_push, tree, levels, dry,
         return 1
     print("  ✓ 分支 master")
 
+    # 提交前先确认 git 身份，缺失时提前中止（否则目录已建、提交失败、重跑又被拦）
+    ok_n, name_out, _ = sh(["git", "config", "user.name"], cwd=str(target))
+    ok_e, email_out, _ = sh(["git", "config", "user.email"], cwd=str(target))
+    if not (ok_n and name_out.strip() and ok_e and email_out.strip()):
+        print("  ✗ 未配置 git 提交身份（user.name / user.email）。")
+        print("    目录已保留，配置后可进目录手工提交，或删掉重来。")
+        return 1
+
     print("\n安装提交前钩子：")
     hook_ok, hook_msg = install_hook(target, dry)
     print(f"  {'✓' if hook_ok else '⚠'} {hook_msg}")
@@ -1401,6 +1412,10 @@ def run(name, template, target, do_push, tree, levels, dry,
     if do_push:
         print("\n创建远程仓库：")
         account = read_conf(MANAGER_CONF).get("account", "")
+        if not account:
+            print("  ✗ manager.conf 未配置 account，无法拼出远程地址。")
+            print("  本地仓库已就绪，可在网页建库后手工 git remote add。")
+            return 1
         ok, out, err = sh(["gh", "repo", "create", name, "--public",
                            "--description", f"{name} 自学笔记（LaTeX 源码）"])
         if not ok:
@@ -1437,8 +1452,10 @@ def main():
     def opt(name, default=None):
         if name in argv:
             i = argv.index(name)
-            if i + 1 < len(argv):
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
                 return argv[i + 1]
+            # 选项出现了却没给值：明确提示，避免静默按默认值执行
+            print(f"  ! 选项 {name} 缺少参数值，按默认处理")
         return default
 
     template = opt("--template")

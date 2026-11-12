@@ -735,7 +735,8 @@ def convert(url: str, *, cp: configparser.ConfigParser, nocookie: bool,
             else:
                 audio.unlink()
             print("    已删除音频（keep_audio = false）")
-        except OSError:
+        except Exception:
+            # 清理是 best-effort：缓存锁 / 身份不符都不该把已完成的转写判成失败
             pass
     return res
 
@@ -1082,7 +1083,10 @@ def process(url: str, *, cp: configparser.ConfigParser, all_parts: bool = False,
         result["failed"] += 1
     finally:
         if locked:
-            lock.unlink()
+            try:
+                lock.unlink(missing_ok=True)
+            except OSError:
+                pass
     print(f"  汇总：完成 {result['completed']}，跳过 {result['skipped']}，失败 {result['failed']}")
     for item in result["results"]:
         if not item["ok"]:
@@ -1121,7 +1125,7 @@ def panel_collections(cp) -> None:
             if destination:
                 result = export_collection(root, selected['id'], Path(destination))
                 print(f"  导出：{result['path']}；完整：{result['complete']}")
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"  合集操作失败：{type(exc).__name__}；请检查路径或状态")
     ask("  按回车返回…")
 
@@ -1463,7 +1467,7 @@ def main() -> int:
                 print(json.dumps(exported, ensure_ascii=False, indent=2))
                 return 0 if exported['complete'] else 1
             return 0
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
             print(f"合集操作失败：{type(exc).__name__}；未覆盖已有产物")
             return 1
     if args.force_whisper and args.mode == "subtitles":

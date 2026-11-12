@@ -238,7 +238,11 @@ def flatten_inputs(main_path, root=None, depth=0, seen=None):
             print(f"  [跳过] 循环引用 {target}", file=sys.stderr)
             return ""
         seen.add(path)
-        return flatten_inputs(path, root, depth + 1, seen)
+        try:
+            return flatten_inputs(path, root, depth + 1, seen)
+        finally:
+            # 用递归栈语义：返回后解除标记，兄弟节点重复 \input 同一文件是合法复用，不该被丢弃
+            seen.discard(path)
 
     return re.sub(r"\\(?:input|include)\{([^}]*)\}", repl, text)
 

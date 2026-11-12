@@ -409,11 +409,10 @@ def interactive():
         return 0
     if not sel or sel == "0":
         return 0
-    try:
-        repo = repos[int(sel) - 1]
-    except (ValueError, IndexError):
+    if not sel.isdigit() or not (1 <= int(sel) <= len(repos)):
         print("  无效选择")
         return 1
+    repo = repos[int(sel) - 1]
 
     def ask_int(prompt, default):
         try:

@@ -20,7 +20,11 @@ DISPLAY = rf"(?:[A-Z]+-)?{LOCAL}"
 
 
 def read(path):
-    return path.read_text(encoding="utf-8-sig")
+    """读文本：UTF-8（含 BOM），失败回退 GBK（Windows 编辑器常见）。"""
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        return path.read_text(encoding="gbk", errors="replace")
 
 
 def sha(path):
@@ -238,6 +242,9 @@ def scan(root):
             prefix = entry.stem.removesuffix("_Content")
             for display, tex, material, line in bindings(entry):
                 uid = local_id(display)
+                if not uid:
+                    conflict("bad_unit_id", path=tex)
+                    continue
                 if uid in seen_ids:
                     conflict("duplicate_id", uid, path=tex)
                 seen_ids.add(uid)

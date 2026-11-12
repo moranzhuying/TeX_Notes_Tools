@@ -33,7 +33,7 @@ WORKSPACE = TOOLS_DIR.parent                      # 工作区根
 sys.path.insert(0, str(TOOLS_DIR / "new_note"))
 import new_note as nn          # noqa: E402
 
-INPUT_RE = re.compile(r"^\s*%?\s*\\input\{(.+?)\}\s*$")
+INPUT_RE = re.compile(r"^\s*%?\s*\\input\{(.+?)\}\s*(?:%.*)?$")
 CMD_RE = re.compile(r"\\(part|chapter|appendixchapter|section|subsection"
                     r"|appendixsubsection|subsubsection)"
                     r"\*?\{([^}]*)\}")
@@ -58,7 +58,7 @@ def find_title(tex_path, want):
     if not tex_path or not tex_path.is_file():
         return ""
     want_depth = nn.SECTION_CMDS.index(want)
-    for ln in tex_path.read_text(encoding="utf-8").splitlines():
+    for ln in tex_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not ln.strip() or ln.strip().startswith("%"):
             continue
         for m in CMD_RE.finditer(ln):
@@ -75,7 +75,7 @@ def find_title_before_inputs(tex_path, want):
     if not tex_path.is_file():
         return ""
     want_depth = nn.SECTION_CMDS.index(want)
-    for ln in tex_path.read_text(encoding="utf-8").splitlines():
+    for ln in tex_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not ln.strip() or ln.strip().startswith("%"):
             if re.match(r"^\s*%\s*\\input\b", ln):     # 被注释掉的 \\input 也算界
                 return ""
@@ -96,11 +96,11 @@ def first_leaf_tex(note, rel):
     idx = note / rel / "index.tex"
     if not idx.is_file():
         return None
-    for ln in idx.read_text(encoding="utf-8").splitlines():
+    for ln in idx.read_text(encoding="utf-8", errors="replace").splitlines():
         m = INPUT_RE.match(ln)
         if not m:
             continue
-        target = m.group(1).lstrip("./")
+        target = re.sub(r"^\./", "", m.group(1))
         if target.endswith("/index"):
             return first_leaf_tex(note, target[: -len("/index")])
         return note / f"{target}.tex"
@@ -113,11 +113,11 @@ def scan_note(note, rel, level):
     nodes = []
     if not idx.is_file():
         return nodes
-    for ln in idx.read_text(encoding="utf-8").splitlines():
+    for ln in idx.read_text(encoding="utf-8", errors="replace").splitlines():
         m = INPUT_RE.match(ln)
         if not m:
             continue
-        target = m.group(1).lstrip("./")
+        target = re.sub(r"^\./", "", m.group(1))
         if target.endswith("/index"):
             srel = target[: -len("/index")]
             nodes.append({
@@ -137,7 +137,7 @@ def first_title_any(tex_path, before_inputs=False):
     """
     if not tex_path or not tex_path.is_file():
         return "", ""
-    for ln in tex_path.read_text(encoding="utf-8").splitlines():
+    for ln in tex_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not ln.strip() or ln.strip().startswith("%"):
             continue
         if before_inputs and re.match(r"^\s*\\input\b", ln):
@@ -191,7 +191,7 @@ def top_cmds_from_main(note):
     main = Path(note) / "main.tex"
     if not main.is_file():
         return []
-    t = main.read_text(encoding="utf-8")
+    t = main.read_text(encoding="utf-8", errors="replace")
     i, j = t.find("\\mainmatter"), t.find("\\backmatter")
     seg = t[i:j] if i >= 0 and j > i else t
     out, last = [], None
@@ -201,7 +201,7 @@ def top_cmds_from_main(note):
             last = (cmd_name(m.group(1)), m.group(2).strip())
         m = INPUT_RE.match(ln)
         if m:
-            out.append((last, m.group(1).lstrip("./"), commented))
+            out.append((last, re.sub(r"^\./", "", m.group(1)), commented))
             last = None
     return out
 
@@ -330,10 +330,21 @@ def render_md(tree, levels, name="", template="", comment=""):
 
 
 def write_md(path, text):
-    """写 md（顺带建父目录）。写不进去就返回 None 并提示，不抛栈。"""
+    """写 md（顺带建父目录）。目标已存在且内容不同时，先把旧文件留成 .bak。"""
     p = Path(path)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
+        if p.is_file():
+            try:
+                old = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                old = None
+            if old is not None and old != text:
+                try:
+                    p.replace(p.with_name(p.name + ".bak"))
+                    print(f"  · 原文件已备份为 {p.name}.bak")
+                except OSError:
+                    pass
         p.write_text(text, encoding="utf-8", newline="")
     except OSError as e:
         print(f"  ✗ 写不进去：{e}")
@@ -497,7 +508,7 @@ def entry_check(path=None, interact=True, fix=False):
     print("=" * 64)
     try:
         meta, tree, levels = nn.read_outline_file(p)
-        text = Path(p).read_text(encoding="utf-8")
+        text = Path(p).read_text(encoding="utf-8", errors="replace")
     except OSError as e:
         print(f"  ✗ 读不到：{e}")
         return 1
@@ -599,7 +610,7 @@ def main():
         except nn.OutlineError as e:
             print(f"✗ {e}")
             return 1
-        text = Path(src).read_text(encoding="utf-8")
+        text = Path(src).read_text(encoding="utf-8", errors="replace")
         try:
             tree = nn.parse_indent_outline(text)
         except nn.OutlineError as e:

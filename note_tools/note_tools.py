@@ -25,7 +25,11 @@ MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
 
 # 导引与小结的实现只在 new_note.py 里有一份，这里复用它，避免两边规则跑偏
 sys.path.insert(0, str(TOOLS_DIR / "new_note"))
-import new_note  # noqa: E402
+try:
+    import new_note  # noqa: E402
+except ImportError as _exc:   # 缺文件/语法错误不应让「提交并推送」这类无关功能一起崩
+    new_note = None
+    _NEW_NOTE_IMPORT_ERROR = _exc
 
 
 def clear():
@@ -162,6 +166,10 @@ def action_intro_summary(note):
     print("=" * 62)
     print(f"  补导引与小结：{note.name}")
     print("=" * 62)
+    if new_note is None:
+        print(f"  ✗ 无法导入 new_note.py：{_NEW_NOTE_IMPORT_ERROR}")
+        print("    请检查 Tools/new_note/ 是否存在且无语法错误。")
+        return
 
     scope = pick_intro_summary_scope()
     if scope is None:

@@ -348,7 +348,9 @@ def run_convert(rows, outdir=None, assume_yes=False, ccw=False):
             if backup_dir is None:
                 backup_dir = backup_root()
             backup_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, backup_dir / src.name)
+            # 备份名带上完整路径（分隔符压平），否则 -r 扫到不同目录下的同名 PDF 会互相覆盖
+            flat = str(src.resolve()).replace(":", "").replace("\\", "_").replace("/", "_")
+            shutil.copy2(src, backup_dir / flat)
         try:
             r = convert(f, str(work), ccw)
         except Exception as e:

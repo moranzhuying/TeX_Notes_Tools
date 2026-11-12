@@ -43,6 +43,54 @@
 * **`video2text` / `symbols`：配置编码**
     * 配置文件读取改用 `utf-8-sig`，Windows 编辑器写入 BOM 时不再静默回落默认值；`symbols` 的文本读取失败回退 GBK。
 
+### 第二轮：残留缺陷清理
+
+* **`commit`**
+    * CHANGELOG 末尾无换行时 `body.index("\n")` 抛 `ValueError`，改用 `find` 兜底。
+    * 内容以 `++` 开头的新增行会被当成 diff 头跳过（不做敏感词扫描），改为只排除 `+++ b/`、`--- `、`@@`、`diff --git` 结构行。
+    * `git diff` 执行失败时不再静默按「无命中」放行，改为打印警告。
+    * 补 stdout/stderr 的 UTF-8 兜底。
+* **`manager`**
+    * `cwd` 不存在与「命令不存在」原本都报「未找到命令」，改为区分具体路径。
+    * 无法比较 ahead/behind 时用 `?` 而不是 `-`，「同步正常」判定不再把未知当 0。
+    * 「nothing to commit」不再被当作首次提交成功，也不再继续 `gh repo create --push`。
+* **`symbols`**
+    * `DEF_RE` 认 `\newcommand*`，与 `DEF_HEAD_RE` 对齐。
+    * 替换定义时按整块（`definition_end`），跨行定义不再留下孤立函数体。
+    * 覆盖符号时沿用原定义前缀（`\newcommand` / `\renewcommand`），不再一律写成 `\newcommand`。
+    * 删除只在 `[模块 VI]` 内匹配，不再连带删模块 II–V 的同名宏；删除后同步清理提取档案。
+    * `distribute` 读取失败的笔记逐条提示，不再静默跳过。
+    * `refresh_cwl` 保留自动段之后用户追加的注释。
+* **`outline_tool`**
+    * `\input{...}%` 这类带尾随注释的写法能识别。
+    * `lstrip("./")` 改为只剥前缀 `./`，`../` 不再被吃掉。
+    * 写 md 前若目标已存在且内容不同，先留 `.bak`。
+    * 8 处读取加 `errors="replace"`，非 UTF-8 文件不再让面板抛栈。
+* **`new_note`**
+    * 大纲 md 带 BOM 时头部元信息不再全部失效。
+    * `\input` 判重改为忽略缩进与尾随注释，避免重复插入。
+    * 笔记名字符集由 `\w` 收紧为 `[A-Za-z0-9_-]`，不再放行中文导致 `gh repo create` 失败。
+    * 选项出现但缺值时给出提示，不再静默按默认值执行。
+    * `.synctex.gz` 的复制跳过规则生效（`Path.suffix` 是 `.gz`）。
+    * 首次提交前检查 `user.name` / `user.email`，缺失时提前中止并保留目录。
+    * `--push` 时 `manager.conf` 缺 `account` 直接报错，不再拼出残缺 URL。
+* **`video2text`**
+    * `--drop-audio` 的清理异常不再穿出 `convert`，不会把已完成的转写记成失败。
+    * 遗留锁下面板「生成标题目录」与 `--sync-titles` 不再崩溃（异常元组补 `RuntimeError`）。
+    * `finally` 里的 `lock.unlink()` 加兜底，锁文件被外部删除/占用时不冲掉结果。
+* **`progress`**
+    * `目编号` 非法时记为冲突并跳过，不再让 `/data` 整体 500。
+    * 读取 `.tex` / `review.md` 失败回退 GBK，非 UTF-8 文件不再让请求 500。
+    * 备份改为先写 `.tmp-` 目录再整体改名；`list_backups` 跳过半成品/损坏目录；`restore` 用 `get("existed")`。
+* **`pdf_upright`**
+    * 备份文件名压平完整路径，`-r` 递归时不同目录的同名 PDF 不再互相覆盖。
+* **`tex2docx`**
+    * `\input` 展开改用递归栈语义，兄弟章节重复引用同一文件不再被当成循环引用丢弃。
+* **`watch_notes`**
+    * 面板输入 `-1` 之类负数/越界编号不再选中另一个仓库。
+* **`note_tools`**
+    * `new_note` 改为容错导入，缺文件时只有「补导引与小结」不可用，其余功能照常。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**

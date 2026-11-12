@@ -45,7 +45,7 @@ CONF_NAME = "symbols.conf"
 EXTRACT_NAME = "symbols_extract.json"
 TREE_NAME = "notes_tree.json"
 
-DEF_RE = re.compile(r"^[ \t]*\\(?:re)?newcommand\{\\([A-Za-z@]+)\}")
+DEF_RE = re.compile(r"^[ \t]*\\(?:re)?newcommand\*?\{\\([A-Za-z@]+)\}")
 # 整行拆解用：缩进 + 前缀（\newcommand{\名字}）+ 最多两段 [..] 参数说明
 DEF_HEAD_RE = re.compile(
     r"^(?P<indent>[ \t]*)(?P<pre>\\(?:re)?newcommand\*?\{\\(?P<name>[A-Za-z@]+)\})"
@@ -762,11 +762,17 @@ def insert_into_symbol_lib(sty_path, new_lines, replace_map=None, section=None):
         return False
     start, end = bounds
     if replace_map:
-        for i in range(start, end):
+        i = start
+        while i < end:
             m = DEF_RE.match(lines[i])
             if m and m.group(1) in replace_map:
                 keep = "\r\n" if lines[i].endswith("\r\n") else "\n"
-                lines[i] = replace_map[m.group(1)] + keep
+                blk_end = definition_end(lines, i)
+                lines[i:blk_end] = [replace_map[m.group(1)] + keep]
+                end -= (blk_end - i - 1)
+                i += 1
+                continue
+            i += 1
     eol = "\r\n" if "\r\n" in text else "\n"
     payload = [(l.rstrip("\r\n") + eol) for l in new_lines]
 
@@ -803,12 +809,18 @@ def distribute(template_path, notes, quiet=False):
     """模板 -> 各笔记（逐个备份）。返回同步数量。"""
     template_text = read_text(template_path)
     changed = []
+    skipped = []
     for note, sty in notes:
         try:
             if read_text(sty) != template_text:
                 changed.append((note, sty))
-        except Exception:
+        except (OSError, UnicodeDecodeError) as e:
+            skipped.append((note, e))
             continue
+    if skipped and not quiet:
+        print("  ! 以下笔记读取失败，已跳过同步：")
+        for note, e in skipped:
+            print(f"    {note}: {e}")
     if not changed:
         if not quiet:
             print(f"  已一致，无需同步（共 {len(notes)} 个）。")
@@ -835,14 +847,22 @@ def refresh_cwl(template_path, cwl_path):
     cwl = pathlib.Path(cwl_path)
     content = read_text(cwl) if cwl.is_file() else ""
     head = content
+    tail = ""
     for marker in AUTO_MARKERS:
         if marker in content:
-            head = content.split(marker)[0]
+            head, _, rest = content.partition(marker)
+            # 保留标记之后用户自己写的注释/说明；以 \ 开头的是旧自动段，丢弃
+            keep = [ln for ln in rest.splitlines()
+                    if ln.strip() and not ln.lstrip().startswith("\\")]
+            tail = "\n".join(keep)
             break
     eol = "\r\n" if "\r\n" in content else ("\n" if content else os.linesep)
     cwl.parent.mkdir(parents=True, exist_ok=True)
     backup(cwl) if cwl.is_file() else None
-    write_text(cwl, head.rstrip() + eol + eol + section + eol)
+    out = head.rstrip() + eol + eol + section + eol
+    if tail:
+        out += eol + tail + eol
+    write_text(cwl, out)
     print(f"  已刷新补全：{len(kept)} 个符号 -> {cwl}")
     if skipped:
         print(f"  按 CWL_SKIP 跳过 {len(skipped)} 个：{' '.join(skipped)}")
@@ -1251,10 +1271,13 @@ def remove_symbols(ctx, picked, total, scan, notes, lib):
 
     wanted = set(picked)
     lines = read_text(ctx["template"]).splitlines(keepends=True)
+    # 只在 [模块 VI] 内删除，避免连带删掉模块 II–V 里的同名宏
+    bounds = _module_bounds(lines)
+    lo, hi = bounds if bounds else (0, len(lines))
     keep, removed = [], []
     i = 0
     while i < len(lines):
-        m = DEF_RE.match(lines[i])
+        m = DEF_RE.match(lines[i]) if lo <= i < hi else None
         if m and m.group(1) in wanted:
             removed.append(m.group(1))
             i = definition_end(lines, i)
@@ -1266,6 +1289,17 @@ def remove_symbols(ctx, picked, total, scan, notes, lib):
         return
 
     write_text(ctx["template"], "".join(keep))
+    # 同步清掉提取档案里的同名条目，否则下次回填会把刚删的符号又加回来
+    if removed:
+        data, epath = load_extract()
+        if isinstance(data, dict):
+            for key, val in list(data.items()):
+                if isinstance(val, dict):
+                    for n in removed:
+                        val.pop(n, None)
+                elif key in removed:
+                    data.pop(key, None)
+            save_extract(data, epath)
     print(f"\n  已从符号库删除 {len(removed)} 个符号：")
     for n in removed:
         print(f"      \\{n}")
@@ -1462,7 +1496,18 @@ def action_add(ctx):
 
     comment = ask("注释", required=False)
 
-    if name in LATEX_KERNEL:
+    # 覆盖时沿用原定义的前缀（\newcommand / \renewcommand / 带 * 形式），
+    # 否则把 \renewcommand 的符号重写成 \newcommand 会在每份 structure.sty 报 already defined
+    pre = None
+    if overwrite:
+        old = parse_symbols(ctx["template"]).get(name)
+        if old:
+            m = DEF_HEAD_RE.match(old[0])
+            if m:
+                pre = m.group("pre")
+    if pre:
+        line = f"{pre}{{{definition}}}"
+    elif name in LATEX_KERNEL:
         print(f"  · 内核已有 \\{name}，自动改用 \\renewcommand。")
         line = f"\\renewcommand{{\\{name}}}{{{definition}}}"
     else:

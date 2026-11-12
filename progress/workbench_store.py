@@ -138,13 +138,17 @@ class BookStore:
         base.mkdir(exist_ok=True)
         ident = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "_" + str(uuid.uuid4())
         folder = self.path("Materials/workbench/backups/" + ident)
-        folder.mkdir()
+        # 先写到 .tmp- 目录，manifest 落盘后再整体改名：
+        # 中途断电/被杀只会留下 .tmp- 残迹（list_backups 的正则不认），不会产生「无 manifest」的坏备份
+        tmp = self.path("Materials/workbench/backups/.tmp-" + ident)
+        tmp.mkdir()
         manifest = {"schema_version": 1, "book_id": self.identity()["book_id"] if self.path("Materials/workbench/book.json").exists() else None,
                     "target": target.relative_to(self.book).as_posix(), "existed": old is not None,
                     "sha256": digest(old) if old is not None else None, "backup_id": ident}
         if old is not None:
-            self._exclusive(folder / "payload", old)
-        self._exclusive(folder / "manifest.json", encode(manifest))
+            self._exclusive(tmp / "payload", old)
+        self._exclusive(tmp / "manifest.json", encode(manifest))
+        tmp.rename(folder)
         return ident
 
     @staticmethod
@@ -594,8 +598,12 @@ class BookStore:
             for folder in sorted(base.iterdir()):
                 if not re.fullmatch(r"\d{8}T\d{12}Z_[0-9a-f-]{36}", folder.name):
                     continue
-                manifest = self.path("Materials/workbench/backups/" + folder.name + "/manifest.json")
-                data = json.loads(manifest.read_bytes())
+                try:
+                    manifest = self.path("Materials/workbench/backups/" + folder.name + "/manifest.json")
+                    data = json.loads(manifest.read_bytes())
+                except (OSError, ValueError):
+                    # 半成品/损坏的备份目录直接跳过，不能让 /backups 与 restore 整体 500
+                    continue
                 if data.get("book_id") == self.identity()["book_id"] and data.get("backup_id") == folder.name:
                     result.append(data)
         return result
@@ -606,7 +614,7 @@ class BookStore:
             if not isinstance(backup_id, str) or backup_id not in whitelist:
                 raise StoreError("备份不在本书清单白名单内")
             b = whitelist[backup_id]
-            if not b["existed"] or expected is None:
+            if not b.get("existed") or expected is None:
                 raise StoreError("仅恢复已有文件内容，必须指定当前expected")
             target = b["target"]
             allowed = {"Materials/workbench/runtime.json", "Materials/workbench/summaries.md"}
