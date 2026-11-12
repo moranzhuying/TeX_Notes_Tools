@@ -486,10 +486,12 @@ def main(argv=None):
 
 if __name__ == "__main__":
     try:
-        sys.exit(main() or 0)
+        code = main() or 0
     except KeyboardInterrupt:
-        sys.exit(0)
+        code = 0
     except BaseException:
+        # SystemExit 不在此列（它不会被 Exception 捕获，也不会走到这里，
+        # 因为 sys.exit 已移出 try）；这里只兜真正的异常
         try:
             LOG_DIR.mkdir(parents=True, exist_ok=True)
             with open(LOG_DIR / "watch-fatal.log", "a", encoding="utf-8",
@@ -500,3 +502,4 @@ if __name__ == "__main__":
         except Exception:
             pass
         raise
+    sys.exit(code)
