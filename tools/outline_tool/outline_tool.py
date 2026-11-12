@@ -25,9 +25,12 @@ import re
 import sys
 from pathlib import Path
 
-TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/src/outline_tool/
-TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/src/
-WORKSPACE = TOOLS_DIR.parent.parent               # 工作区根
+TOOL_DIR = Path(__file__).resolve().parent        # <程序目录>/tools/outline_tool/
+TOOLS_DIR = TOOL_DIR.parent                       # <程序目录>/tools/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app_paths import workspace as _workspace  # noqa: E402 —— 路径见 app_paths
+
+WORKSPACE = _workspace()                         # 工作区根
 
 # 复用 new_note.py 的解析与生成规则（同一套，别抄两份）
 sys.path.insert(0, str(TOOLS_DIR / "new_note"))

@@ -8,7 +8,7 @@ make_icon.py — 生成 exe 用的 tools.ico
 
     <venv>/Scripts/python.exe make_icon.py
 
-产物：Tools/tools.ico。改样式后重跑一次即可。
+产物：resources/tools.ico。改样式后重跑一次即可。
 """
 import struct
 import sys
@@ -21,7 +21,7 @@ except ImportError:
     raise SystemExit(2)
 
 HERE = Path(__file__).resolve().parent
-OUT = HERE / "tools.ico"
+OUT = HERE.parent / "resources" / "tools.ico"
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 

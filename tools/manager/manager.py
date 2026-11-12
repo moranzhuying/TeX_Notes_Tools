@@ -29,10 +29,13 @@ CONF_NAME = "manager.conf"
 DEFAULT_MSG = "更新笔记"
 
 # 本脚本在 <Tools>/manager/ 下，向上两级即工作区根
-TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/src/manager/
-TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/src/
-TOOLS_ROOT = TOOLS_DIR.parent                     # <Tools>/（工作区的直接子目录）
-WORKSPACE = TOOLS_ROOT.parent                     # 工作区根
+TOOL_DIR = Path(__file__).resolve().parent        # <程序目录>/tools/manager/
+TOOLS_DIR = TOOL_DIR.parent                       # <程序目录>/tools/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import app_paths  # noqa: E402
+from app_paths import workspace as _workspace  # noqa: E402 —— 路径见 app_paths
+
+WORKSPACE = _workspace()                         # 工作区根
 
 PANEL = """==============================================================
   笔记工作区管理面板
@@ -200,7 +203,7 @@ def pause():
 
 def load_conf():
     d = {"root": "", "account": ""}
-    p = Path(__file__).with_name(CONF_NAME)
+    p = app_paths.conf_file("manager", CONF_NAME, ensure=True)
     if p.is_file():
         try:
             text = p.read_text(encoding="utf-8-sig")
@@ -217,7 +220,7 @@ def load_conf():
 
 
 def save_conf(d):
-    p = Path(__file__).with_name(CONF_NAME)
+    p = app_paths.conf_file("manager", CONF_NAME, ensure=True)
     with open(p, "w", encoding="utf-8", newline="") as f:
         for k, v in d.items():
             f.write(f"{k} = {v}\n")
@@ -272,7 +275,7 @@ def zones(cfg):
             continue
         if notes_p and e == notes_p:
             continue
-        if e == TOOLS_ROOT:
+        if e == app_paths.APP_DIR:
             out.append(("工具区", e))
             continue
         try:

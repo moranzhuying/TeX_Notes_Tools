@@ -115,13 +115,18 @@ def _bind_console():
 
 
 def error_log_path():
-    """崩溃日志的落点。打包后 `__file__` 在临时解包目录，进程一退就被删，
-    写在那儿等于没写；所以一律落在 Tools/ 根（exe 与 src/ 的上一层）。"""
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).resolve().parent
-    else:
-        base = Path(__file__).resolve().parent.parent
-    return base / "_panel_error.log"
+    """崩溃日志的落点。日志统一进「日志目录」（便携版 `Tools/logs/`，
+    安装版 `%LOCALAPPDATA%\\LaTeX-Toolbox\\logs\\`）—— 别写进解包临时目录，
+    也别写程序目录（安装后只读）。"""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+        import app_paths
+        return app_paths.log_dir() / "_panel_error.log"
+    except Exception:  # noqa: BLE001 —— 拿不到路径也要能留痕
+        base = (Path(sys.executable).resolve().parent
+                if getattr(sys, "frozen", False)
+                else Path(__file__).resolve().parent.parent)
+        return base / "_panel_error.log"
 
 
 def _pause(msg):
@@ -202,7 +207,7 @@ def selftest():
     print("exe            :", sys.executable)
     print("frozen         :", getattr(sys, "frozen", False))
     print("工具根         :", panel_core.TOOLS_ROOT)
-    print("脚本根         :", panel_core.SRC_ROOT)
+    print("脚本根         :", panel_core.SCRIPTS_DIR)
     print("工作区         :", panel_core.WORKSPACE)
 
     py = panel_core.tool_python()
@@ -1176,7 +1181,7 @@ def icon_path():
     if getattr(sys, "frozen", False):
         base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     else:
-        base = Path(__file__).resolve().parent
+        base = Path(__file__).resolve().parent.parent / "resources"
     for name in ("tools.ico", "tools.png"):
         path = base / name
         if path.is_file():

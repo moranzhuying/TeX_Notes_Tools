@@ -4,15 +4,14 @@
 # 由工具仓库的 check_sensitive/check_sensitive.py 提供。本钩子不含任何本机绝对路径，
 # 靠「相对位置 + 通配」找脚本，所以工具目录改名、挪窝都不用重装：
 #   1) 仓库根目录下摆着 check_sensitive.py
-#   2) 仓库根目录下的一级/两级子目录（工具仓库自身：Tools/src/check_sensitive/…）
-#   3) ../Tools/src/*/check_sensitive.py 与 ../Tools/*/check_sensitive.py
-#      （仓库与 Tools 平级；后者兼容脚本还摆在 Tools/ 下的旧布局）
-#   4) ../../Tools/src/*/check_sensitive.py 与 ../../Tools/*/check_sensitive.py
-#      （笔记仓库、模板：LaTeX_Notes/<笔记>）
+#   2) 仓库根目录下的一级/两级子目录（工具仓库自身：Tools/tools/check_sensitive/…）
+#   3) ../Tools/*/… 与 ../Tools/*/*/…（仓库与 Tools 平级；后者是 tools/ 布局）
+#   4) ../../Tools/*/… 与 ../../Tools/*/*/…（笔记仓库、模板：LaTeX_Notes/<笔记>）
+# 两种写法都留着，脚本摆在 Tools/<名>/ 还是 Tools/tools/<名>/ 都能找到。
 # 词表来自沿途的 .sensitive-words.txt（脚本会逐级向上收集合并）。
 #
 # 装法（每个仓库一次）：
-#   cp Tools/src/check_sensitive/pre-commit <仓库>/.git/hooks/pre-commit
+#   cp Tools/tools/check_sensitive/pre-commit <仓库>/.git/hooks/pre-commit
 #   chmod +x <仓库>/.git/hooks/pre-commit
 # 卸载：删掉该文件即可。临时跳过单次检查：git commit --no-verify
 
@@ -22,10 +21,10 @@ SCRIPT=""
 for CAND in "$REPO/check_sensitive.py" \
             "$REPO"/*/check_sensitive.py \
             "$REPO"/*/*/check_sensitive.py \
-            "$REPO"/../Tools/src/*/check_sensitive.py \
             "$REPO"/../Tools/*/check_sensitive.py \
-            "$REPO"/../../Tools/src/*/check_sensitive.py \
-            "$REPO"/../../Tools/*/check_sensitive.py; do
+            "$REPO"/../Tools/*/*/check_sensitive.py \
+            "$REPO"/../../Tools/*/check_sensitive.py \
+            "$REPO"/../../Tools/*/*/check_sensitive.py; do
     if [ -f "$CAND" ]; then
         SCRIPT="$CAND"
         break

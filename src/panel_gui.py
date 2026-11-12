@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 TOOLS_ROOT = Path(__file__).resolve().parent
-HTML_FILE = TOOLS_ROOT / "panel_gui.html"
+HTML_FILE = Path(__file__).resolve().parent.parent / "resources" / "panel_gui.html"
 DEFAULT_PORT = 7658
 
 sys.path.insert(0, str(TOOLS_ROOT))

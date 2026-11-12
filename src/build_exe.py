@@ -16,16 +16,40 @@ import sys
 import time
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent          # Tools/src
-TOOLS = SRC.parent                             # Tools
+SRC = Path(__file__).resolve().parent          # <程序目录>/src/
+TOOLS = SRC.parent                             # <程序目录>
+RES = TOOLS / "resources"                      # 图标等资源
 DEFAULT_NAME = "LaTeX-Toolbox"
 BUILD = TOOLS / "_build"
 
 
+def flatten(dist_dir, name):
+    """把 `dist/<name>/` 里的 exe 与 `_internal/` 摊到程序目录根。
+
+    安装形态要的是 `App.exe` + `_internal/` 同级，而不是再套一层同名目录。
+    覆盖前先清掉旧的 `_internal`，否则上一次构建残留的 dll 会混进来。
+    """
+    moved = []
+    for item in sorted(dist_dir.iterdir()):
+        dst = TOOLS / item.name
+        if dst.exists():
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            else:
+                dst.unlink()
+        shutil.move(str(item), str(dst))
+        moved.append(item.name)
+    try:
+        dist_dir.rmdir()
+    except OSError:
+        pass
+    return moved
+
+
 def main():
     ap = argparse.ArgumentParser(description="打包工具集面板为 exe")
-    ap.add_argument("--onedir", action="store_true",
-                    help="目录模式：启动更快，但产物是一个文件夹")
+    ap.add_argument("--onefile", action="store_true",
+                    help="单文件：每次启动解包约 90 MB，慢；仅在需要单文件分发时用")
     ap.add_argument("--name", default=DEFAULT_NAME)
     ap.add_argument("--clean", action="store_true", help="清掉缓存重新打包")
     args = ap.parse_args()
@@ -65,9 +89,9 @@ def main():
         "--paths", str(SRC),
         "--hidden-import", "launcher",
         # 窗口与 exe 图标（make_icon.py 生成，产物在 src/）
-        "--icon", str(SRC / "tools.ico"),
+        "--icon", str(RES / "tools.ico"),
         # 运行时窗口图标要从包里读，所以要把 ico 也打进去
-        "--add-data", "{};.".format(SRC / "tools.ico"),
+        "--add-data", "{};.".format(RES / "tools.ico"),
         # 没用到的大件，明确排掉以免被间接拉进来
         "--exclude-module", "tkinter",
         "--exclude-module", "PySide6.QtWebEngineCore",
@@ -79,7 +103,7 @@ def main():
         "--exclude-module", "PySide6.QtQuick",
         "--exclude-module", "PySide6.QtQml",
     ]
-    if not args.onedir:
+    if args.onefile:
         cmd.append("--onefile")
     cmd.append(str(SRC / "panel_qt.py"))
 
@@ -91,17 +115,26 @@ def main():
         print("\n打包失败，退出码 {}".format(proc.returncode))
         return proc.returncode
 
-    target = TOOLS / (args.name + (".exe" if not args.onedir else ""))
-    if args.onedir:
-        target = TOOLS / args.name / (args.name + ".exe")
+    dist_dir = TOOLS / args.name
+    if not args.onefile and dist_dir.is_dir():
+        moved = flatten(dist_dir, args.name)
+        print("\n已摊平到程序目录：", ", ".join(moved))
+
+    target = TOOLS / (args.name + ".exe")
     if target.exists():
         size = target.stat().st_size / (1024 * 1024)
-        print("\n产物：{}（{:.1f} MB，用时 {:.0f} 秒）".format(
-            target, size, time.time() - started))
+        extra = ""
+        if not args.onefile:
+            internal = TOOLS / "_internal"
+            if internal.is_dir():
+                total = sum(f.stat().st_size for f in internal.rglob("*") if f.is_file())
+                extra = "，_internal {:.0f} MB".format(total / 1024 / 1024)
+        print("\n产物：{}（{:.1f} MB{}，用时 {:.0f} 秒）".format(
+            target, size, extra, time.time() - started))
     else:
         print("\n打包命令成功，但没找到预期产物：{}".format(target))
         return 1
-    print("双击即可打开面板；exe 放在 Tools/ 根，工具脚本在它旁边的 src/ 下。")
+    print("双击即可打开面板；exe 在程序目录根，工具脚本在它旁边的 tools/ 下。")
     return 0
 
 

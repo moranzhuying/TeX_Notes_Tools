@@ -15,18 +15,16 @@ from collections import deque
 from pathlib import Path
 
 if getattr(sys, "frozen", False):
-    # 打包成 exe 后 __file__ 指向解包临时目录。exe 约定放在 Tools/ 下，
-    # 源码与工具脚本在 Tools/src/，所以工具根取 exe 所在目录。
+    # 打包成 exe 后 __file__ 指向解包临时目录，程序目录取 exe 所在处。
     TOOLS_ROOT = Path(sys.executable).resolve().parent
-    #: 工具脚本（与 src/ 下各工具目录）所在处。老布局把脚本摆在 exe 旁边，
-    #: 那种情况会回退成 TOOLS_ROOT，仍能跑。
-    SRC_ROOT = TOOLS_ROOT / "src"
-    if not SRC_ROOT.is_dir():
-        SRC_ROOT = TOOLS_ROOT
 else:
-    SRC_ROOT = Path(__file__).resolve().parent          # Tools/src
-    TOOLS_ROOT = SRC_ROOT.parent                        # Tools
-WORKSPACE = TOOLS_ROOT.parent                           # 工作区根
+    TOOLS_ROOT = Path(__file__).resolve().parent.parent      # 源码在 <程序目录>/src/
+
+#: 工具脚本所在：<程序目录>/tools/。老布局把脚本摆在程序目录下，回退过去仍能跑。
+SCRIPTS_DIR = TOOLS_ROOT / "tools"
+if not SCRIPTS_DIR.is_dir():
+    SCRIPTS_DIR = TOOLS_ROOT
+
 MAX_LINES = 4000
 
 #: 启动子进程时不弹控制台窗口。
@@ -34,7 +32,11 @@ MAX_LINES = 4000
 #: 并弹黑窗。所有外部命令都要带上这个标志。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-sys.path.insert(0, str(SRC_ROOT))
+# 面板代码自己（源码是 src/，打包后与 exe 同源）；tools/ 下是工具与公共模块。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(SCRIPTS_DIR))
+import app_paths  # noqa: E402 —— 工作区与数据落点的唯一来源
+WORKSPACE = app_paths.workspace()
 import launcher  # noqa: E402  —— 复用 MENU / split_args
 
 MENU = launcher.MENU
@@ -154,7 +156,7 @@ def describe_tools():
             "submit": no == SUBMIT_NO,
             "oneoff": mode.startswith("参数:"),
             "defaultArgs": mode.split(":", 1)[1] if mode.startswith("参数:") else "",
-            "exists": (SRC_ROOT / rel).is_file(),
+            "exists": (SCRIPTS_DIR / rel).is_file(),
         })
     return tools
 
@@ -208,7 +210,7 @@ def launch(key, extra=""):
     if item is None:
         raise PanelError("未知工具编号")
     _no, _title, rel, mode, _grp = item
-    script = SRC_ROOT / rel
+    script = SCRIPTS_DIR / rel
     if not script.is_file():
         raise PanelError("找不到脚本：{}".format(rel))
 

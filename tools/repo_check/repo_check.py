@@ -26,10 +26,14 @@ from pathlib import Path
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/src/repo_check/
-TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/src/
-WORKSPACE = TOOLS_DIR.parent.parent               # 工作区根
-MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
+TOOL_DIR = Path(__file__).resolve().parent        # <程序目录>/tools/repo_check/
+TOOLS_DIR = TOOL_DIR.parent                       # <程序目录>/tools/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import app_paths  # noqa: E402
+from app_paths import workspace as _workspace  # noqa: E402 —— 路径见 app_paths
+
+WORKSPACE = _workspace()                         # 工作区根
+MANAGER_CONF = app_paths.conf_file("manager", "manager.conf")
 
 AREAS = {"notes": "LaTeX_Notes", "template": "Template", "tools": "Tools"}
 

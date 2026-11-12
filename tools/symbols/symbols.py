@@ -41,9 +41,16 @@ import sys
 import pathlib
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+import app_paths  # noqa: E402 —— 数据落点与工作区解析
+from app_paths import workspace as _workspace  # noqa: E402
+
 CONF_NAME = "symbols.conf"
 EXTRACT_NAME = "symbols_extract.json"
 TREE_NAME = "notes_tree.json"
+
+#: 配置与两份档案不放程序目录：便携形态是工具目录，安装形态进 %LOCALAPPDATA%。
+DATA_DIR = app_paths.data_dir("symbols", ensure=True)
 
 DEF_RE = re.compile(r"^[ \t]*\\(?:re)?newcommand\*?\{\\([A-Za-z@]+)\}")
 # 整行拆解用：缩进 + 前缀（\newcommand{\名字}）+ 最多两段 [..] 参数说明
@@ -161,7 +168,7 @@ def backup(path, tag=None, force=False):
 # ================================================================ 配置
 
 def load_config():
-    conf = SCRIPT_DIR / CONF_NAME
+    conf = DATA_DIR / CONF_NAME
     cfg = {}
     if conf.is_file():
         for line in read_text(conf).splitlines():
@@ -211,7 +218,7 @@ def resolve_root(cli_root, cfg):
         return pathlib.Path(cli_root)
     if cfg.get("root"):
         return pathlib.Path(cfg["root"])
-    parent = SCRIPT_DIR.parent.parent      # <工作区>：src/ 的上一层是 Tools/
+    parent = _workspace()                  # 工作区根（配置优先）
     try:
         subs = [d for d in parent.iterdir() if d.is_dir() and (d / "structure.sty").is_file()]
     except OSError:
@@ -325,7 +332,7 @@ def scan_tree(root):
 
 
 def load_tree():
-    path = SCRIPT_DIR / TREE_NAME
+    path = DATA_DIR / TREE_NAME
     if not path.is_file():
         return {}, path
     try:
@@ -360,7 +367,7 @@ def compare_tree(old, new):
 # ================================================================ 提取档案
 
 def load_extract():
-    path = SCRIPT_DIR / EXTRACT_NAME
+    path = DATA_DIR / EXTRACT_NAME
     if not path.is_file():
         return {}, path
     try:

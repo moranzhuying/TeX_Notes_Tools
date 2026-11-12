@@ -7,8 +7,8 @@
 # ===== 运行时档案与本机数据 =====
 notes_tree.json
 symbols_extract.json
-src/progress/workbench_local.json
-src/progress/workbench_local.json.*.tmp
+tools/progress/workbench_local.json
+tools/progress/workbench_local.json.*.tmp
 
 # ===== Python =====
 __pycache__/
@@ -34,22 +34,22 @@ _tmp_*
 
 # ===== 本机专用脚本（按用户要求不入库） =====
 # 整个目录都不入库：只忽略 .py 会漏掉同目录的 .md，一跑 git add -A 就进索引了。
-src/sync_paths/
+tools/sync_paths/
 # 项目规范副本同步：默认配对指向工作区内部文档（项目规范.md / .workbuddy/refs/），
 # 属工作区专用，不随公开库分发。
 spec_sync/
 # TeXstudio 行定位验证的探测脚本：本机专用，含本机绝对路径（解释器 / 证据目录），不入库。
-src/progress/tests/texstudio_*
+tools/progress/tests/texstudio_*
 
 # ===== video2text 运行时数据（模型 / 登录态 / 浏览器官案 / 转写产物） =====
 # 模型 1.5GB、cookie 含登录凭证、profile 含浏览数据，一律不入库。
-src/video2text/_data/
+tools/video2text/_data/
 # 本机配置（*.conf 已在上面统一排除，这里只作显式声明）
-src/video2text/video2text.conf
+tools/video2text/video2text.conf
 
 # ===== watch_notes 运行时数据（状态 / 日志 / 实例锁） =====
-src/watch_notes/_state/
-src/watch_notes/_logs/
+tools/watch_notes/_state/
+tools/watch_notes/_logs/
 
 # ===== panel_qt 崩溃日志（pythonw 无 stderr 时的落盘痕迹） =====
 _panel_error.log
@@ -57,9 +57,13 @@ _panel_error.log
 # ===== 打包产物（体积大，不入库） =====
 _build/
 *.exe
+_internal/
 LaTeX-Toolbox*/
 _dbg/
 panel_debug.log
 
-# ===== 面板配置（用户数据，不入库） =====
+# ===== 应用配置与日志（本机数据，不入库） =====
+config.json
+logs/
 _panel_config.json
+_panel_error.log

@@ -116,7 +116,7 @@ python Tools/src/panel_qt.py              # 直接开窗口
 
 表单引擎：字段类型 text / int / path / file / choice / check；`show_if` 支持字段联动（切换操作只显示相关字段，隐藏字段不进参数）；路径字段带「浏览…」；破坏性操作默认不勾选，先出预览再决定。
 
-工具本身的命令行接口仍然保留可用（`python Tools/src/xxx/xxx.py`），但面板里不再暴露它们 —— 那是实现细节，不是给你用的入口。
+工具本身的命令行接口仍然保留可用（`python Tools/tools/xxx/xxx.py`），但面板里不再暴露它们 —— 那是实现细节，不是给你用的入口。
 - 卡片：图标 + 标题 + 说明 + 状态 + 操作，同排等高；主按钮进表单/终端，次按钮仍可弹外部控制台。
 - 搜索：`/` 聚焦，跨组匹配后单独成页并显示命中数，`Esc` 清空回到当前组。
 - 窗口变宽时卡片列数自动重排；只搜到一两个结果时卡片不会被拉成横幅。
@@ -124,15 +124,15 @@ python Tools/src/panel_qt.py              # 直接开窗口
 ### 打包成 exe
 
 ```bash
-<venv>/Scripts/python.exe src/build_exe.py            # 单文件，约 37 MB
-<venv>/Scripts/python.exe src/build_exe.py --onedir   # 目录模式，启动更快
+<venv>/Scripts/python.exe src/build_exe.py            # 默认 onedir：exe + _internal/
+<venv>/Scripts/python.exe src/build_exe.py --onefile  # 单文件（每次启动解包约 90 MB）
 ```
 
-（在 `Tools/` 下执行；产物落在 `Tools/` 根，脚本仍留在 `src/`。）
+（在 `Tools/` 下执行；产物摊到程序目录根，脚本仍留在 `src/` 与 `tools/`。）
 
-产物 `Tools/LaTeX-Toolbox.exe`，自带 Python 运行时与 PySide6，**面板本身双击即开，不需要装任何环境**。工具里用到第三方库的那几项（PDF 转正的 `pymupdf`、视频转写的 `faster-whisper` 等）仍走工具 venv，见下文「实现上」。`src/run_panel.bat` 会优先启动它。
+产物 `Tools/LaTeX-Toolbox.exe`（1.8 MB）+ `Tools/_internal/`（约 92 MB），自带 Python 运行时与 PySide6，**面板本身双击即开，不需要装任何环境**。onedir 不像单文件那样每次启动都解包，启动快一个数量级。工具里用到第三方库的那几项（PDF 转正的 `pymupdf`、视频转写的 `faster-whisper` 等）仍走工具 venv，见下文「实现上」。`src/run_panel.bat` 会优先启动它。
 
-图标是 `Tools/src/tools.ico`（多尺寸，7 档），由 `make_icon.py` 用 Qt 现画现生成：
+图标是 `Tools/resources/tools.ico`（多尺寸，7 档），由 `make_icon.py` 用 Qt 现画现生成：
 
 ```bash
 <venv>/Scripts/python.exe src/make_icon.py     # 改样式后重跑即可
@@ -157,7 +157,7 @@ taskkill /f /im explorer.exe & start explorer.exe
 
 两个约束，来自「工具必须操作真实工作区」这一点：
 
-- **exe 放在 `Tools/` 根，工具脚本在它旁边的 `src/`**。工具要读写 `LaTeX_Notes/`、`Template/`、`outputs/`，不能塞进 exe 的解包临时目录；exe 运行时按 `src/` 找脚本。
+- **exe 在程序目录根，工具脚本在旁边的 `tools/`**。工具要读写 `LaTeX_Notes/`、`Template/`、`outputs/`，不能塞进运行时目录；exe 按 `tools/` 找脚本。
 - 因此 exe 只带**运行环境和界面**，不带工具源码；换机器时整个 `Tools/` 一起拷（**只拷 exe 跑不起来**）。
 
 实现上，exe 跑工具时**优先用工具 venv 里的 `python.exe`**（用户主目录 `.workbuddy/binaries/python/envs/default`），并把 PyInstaller 注入的 `PATH` / `QT_PLUGIN_PATH` 从子进程环境里剥掉。原因有两条：exe 自带的解释器只有标准库和 PySide6，`pymupdf`、`faster-whisper` 这类依赖都在 venv 里；而带着 `_MEIPASS` 的 `PATH` 会让另一个解释器加载到版本不对的 `python313.dll`，表现是「点了没反应」。找不到 venv 时才回退到 `LaTeX-Toolbox.exe --exec <脚本> -- [参数…]`：exe 是 GUI 子系统程序，`CREATE_NEW_CONSOLE` 对它无效，所以那条路里主动 `AllocConsole()` 再绑 `CONOUT$` / `CONIN$`，交互工具的 `input()` 才正常。
@@ -184,7 +184,7 @@ LaTeX-Toolbox.exe --selftest
 
 界面区分持久配置与当前服务的实际 root、端口、打开和写入权限；配置在下次显式启动时生效，运行期间禁止修改。
 
-可独立运行 `python Tools/src/progress/workbench_launcher.py --no-browser`，进入同一面板但显式启动时不自动打开浏览器；`--config <JSON 路径>` 可指定隔离配置。独立服务 CLI 的默认端口同样为 `7656`，更多服务参数见 `progress/progress.md`。
+可独立运行 `python Tools/tools/progress/workbench_launcher.py --no-browser`，进入同一面板但显式启动时不自动打开浏览器；`--config <JSON 路径>` 可指定隔离配置。独立服务 CLI 的默认端口同样为 `7656`，更多服务参数见 `progress/progress.md`。
 
 **PDF 预览的已知限制**：独立标签页路线可用 —— 用户显式点击的「独立标签页打开 PDF」按钮，仅在完整已验证的 Blob 加载后启用，以 `noopener` 打开并携带目标页码，不自动打开、下载或修改 PDF 与后端。嵌入 Blob 与直接 HTTP iframe 仍受限、未验证，根因未确认，不宣称全部 PDF 路由可用。详见 `progress/progress.md`。
 
@@ -305,7 +305,7 @@ python check_sensitive.py --dir <路径>   # 扫指定目录（非 git 目录也
 装钩子（每个仓库执行一次）：
 
 ```bash
-cp Tools/src/check_sensitive/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/hooks/pre-commit"
+cp Tools/tools/check_sensitive/pre-commit "<仓库>/.git/hooks/pre-commit" && chmod +x "<仓库>/.git/hooks/pre-commit"
 ```
 
 钩子装在 `.git/hooks/` 里（不进版本控制），重新 clone 后需重装；临时跳过单次检查用 `git commit --no-verify`。
@@ -426,7 +426,7 @@ levels: chapter, section, subsection   # 1 级 \chapter、2 级 \section、3 级
   「最外层标题命令 ＋ `\input`」的成对分组。
 - **不提供大纲**时不会生成骨架：模板示例章已被剔除，`\mainmatter` 下只剩一个空的 `\part{笔记名}`，
   后续自己补 `Content/` 与 `\input`。
-- `git init` 之后、首次提交之前，会自动把 `src/check_sensitive/pre-commit` 装进新仓库的 `.git/hooks/`，
+- `git init` 之后、首次提交之前，会自动把 `tools/check_sensitive/pre-commit` 装进新仓库的 `.git/hooks/`，
   让「提交前本机信息扫描」一并生效，不必事后手工补装。
 
 - 仓库分支用 `master`（与既有笔记仓库一致）。
@@ -660,50 +660,73 @@ python show_memory/show_memory.py MEMORY     # 看长期记忆
 **一个面板选项 = 一个同名目录**（脚本、说明、配置都放在自己目录里，互不混）：
 
 ```
-Tools/
-├── LaTeX-Toolbox.exe      图形总面板（打包产物，双击即用；脚本在 src/ 下）
-├── README.md / CHANGELOG.md
-├── _panel_config.json     面板设置（运行时生成，可删）
-├── src/                   源码：开发用；exe 运行时也从这里取工具脚本
-│   ├── launcher.py        命令行总面板
-│   ├── panel_qt.py        图形面板（exe 的入口）
-│   ├── panel_core.py      面板共用逻辑（工具清单 / 启动 / 状态）
-│   ├── panel_actions.py   工具表单
-│   ├── panel_pages.py     设置页 / 帮助页
-│   ├── panel_config.py    面板配置读写
-│   ├── panel_gui.py / panel_gui.html    网页备用版
-│   ├── build_exe.py / make_icon.py / tools.ico / run_panel.bat
-│   ├── git_setup/         Git 基本信息（环境检测 / 账户 / SSH）        → 选项 1
-│   ├── manager/           笔记工作区管理                                → 选项 2
+Tools/                          ← 程序目录（安装形态放在 %LOCALAPPDATA%\Programs\LaTeX-Toolbox）
+├── LaTeX-Toolbox.exe     主程序（1.8 MB，双击即用）
+├── _internal/            运行时（PyInstaller onedir，约 92 MB，别改名）
+├── config.json           工作区与数据落点（本机生成，可删，删了用默认）
+├── resources/
+│   ├── tools.ico         程序与窗口图标
+│   └── panel_gui.html    网页备用版的页面
+├── src/                  开发用：面板与打包脚本（安装包不带这一层）
+│   ├── launcher.py       命令行总面板
+│   ├── panel_qt.py       图形面板（exe 的入口）
+│   ├── panel_core.py     面板共用逻辑（工具清单 / 启动 / 状态）
+│   ├── panel_actions.py  工具表单
+│   ├── panel_pages.py    设置页 / 帮助页
+│   ├── panel_config.py   面板配置读写
+│   ├── panel_gui.py      网页备用版
+│   └── build_exe.py / make_icon.py / run_panel.bat
+├── tools/                组件：一个面板选项 = 一个同名目录
+│   ├── app_paths.py      数据落点与工作区解析（各工具共用）
+│   ├── git_setup/        Git 基本信息（环境检测 / 账户 / SSH）        → 选项 1
+│   ├── manager/          笔记工作区管理                                → 选项 2
 │   │   └── manager.py / manager.md / manager.conf(.example)
-│   ├── symbols/           符号库管理                                    → 选项 3
+│   ├── symbols/          符号库管理                                    → 选项 3
 │   │   └── symbols.py / symbols.md / symbols.conf(.example)
-│   ├── progress/          写作工作台                                    → 选项 4
+│   ├── progress/         写作工作台                                    → 选项 4
 │   │   └── workbench_launcher.py / workbench_server.py / workbench_store.py
 │   │       workbench_editor.html / workbench_features.py / workbench_pdf.py
 │   │       workbench_daily.py / workbench_tex.py / progress.md / progress_design.md
-│   ├── new_note/          从模板新建笔记                                → 选项 5
+│   ├── new_note/         从模板新建笔记                                → 选项 5
 │   │   └── new_note.py / new_note.md / outline_example.md
-│   ├── outline_tool/      大纲的创建 / 导出 / 校验                      → 选项 6
-│   ├── note_tools/        单本笔记的入口（提交 / 习题模式）             → 选项 7
-│   ├── clean_aux/         清理编译产物                                  → 选项 8
-│   ├── repo_check/        仓库体检                                      → 选项 9
-│   ├── check_sensitive/   提交前本机信息扫描                            → 选项 10
+│   ├── outline_tool/     大纲的创建 / 导出 / 校验                      → 选项 6
+│   ├── note_tools/       单本笔记的入口（提交 / 习题模式）             → 选项 7
+│   ├── clean_aux/        清理编译产物                                  → 选项 8
+│   ├── repo_check/       仓库体检                                      → 选项 9
+│   ├── check_sensitive/  提交前本机信息扫描                            → 选项 10
 │   │   └── check_sensitive.py / pre-commit   ← 钩子模板也在这里
-│   ├── sync_paths/        配置路径检查与修复                            → 选项 11
-│   ├── commit/            一键提交                                      → 选项 12
+│   ├── sync_paths/       配置路径检查与修复                            → 选项 11
+│   ├── commit/           一键提交                                      → 选项 12
 │   │   └── commit.py / commit.md
-│   ├── video2text/        视频转文字（默认仅字幕 / 可选本地恢复转写）   → 选项 13
+│   ├── video2text/       视频转文字（默认仅字幕 / 可选本地恢复转写）   → 选项 13
 │   │   └── video2text.py / video2text.md / video2text.conf(.example) / _data/
-│   ├── spec_sync/         项目规范副本一致性（检查 / 同步）             → 选项 14
-│   ├── pdf_upright/       PDF 转正（横躺课件就地转正 16:9）             → 选项 15
-│   ├── watch_notes/       笔记目录监测（自动提交 / 裁剪历史）           → 选项 16
-│   ├── show_memory/       （已从面板移除；需要时单独运行）
-│   └── tex2docx/          LaTeX 转 Word 预处理（非面板项，单独运行）
+│   ├── spec_sync/        项目规范副本一致性（检查 / 同步）             → 选项 14
+│   ├── pdf_upright/      PDF 转正（横躺课件就地转正 16:9）             → 选项 15
+│   ├── watch_notes/      笔记目录监测（自动提交 / 裁剪历史）           → 选项 16
+│   ├── show_memory/      （已从面板移除；需要时单独运行）
+│   └── tex2docx/         LaTeX 转 Word 预处理（非面板项，单独运行）
 │       └── preprocess.py / preprocess.md
-├── _tools/                随附的第三方脚本（git-filter-repo），非面板项
-└── _build/                打包中间产物（可删）
+├── logs/                 日志（本机生成）
+├── _tools/               随附的第三方脚本（git-filter-repo），非面板项
+└── _build/               打包中间产物（可删）
 ```
+
+`src/` 只在开发时存在；安装包只带 `exe` + `_internal/` + `resources/` + `tools/`。
+
+### 数据放在哪
+
+**程序目录只放程序和组件**，可写的数据按形态分两处：
+
+| 内容 | 便携形态（`Tools/` 位于工作区内） | 安装形态 |
+|---|---|---|
+| 工作区路径 | `config.json` 的 `workspace`，缺失则回退「程序目录的父级」 | 同左（必须给） |
+| 面板设置 / 各工具 `.conf` / 符号档案 | 各自组件目录里 | `%APPDATA%\LaTeX-Toolbox\` 与 `%LOCALAPPDATA%\LaTeX-Toolbox\<工具>\` |
+| 大件：whisper 模型 / cookie / 浏览器官案 | `tools/video2text/_data/` | `%LOCALAPPDATA%\LaTeX-Toolbox\video2text\` |
+| 监测状态与运行日志 | `tools/watch_notes/_state`、`_logs` | `%LOCALAPPDATA%\LaTeX-Toolbox\watch_notes\` |
+| 崩溃日志 | `logs/` | `%LOCALAPPDATA%\LaTeX-Toolbox\logs\` |
+
+形态由 `tools/app_paths.py` 判定：`LATEX_TOOLBOX_PORTABLE=1`（便携）/ `0`（安装）优先，其次看程序目录里有没有 `portable.flag`，都没有就按「程序目录的父级像不像工作区」定。
+`config.json` 里还可以给 `data_dir`，把模型之类的大件指到别的盘。
 
 
 直接运行 `python launcher.py` 即可进入总面板；也可以进入子目录单独运行某个脚本

@@ -191,6 +191,39 @@
 * **文档**
     * README 的目录树重写（补上选项 16 `watch_notes`），散落的 `Tools/xxx` 路径统一补 `src/`；「exe 必须与脚本同目录」改为「exe 在 `Tools/` 根、脚本在 `src/`，只拷 exe 跑不起来」。
 
+### 应用化改造：程序 / 数据 / 工作区三分
+
+照 Typora、Anki、TeXStudio 的结构，把「程序只读」「数据可写」「内容由用户指定」分成三处。此前所有东西都住在 `Tools/` 一个目录里，装到 `Program Files` 后配置、日志、模型、状态全部写失败。
+
+* **目录：`tools/` 组件、`src/` 面板源码、`resources/` 资源**
+    * 18 个工具目录移到 `tools/`（对应 `plugins/` 的语义）；面板与打包脚本留在 `src/`，安装包不带这一层；`tools.ico` 与 `panel_gui.html` 进 `resources/`。
+    * `panel_core` 的 `SCRIPTS_DIR` 指向 `tools/`，`TOOLS_ROOT` 仍是程序目录；`panel_actions` 的表单执行与 `describe_tools()` 的存在性检查同步。
+    * 工具目录的层级没变（仍在程序目录下两级），上溯推导的 `WORKSPACE` 因而不受影响 —— 但下一条把它们整体换掉了。
+* **`tools/app_paths.py`：数据落点与工作区只在这里定义一次**
+    * `portable()` 判定形态：环境变量 `LATEX_TOOLBOX_PORTABLE` → 程序目录下的 `portable.flag` → 程序目录的父级像不像工作区（有 `LaTeX_Notes` 或 `Template`）。
+    * `workspace()`：`config.json` 的 `workspace` 优先（相对路径按配置文件目录解析），缺失回退「程序目录的父级」——于是便携形态仍然零配置。
+    * `data_dir(tool)` / `conf_file(tool, name)`：便携时落在 `tools/<工具>/`，安装时落在 `%LOCALAPPDATA%\LaTeX-Toolbox\<工具>\`。
+    * `settings_file()` / `log_dir()`：应用级配置与日志，便携在程序目录，安装进 `%APPDATA%` / `%LOCALAPPDATA%`。
+    * 配置里可给 `data_dir`，把 whisper 模型这类大件指到别的盘。
+* **12 个工具改成读配置，不再上溯推工作区**
+    * `clean_aux` / `spec_sync` 的 `parent×4`、其余 8 个的 `WORKSPACE = ...parent` 全部换成 `app_paths.workspace()`。
+    * `manager` 识别「工具区」改用 `app_paths.APP_DIR`：安装形态下 `Tools/` 根本不在工作区里，原先按层级判断会把它当成一个笔记仓库。
+    * `symbols` 找「父目录下有多个笔记」的兜底、`video2text` 打印的工作区一并改用 `workspace()`。
+* **数据落点全部迁出程序目录**
+    * `manager.conf`、`symbols.conf`、`symbols_extract.json`、`notes_tree.json`、`progress/workbench_local.json`、`video2text.conf`、`video2text/_data`、`watch_notes/_state`、`watch_notes/_logs`、面板设置、崩溃日志。
+    * 读方不止一个的配置（`manager.conf` 被 `new_note` / `note_tools` / `repo_check` / `sync_paths` 读）统一走 `app_paths.conf_file()`，避免各自拼路径拼出不一致的位置。
+    * `sync_paths` 的 `ITEMS` 从 `"manager/manager.conf"` 这种相对串改成 `(工具, 文件名, 键, 类型)` 四元组。
+    * `progress` 的默认 `root` 不再是 `../../../LaTeX_Notes` 这种靠层数猜的相对路径，直接是 `workspace()/LaTeX_Notes`。
+* **打包改 onedir，产物摊到程序目录根**
+    * 默认 `--onedir`：`LaTeX-Toolbox.exe`（1.8 MB）+ `_internal/`（约 92 MB），不再每次启动解包 90 MB。
+    * 新增 `flatten()`：把 `dist/<名>/` 里的 exe 与 `_internal/` 移到程序目录根，覆盖前先清旧的 `_internal`，免得残留 dll 混进来。
+    * `--onefile` 保留为可选项，仅在需要单文件分发时用。
+* **忽略规则与钩子（第三次跟着目录走）**
+    * `.gitignore` 的目录前缀由 `src/` 改为 `tools/`，并新增 `_internal/`（92 MB 的运行时目录）、`config.json`、`logs/`。
+    * `.gitattributes` 的 `pre-commit text eol=lf` 同步改到 `tools/check_sensitive/`。
+    * 钩子模板的查找列表改成「一段 / 两段」都试：`Tools/*/check_sensitive.py` 与 `Tools/*/*/check_sensitive.py`。脚本沉到 `Tools/tools/` 后是两级，只写一段会一个都匹配不到 —— 钩子找不到脚本就放行，防泄露静默失效。12 个仓库已再同步一次，并在 `Algebra` / `General_Topology` 实跑确认。
+    * README 目录树再次重写，并新增「数据放在哪」一节说明两态的数据位置。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**

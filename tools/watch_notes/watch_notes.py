@@ -38,13 +38,16 @@ import time
 import traceback
 from pathlib import Path
 
-TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/src/watch_notes/
-TOOLS_ROOT = TOOL_DIR.parent.parent               # <Tools>/
-WORKSPACE = TOOLS_ROOT.parent                     # 工作区根
+TOOL_DIR = Path(__file__).resolve().parent        # <程序目录>/tools/watch_notes/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import app_paths  # noqa: E402
+from app_paths import workspace as _workspace  # noqa: E402 —— 路径见 app_paths
+
+WORKSPACE = _workspace()                         # 工作区根
 NOTES_ROOT = WORKSPACE / "LaTeX_Notes"
 
-STATE_DIR = TOOL_DIR / "_state"
-LOG_DIR = TOOL_DIR / "_logs"
+STATE_DIR = app_paths.data_dir("watch_notes", ensure=True) / "_state"
+LOG_DIR = app_paths.data_dir("watch_notes", ensure=True) / "_logs"
 
 DEFAULT_INTERVAL = 300      # 检测间隔（秒）
 DEFAULT_PRUNE_INTERVAL = 900  # 裁剪检查间隔（秒）

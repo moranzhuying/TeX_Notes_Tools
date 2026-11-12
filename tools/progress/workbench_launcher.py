@@ -2,21 +2,27 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import threading
 import webbrowser
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import app_paths  # noqa: E402 —— 数据落点与工作区解析
+
 import workbench_readonly as ro
 from workbench_server import Server
 from workbench_store import BookStore
 
-CONFIG = Path(__file__).with_name('workbench_local.json')
+#: 配置不进程序目录：便携形态是工具目录，安装形态进 %APPDATA%。
+CONFIG = app_paths.conf_file('progress', 'workbench_local.json', ensure=True)
 DEFAULT_PORT = 7656
 
 
 def defaults():
-    return {'schema_version': 1, 'root': '../../../LaTeX_Notes', 'port': DEFAULT_PORT,
+    return {'schema_version': 1, 'root': str(app_paths.workspace() / 'LaTeX_Notes'),
+            'port': DEFAULT_PORT,
             'allow_open': False, 'texstudio': '', 'allow_write': False, 'write_books': [],
             'write_root': '', 'write_book_id': '', 'write_book_ids': {}}
 

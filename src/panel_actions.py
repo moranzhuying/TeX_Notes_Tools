@@ -1432,7 +1432,7 @@ class FormPanel(QtWidgets.QWidget):
             self.hint.setText("已取消")
             return
 
-        script = core.SRC_ROOT / self.spec.get("script", self.tool["script"])
+        script = core.SCRIPTS_DIR / self.spec.get("script", self.tool["script"])
         if not script.is_file():
             self.hint.setText("找不到脚本：{}".format(self.tool["script"]))
             return

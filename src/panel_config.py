@@ -10,14 +10,11 @@ import json
 import sys
 from pathlib import Path
 
-if getattr(sys, "frozen", False):
-    # 打包后 __file__ 指向解包临时目录，配置写那儿等于每次启动都重来一遍。
-    # 配置跟着 exe 走，落在 Tools/ 根。
-    TOOLS_ROOT = Path(sys.executable).resolve().parent
-else:
-    # 源码在 Tools/src/ 下，配置仍在 Tools/ 根（与 exe 同级，删了即回默认）。
-    TOOLS_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = TOOLS_ROOT / "_panel_config.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import app_paths  # noqa: E402 —— 配置落点由它决定
+
+#: 面板设置。便携形态在程序目录，安装形态进 %APPDATA%\LaTeX-Toolbox。
+CONFIG_PATH = app_paths.settings_file("_panel_config.json")
 
 #: 默认配置。新增项时在这里加默认值即可，旧配置文件会自动补齐。
 DEFAULTS = {
@@ -113,10 +110,11 @@ HELP_HTML = """
 
 <h2>遇到问题</h2>
 <ul>
-<li>工具报错时，详情看面板底部的状态条；完整栈写在 <code>Tools/_panel_error.log</code>。</li>
+<li>工具报错时，详情看面板底部的状态条；完整栈写在日志目录的 <code>_panel_error.log</code>
+（便携版在 <code>Tools/logs/</code>，安装版在 <code>%LOCALAPPDATA%\\LaTeX-Toolbox\\logs\\</code>）。</li>
 <li>界面显示不对（比如图标没变）：Windows 会缓存 exe 图标，删掉
 <code>%LOCALAPPDATA%\\IconCache.db</code> 再重启资源管理器即可。</li>
-<li>改了工具代码要重新打包：在 <code>Tools/</code> 下跑 <code>python build_exe.py</code>。</li>
+<li>改了工具代码要重新打包：在 <code>Tools/</code> 下跑 <code>python src/build_exe.py</code>。</li>
 </ul>
 """
 

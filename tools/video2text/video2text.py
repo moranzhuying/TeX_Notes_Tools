@@ -56,6 +56,11 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _MODULE_DIR = str(Path(__file__).resolve().parent)
 if _MODULE_DIR not in sys.path:
     sys.path.insert(0, _MODULE_DIR)
+# 上级是 tools/，公共的 app_paths 在那儿
+_TOOLS_DIR = str(Path(__file__).resolve().parent.parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+import app_paths  # noqa: E402 —— 数据落点与工作区解析
 
 # --- 必须在 import faster_whisper 之前设好镜像与传输协议 ---
 # HF_ENDPOINT 只影响传统 HTTP 分发端点；Xet 走独立端点且国内返回 401，
@@ -73,8 +78,10 @@ except Exception:
 # 路径
 # --------------------------------------------------------------------------- #
 HERE = Path(__file__).resolve().parent
-CONF = HERE / "video2text.conf"
-DATA = HERE / "_data"
+CONF = app_paths.conf_file("video2text", "video2text.conf", ensure=True)
+#: 大件数据（模型 / cookie / profile / 转写产物）不放程序目录：
+#: 便携形态仍是程序目录，安装形态进 %LOCALAPPDATA%。conf 的 [paths] data 可覆盖。
+DATA = app_paths.data_dir("video2text", ensure=True)
 MODELS_DIR = DATA / "models"
 COOKIES_DIR = DATA / "cookies"
 PROFILE_DIR = DATA / "profile"
@@ -1386,7 +1393,7 @@ def interactive(cp) -> int:
         print("=" * 64)
         print("  video2text — 视频转文字")
         print("=" * 64)
-        print(f"  工作区  ：{HERE.parent.parent.parent}")
+        print(f"  工作区  ：{app_paths.workspace()}")
         print(f"  数据目录：{data_root(cp)}")
         print(f"  登录态  ：{cookie_status_line()}")
         base = data_root(cp) / "transcripts"

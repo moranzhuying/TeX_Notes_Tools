@@ -25,8 +25,11 @@ import os
 import sys
 from pathlib import Path
 
-# <工作区>/Tools/src/clean_aux/ → 上溯三级到工作区根
-WORKSPACE = Path(__file__).resolve().parent.parent.parent.parent
+# 工作区来自 app_paths：安装形态读配置，便携形态回退程序目录的父级
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app_paths import workspace as _workspace  # noqa: E402 —— 路径见 app_paths
+
+WORKSPACE = _workspace()
 
 # 编译中间产物（可再生，删了没关系）
 AUX_EXT = {
