@@ -33,7 +33,8 @@ _replace.txt
 _tmp_*
 
 # ===== 本机专用脚本（按用户要求不入库） =====
-sync_paths.py
+# 整个目录都不入库：只忽略 .py 会漏掉同目录的 .md，一跑 git add -A 就进索引了。
+src/sync_paths/
 # 项目规范副本同步：默认配对指向工作区内部文档（项目规范.md / .workbuddy/refs/），
 # 属工作区专用，不随公开库分发。
 spec_sync/
