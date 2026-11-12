@@ -55,12 +55,14 @@ python Tools/panel_qt.py              # 直接开窗口
 <venv>/Scripts/python.exe -m pip install PySide6-Essentials     --index-url https://mirrors.aliyun.com/pypi/simple/
 ```
 
+界面按 Fluent / WinUI 风格做：左侧竖向导航把工具分成六组，右侧是当前组的卡片流，顶部一条工具栏放标题、搜索与主题开关。深浅主题跟随系统（读 `AppsUseLightTheme`），左下角可手动切换。
+
 做的是**启动器**，不是把 16 个工具各重写一遍。清单来自 `launcher.MENU`（经 `panel_core` 转成界面用的结构），命令行面板、Qt 面板、网页备用版共用同一份，不会漂移。
 
 - **交互面板类** → 弹独立控制台窗口。这些工具是 `input()` 循环，必须真终端，`CREATE_NEW_CONSOLE` 与命令行行为完全一致。
 - **一次性命令类**（`check_sensitive` / `sync_paths`）→ 捕获输出，显示在窗口下方的输出面板，跑完不会一闪而过。
-- 卡片显示状态点、耗时与退出码；运行中可「停止」（`taskkill /T /F` 连子进程）。
-- 搜索框按标题、说明、脚本路径过滤；按 `/` 聚焦，`Esc` 清空或关输出面板。
+- 卡片：图标 + 标题 + 说明 + 状态 + 操作，同排等高；运行中显示耗时与退出码，可「停止」（`taskkill /T /F` 连子进程）。
+- 搜索：`/` 聚焦，跨组匹配后单独成页并显示命中数，`Esc` 清空回到当前组。
 - 窗口变宽时卡片列数自动重排；只搜到一两个结果时卡片不会被拉成横幅。
 
 ### 打包成 exe

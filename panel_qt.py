@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-panel_qt.py — 工具集图形面板（Qt 桌面窗口）
+panel_qt.py — 工具集图形面板（Qt 桌面窗口，Fluent / WinUI 风格）
 
-菜单来自 `panel_core`（它再 import `launcher.MENU`），所以命令行面板、Qt 面板
-与网页备用版共用同一份工具清单。
+布局参照 Watt Toolkit：左侧竖向导航把工具分组，右侧是当前组的卡片流，
+顶部一条工具栏放标题、搜索与主题切换。深浅主题跟随系统，可手动切换。
 
-- **交互面板类**（多数工具）→ 弹出独立控制台窗口，`input()` 行为与命令行一致
-- **一次性命令类**（check_sensitive / sync_paths）→ 捕获输出，结果显示在下方输出区
+菜单来自 `panel_core`（它再 import `launcher.MENU`），命令行面板、Qt 面板
+与网页备用版共用同一份清单。
 
-    python panel_qt.py
+- **交互面板类**（多数工具）→ 弹出独立控制台，`input()` 行为与命令行一致
+- **一次性命令类** → 捕获输出，结果显示在下方输出面板
+
+    python panel_qt.py                 # 打开面板
+    python panel_qt.py --selftest      # 打包后自检
 
 依赖 PySide6（装在 .workbuddy 的 venv 里，不进系统 Python）。
 """
@@ -137,11 +141,7 @@ def exec_tool(argv):
 
 
 def selftest():
-    """打包后自检：确认工具根定位正确、且 exe 能用 --exec 拉起子工具。
-
-    打包成 exe 后最怕两件事 —— 工具根找成解包临时目录、子进程没有解释器。
-    这条命令把两件事都跑一遍，出问题能直接看到是哪一步断的。
-    """
+    """打包后自检：确认工具根定位正确、且 exe 能用 --exec 拉起子工具。"""
     import time as _time
 
     _bind_console()
@@ -158,7 +158,6 @@ def selftest():
     if missing:
         return 1
 
-    # 用一次性命令走一遍完整链路：exe --exec <脚本> → 捕获输出
     rec = panel_core.launch("11")
     print("子进程         :", rec["proc"].pid, rec["mode"])
     for _ in range(120):
@@ -203,95 +202,183 @@ except ImportError:  # pragma: no cover - 只在环境缺包时触发
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import panel_core as core  # noqa: E402
 
-CARD_MIN_WIDTH = 340
+CARD_MIN_WIDTH = 360
+CARD_MAX_WIDTH = 660
 GAP = 12
 
-QSS = """
-QMainWindow, QWidget#Root { background: #0d1117; }
-
-QLabel { color: #e6edf3; background: transparent; }
-QLabel#AppTitle { font-size: 15px; font-weight: 600; }
-QLabel#WorkPath { color: #6e7681; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
-QLabel#GroupTitle {
-    color: #8b949e; font-size: 11px; font-weight: 600;
-    letter-spacing: 1.4px; padding: 2px 0 2px 2px;
+#: 每个工具的图标（用彩色 emoji，不依赖字形码点，换机器也不会变方块）
+ICONS = {
+    "1": "⚙️", "2": "📚", "3": "🔤", "4": "🖥️",
+    "5": "➕", "6": "📋", "7": "📝", "8": "🧹",
+    "9": "🔍", "10": "🛡️", "11": "🔗", "12": "⬆️",
+    "13": "🎬", "14": "🧩", "15": "📄", "16": "👁️",
 }
-QLabel#Badge {
-    color: #8b949e; border: 1px solid #30363d; border-radius: 4px;
-    padding: 2px 6px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px;
-}
-QLabel#CardTitle { font-size: 13px; font-weight: 600; }
-QLabel#CardScript { color: #6e7681; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
-QLabel#CardDesc { color: #8b949e; font-size: 12px; }
-QLabel#CardStatus { color: #6e7681; font-size: 11px; }
-QLabel#CardStatus[running="true"] { color: #3fb950; }
-QLabel#CardStatus[done="true"] { color: #d29922; }
-QLabel#CardStatus[failed="true"] { color: #f85149; }
-QLabel#Star { color: #d29922; font-size: 11px; }
 
-QFrame#Card {
-    background: #161b22;
-    border: 1px solid #21262d;
+#: Fluent 色板。dark / light 两套，QSS 由 token 生成，切换主题只换样式表。
+TOKENS = {
+    "dark": {
+        "bg": "#1F1F1F", "layer": "#272727", "card": "#2C2C2C",
+        "card_hover": "#323232", "stroke": "#3A3A3A", "stroke_strong": "#4A4A4A",
+        "fg": "#FFFFFF", "fg2": "#C5C5C5", "fg3": "#9A9A9A",
+        "accent": "#60CDFF", "accent_hover": "#8AD8FF", "accent_fg": "#003A5C",
+        "subtle": "rgba(255,255,255,0.06)", "subtle_hover": "rgba(255,255,255,0.10)",
+        "nav_sel": "rgba(255,255,255,0.09)",
+        "ok": "#6CCB5F", "warn": "#FCE100", "bad": "#FF99A4",
+        "field": "#1F1F1F", "icon_bg": "rgba(96,205,255,0.14)",
+    },
+    "light": {
+        "bg": "#F3F3F3", "layer": "#EAEAEA", "card": "#FFFFFF",
+        "card_hover": "#FAFAFA", "stroke": "#E1E1E1", "stroke_strong": "#CCCCCC",
+        "fg": "#1A1A1A", "fg2": "#5D5D5D", "fg3": "#8A8A8A",
+        "accent": "#0067C0", "accent_hover": "#1975C5", "accent_fg": "#FFFFFF",
+        "subtle": "rgba(0,0,0,0.04)", "subtle_hover": "rgba(0,0,0,0.07)",
+        "nav_sel": "rgba(0,0,0,0.06)",
+        "ok": "#0F7B0F", "warn": "#9D5D00", "bad": "#C42B1C",
+        "field": "#FFFFFF", "icon_bg": "rgba(0,103,192,0.10)",
+    },
+}
+
+
+def build_qss(t):
+    return """
+QMainWindow, QWidget#Root {{ background: {bg}; }}
+QWidget {{ color: {fg}; }}
+
+/* ---------- 左侧导航 ---------- */
+QWidget#Sidebar {{
+    background: {layer};
+    border-right: 1px solid {stroke};
+}}
+QLabel#Brand {{ font-size: 14px; font-weight: 600; color: {fg}; }}
+QLabel#BrandSub {{ font-size: 11px; color: {fg3}; }}
+QLabel#NavGroup {{ font-size: 11px; color: {fg3}; padding: 10px 14px 4px 14px; }}
+
+QPushButton#NavBtn {{
+    text-align: left;
+    padding: 0 12px;
+    height: 38px;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: {fg2};
+    font-size: 13px;
+}}
+QPushButton#NavBtn:hover {{ background: {subtle}; color: {fg}; }}
+QPushButton#NavBtn:checked {{
+    background: {nav_sel};
+    border-left: 3px solid {accent};
+    color: {fg};
+    font-weight: 600;
+}}
+
+/* ---------- 顶部工具栏 ---------- */
+QLabel#PageTitle {{ font-size: 20px; font-weight: 600; color: {fg}; }}
+QLabel#PageDesc {{ font-size: 12px; color: {fg2}; }}
+
+QLineEdit#Search {{
+    background: {field};
+    border: 1px solid {stroke};
+    border-radius: 4px;
+    padding: 7px 10px;
+    color: {fg};
+    font-size: 13px;
+    selection-background-color: {accent};
+    selection-color: {accent_fg};
+}}
+QLineEdit#Search:focus {{ border-color: {accent}; }}
+
+/* ---------- 卡片 ---------- */
+QFrame#Card {{
+    background: {card};
+    border: 1px solid {stroke};
     border-radius: 8px;
-}
-QFrame#Card[running="true"] { border-color: rgba(63, 185, 80, 120); }
-QFrame#Card[done="true"] { border-color: rgba(210, 153, 34, 90); }
-QFrame#Card[failed="true"] { border-color: rgba(248, 81, 73, 90); }
-QFrame#Card[missing="true"] { border-color: #21262d; }
+}}
+QFrame#Card:hover {{ background: {card_hover}; border-color: {stroke_strong}; }}
+QFrame#Card[running="true"] {{ border-color: {ok}; }}
+QFrame#Card[failed="true"] {{ border-color: {bad}; }}
+QFrame#Card[done="true"] {{ border-color: {warn}; }}
 
-QLineEdit {
-    background: #0d1117; color: #e6edf3;
-    border: 1px solid #30363d; border-radius: 5px;
-    padding: 5px 8px; selection-background-color: #1f6feb;
+QLabel#CardIcon {{
+    background: {icon_bg};
+    border-radius: 8px;
+    font-size: 19px;
+}}
+QLabel#CardTitle {{ font-size: 13px; font-weight: 600; color: {fg}; }}
+QLabel#CardScript {{ font-size: 11px; color: {fg3};
+    font-family: "Cascadia Mono", Consolas, monospace; }}
+QLabel#CardDesc {{ font-size: 12px; color: {fg2}; }}
+QLabel#CardStatus {{ font-size: 11px; color: {fg3}; }}
+QLabel#CardStatus[running="true"] {{ color: {ok}; }}
+QLabel#CardStatus[done="true"] {{ color: {warn}; }}
+QLabel#CardStatus[failed="true"] {{ color: {bad}; }}
+QLabel#Star {{ color: {warn}; font-size: 11px; }}
+
+/* ---------- 控件 ---------- */
+QPushButton#Primary {{
+    background: {accent}; color: {accent_fg};
+    border: none; border-radius: 4px;
+    padding: 6px 16px; font-size: 12px; font-weight: 600;
+}}
+QPushButton#Primary:hover {{ background: {accent_hover}; }}
+QPushButton#Primary:disabled {{ background: {subtle}; color: {fg3}; }}
+
+QPushButton#Secondary {{
+    background: {subtle}; color: {fg};
+    border: 1px solid {stroke}; border-radius: 4px;
+    padding: 6px 12px; font-size: 12px;
+}}
+QPushButton#Secondary:hover {{ background: {subtle_hover}; border-color: {stroke_strong}; }}
+
+QPushButton#Danger {{
+    background: transparent; color: {bad};
+    border: 1px solid {bad}; border-radius: 4px;
+    padding: 6px 12px; font-size: 12px;
+}}
+QPushButton#Danger:hover {{ background: {subtle_hover}; }}
+
+QPushButton#Ghost {{
+    background: transparent; color: {fg2};
+    border: none; border-radius: 4px;
+    padding: 6px 10px; font-size: 12px;
+}}
+QPushButton#Ghost:hover {{ background: {subtle}; color: {fg}; }}
+
+QLineEdit#Args {{
+    background: {field}; border: 1px solid {stroke};
+    border-radius: 4px; padding: 5px 9px;
+    color: {fg}; font-size: 12px;
+    font-family: "Cascadia Mono", Consolas, monospace;
+}}
+QLineEdit#Args:focus {{ border-color: {accent}; }}
+
+/* ---------- 输出面板 ---------- */
+QFrame#OutputBox {{
+    background: {card};
+    border: 1px solid {stroke};
+    border-radius: 8px;
+}}
+QPlainTextEdit#Output {{
+    background: transparent; color: {fg2};
+    border: none; selection-background-color: {accent};
     font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px;
-}
-QLineEdit:focus { border-color: #58a6ff; }
+}}
 
-QLineEdit#Search {
-    padding: 6px 10px; border-radius: 6px;
-    font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 12px;
-}
+/* ---------- 滚动区 ---------- */
+QScrollArea {{ border: none; background: transparent; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{
+    background: {stroke_strong}; border-radius: 5px; min-height: 28px;
+}}
+QScrollBar::handle:vertical:hover {{ background: {fg3}; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 
-QPushButton {
-    background: transparent; color: #8b949e;
-    border: 1px solid #30363d; border-radius: 6px;
-    padding: 5px 12px; font-size: 12px;
-}
-QPushButton:hover { color: #e6edf3; border-color: #6e7681; }
-QPushButton:disabled { color: #484f58; border-color: #21262d; }
-
-QPushButton#Primary {
-    color: #0d1117; background: #8b949e; border: none; font-weight: 600;
-}
-QPushButton#Primary:hover { background: #e6edf3; }
-QPushButton#Primary:disabled { background: #21262d; color: #484f58; }
-
-QPushButton#Danger { color: #f85149; border-color: rgba(248, 81, 73, 90); }
-QPushButton#Danger:hover { background: rgba(248, 81, 73, 26); border-color: #f85149; }
-
-QScrollArea { border: none; background: transparent; }
-QScrollArea > QWidget > QWidget { background: transparent; }
-
-QScrollBar:vertical {
-    background: transparent; width: 10px; margin: 0;
-}
-QScrollBar::handle:vertical {
-    background: #30363d; border-radius: 5px; min-height: 30px;
-}
-QScrollBar::handle:vertical:hover { background: #484f58; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-
-QFrame#OutputBox {
-    background: #0b0f14; border: 1px solid #21262d; border-radius: 8px;
-}
-QPlainTextEdit#Output {
-    background: transparent; color: #c9d1d9;
-    border: none; selection-background-color: #1f6feb;
-    font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px;
-}
-QFrame#Separator { background: #21262d; max-height: 1px; border: none; }
-"""
+/* ---------- 底部状态条 ---------- */
+QLabel#StatusText {{ font-size: 11px; color: {fg3}; }}
+QFrame#Divider {{ background: {stroke}; max-height: 1px; border: none; }}
+""".format(**t)
 
 
 def rel_time(ts):
@@ -303,8 +390,22 @@ def rel_time(ts):
     return "{} 小时前".format(secs // 3600)
 
 
+def system_is_dark():
+    """读 Windows 的应用主题偏好；读不到就按深色处理（面板的主要使用场景）。"""
+    if os.name != "nt":
+        return True
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except OSError:
+        return True
+
+
 class ToolCard(QtWidgets.QFrame):
-    """一个工具卡片。"""
+    """一张工具卡片：图标 + 标题 + 说明 + 状态 + 操作。"""
 
     run_requested = QtCore.Signal(str, str)
     stop_requested = QtCore.Signal(str)
@@ -315,24 +416,26 @@ class ToolCard(QtWidgets.QFrame):
         self.tool = tool
         self.setObjectName("Card")
         self.setMinimumWidth(CARD_MIN_WIDTH)
-        self.setMaximumWidth(680)   # 结果很少时不要把卡片拉成横幅
+        self.setMaximumWidth(CARD_MAX_WIDTH)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
                            QtWidgets.QSizePolicy.Preferred)
         self.setProperty("missing", "true" if not tool["exists"] else "false")
 
-        outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(14, 12, 14, 11)
-        outer.setSpacing(7)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(14, 13, 14, 12)
+        row.setSpacing(12)
 
-        # 第一行：编号 + 标题 + 星标
+        icon = QtWidgets.QLabel(ICONS.get(tool["id"], "•"))
+        icon.setObjectName("CardIcon")
+        icon.setFixedSize(40, 40)
+        icon.setAlignment(QtCore.Qt.AlignCenter)
+        row.addWidget(icon, 0, QtCore.Qt.AlignTop)
+
+        col = QtWidgets.QVBoxLayout()
+        col.setSpacing(3)
+
         head = QtWidgets.QHBoxLayout()
-        head.setSpacing(8)
-        badge = QtWidgets.QLabel(tool["id"])
-        badge.setObjectName("Badge")
-        badge.setAlignment(QtCore.Qt.AlignCenter)
-        badge.setFixedWidth(24)
-        head.addWidget(badge, 0, QtCore.Qt.AlignTop)
-
+        head.setSpacing(6)
         title = QtWidgets.QLabel(tool["title"])
         title.setObjectName("CardTitle")
         title.setWordWrap(True)
@@ -342,24 +445,21 @@ class ToolCard(QtWidgets.QFrame):
             star.setObjectName("Star")
             star.setToolTip("提交项")
             head.addWidget(star, 0, QtCore.Qt.AlignTop)
-        outer.addLayout(head)
-
-        script = QtWidgets.QLabel(tool["script"])
-        script.setObjectName("CardScript")
-        outer.addWidget(script)
+        col.addLayout(head)
 
         desc = QtWidgets.QLabel(tool["desc"])
         desc.setObjectName("CardDesc")
         desc.setWordWrap(True)
-        outer.addWidget(desc)
+        col.addWidget(desc)
 
         self.args = None
         if tool["oneoff"]:
             self.args = QtWidgets.QLineEdit(tool["defaultArgs"])
+            self.args.setObjectName("Args")
             self.args.setPlaceholderText("追加参数（可空）")
-            outer.addWidget(self.args)
+            col.addWidget(self.args)
 
-        outer.addStretch(1)
+        col.addSpacing(2)
 
         foot = QtWidgets.QHBoxLayout()
         foot.setSpacing(6)
@@ -368,6 +468,7 @@ class ToolCard(QtWidgets.QFrame):
         foot.addWidget(self.status, 1)
 
         self.out_btn = QtWidgets.QPushButton("输出")
+        self.out_btn.setObjectName("Ghost")
         self.out_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.out_btn.clicked.connect(lambda: self.output_requested.emit(tool["id"]))
         self.out_btn.hide()
@@ -386,7 +487,9 @@ class ToolCard(QtWidgets.QFrame):
         self.run_btn.setEnabled(tool["exists"])
         self.run_btn.clicked.connect(self._on_run)
         foot.addWidget(self.run_btn)
-        outer.addLayout(foot)
+        col.addLayout(foot)
+
+        row.addLayout(col, 1)
 
         if not tool["exists"]:
             self.status.setText("脚本缺失")
@@ -399,9 +502,7 @@ class ToolCard(QtWidgets.QFrame):
         """按运行快照刷新外观。"""
         for prop in ("running", "done", "failed"):
             self.setProperty(prop, "false")
-        self.status.setProperty("running", "false")
-        self.status.setProperty("done", "false")
-        self.status.setProperty("failed", "false")
+            self.status.setProperty(prop, "false")
 
         if run and run["alive"]:
             self.setProperty("running", "true")
@@ -429,9 +530,6 @@ class ToolCard(QtWidgets.QFrame):
             self.stop_btn.hide()
             self.out_btn.hide()
 
-        self._repolish()
-
-    def _repolish(self):
         for w in (self, self.status):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -442,6 +540,8 @@ class CardGrid(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                           QtWidgets.QSizePolicy.Preferred)
         self.grid = QtWidgets.QGridLayout(self)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(GAP)
@@ -461,55 +561,155 @@ class CardGrid(QtWidgets.QWidget):
         width = self.width()
         if width < 80 or not self.cards:
             return
-        # 列数只按可用宽度算，不压到卡片数：否则只剩一两个结果时会被拉满整行
         cols = max(1, (width + GAP) // (CARD_MIN_WIDTH + GAP))
         if cols == self._cols:
             return
         self._cols = cols
         while self.grid.count():
             self.grid.takeAt(0)
+        # 不带 AlignTop：同一行的卡片由 grid 拉到等高，视觉上才齐
         for i, card in enumerate(self.cards):
-            self.grid.addWidget(card, i // cols, i % cols, QtCore.Qt.AlignTop)
+            self.grid.addWidget(card, i // cols, i % cols)
         total = max(cols, self.grid.columnCount())
         for c in range(total):
             self.grid.setColumnStretch(c, 1 if c < cols else 0)
 
 
+class Sidebar(QtWidgets.QWidget):
+    """左侧导航：品牌区 + 分组按钮 + 底部主题切换。"""
+
+    group_selected = QtCore.Signal(str)
+    theme_toggled = QtCore.Signal()
+
+    def __init__(self, groups, parent=None):
+        super().__init__(parent)
+        self.setObjectName("Sidebar")
+        self.setFixedWidth(214)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 16, 0, 12)
+        lay.setSpacing(0)
+
+        brand_row = QtWidgets.QHBoxLayout()
+        brand_row.setContentsMargins(16, 0, 16, 0)
+        brand_row.setSpacing(10)
+        logo = QtWidgets.QLabel("🧰")
+        logo.setObjectName("CardIcon")
+        logo.setFixedSize(34, 34)
+        logo.setAlignment(QtCore.Qt.AlignCenter)
+        brand_row.addWidget(logo, 0)
+        texts = QtWidgets.QVBoxLayout()
+        texts.setSpacing(0)
+        name = QtWidgets.QLabel("LaTeX 工具箱")
+        name.setObjectName("Brand")
+        sub = QtWidgets.QLabel("笔记维护工具集")
+        sub.setObjectName("BrandSub")
+        texts.addWidget(name)
+        texts.addWidget(sub)
+        brand_row.addLayout(texts, 1)
+        lay.addLayout(brand_row)
+        lay.addSpacing(14)
+
+        self.buttons = {}
+        for i, group in enumerate(groups):
+            btn = QtWidgets.QPushButton(group)
+            btn.setObjectName("NavBtn")
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _c=False, g=group: self.group_selected.emit(g))
+            lay.addWidget(btn)
+            self.buttons[group] = btn
+            if i == 0:
+                btn.setChecked(True)
+
+        lay.addStretch(1)
+        line = QtWidgets.QFrame()
+        line.setObjectName("Divider")
+        line.setFixedHeight(1)
+        lay.addWidget(line)
+        lay.addSpacing(6)
+
+        self.theme_btn = QtWidgets.QPushButton("🌙  深色主题")
+        self.theme_btn.setObjectName("NavBtn")
+        self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.theme_btn.clicked.connect(self.theme_toggled.emit)
+        lay.addWidget(self.theme_btn)
+
+    def select(self, group):
+        btn = self.buttons.get(group)
+        if btn is not None:
+            btn.setChecked(True)
+
+    def set_theme_label(self, dark):
+        self.theme_btn.setText("🌙  深色主题" if dark else "☀️  浅色主题")
+
+
 class MainWindow(QtWidgets.QMainWindow):
+    GROUP_DESC = {
+        "核心工具": "日常最常用的四件事：Git 环境、仓库管理、符号库、写作工作台",
+        "创建与维护": "建新笔记、导出大纲、清理编译产物",
+        "信息安全与提交": "扫描本机信息、检查路径、体检仓库、提交",
+        "素材与转写": "视频转文字，字幕优先，无字幕走本地 whisper",
+        "PDF 处理": "横躺的课件 PDF 就地转正",
+        "运行监测": "监测笔记目录，有改动自动提交推送并裁剪历史",
+    }
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LaTeX 笔记工具集")
-        self.resize(1280, 880)
+        self.setWindowTitle("LaTeX 工具箱")
+        self.resize(1200, 780)
         self.tools = core.describe_tools()
         self.cards = {}
+        self.groups = []
+        for tool in self.tools:
+            if tool["group"] not in self.groups:
+                self.groups.append(tool["group"])
         self.output_key = None
         self._out_lines = -1
+        self._dark = system_is_dark()
 
         root = QtWidgets.QWidget()
         root.setObjectName("Root")
         self.setCentralWidget(root)
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(20, 16, 20, 16)
-        outer.setSpacing(10)
+        shell = QtWidgets.QHBoxLayout(root)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
 
-        outer.addLayout(self._build_header())
-        outer.addWidget(self._hrule())
+        self.sidebar = Sidebar(self.groups)
+        self.sidebar.group_selected.connect(self.show_group)
+        self.sidebar.theme_toggled.connect(self.toggle_theme)
+        shell.addWidget(self.sidebar)
 
-        self.scroll = QtWidgets.QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        body = QtWidgets.QWidget()
-        self.body_layout = QtWidgets.QVBoxLayout(body)
-        self.body_layout.setContentsMargins(0, 4, 6, 8)
-        self.body_layout.setSpacing(14)
-        self.scroll.setWidget(body)
-        outer.addWidget(self.scroll, 1)
+        right = QtWidgets.QWidget()
+        right_lay = QtWidgets.QVBoxLayout(right)
+        right_lay.setContentsMargins(24, 16, 24, 12)
+        right_lay.setSpacing(10)
+        right_lay.addLayout(self._build_toolbar())
+
+        self.stack = QtWidgets.QStackedWidget()
+        right_lay.addWidget(self.stack, 1)
 
         self.output_box = self._build_output()
         self.output_box.hide()
-        outer.addWidget(self.output_box, 0)
+        right_lay.addWidget(self.output_box, 0)
 
-        self._build_sections()
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.setSpacing(8)
+        self.status_text = QtWidgets.QLabel(
+            "工作区 {}".format(core.WORKSPACE))
+        self.status_text.setObjectName("StatusText")
+        bottom.addWidget(self.status_text, 1)
+        self.count_text = QtWidgets.QLabel("{} 个工具".format(len(self.tools)))
+        self.count_text.setObjectName("StatusText")
+        bottom.addWidget(self.count_text)
+        right_lay.addLayout(bottom)
+
+        shell.addWidget(right, 1)
+
+        self._build_pages()
+        self.show_group(self.groups[0])
+        self.apply_theme()
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.refresh_states)
@@ -518,56 +718,53 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------- 构建 ----------
 
-    def _build_header(self):
-        head = QtWidgets.QHBoxLayout()
-        head.setSpacing(16)
-
+    def _build_toolbar(self):
+        bar = QtWidgets.QHBoxLayout()
+        bar.setSpacing(12)
         left = QtWidgets.QVBoxLayout()
-        left.setSpacing(2)
-        title = QtWidgets.QLabel("LaTeX 笔记工具集")
-        title.setObjectName("AppTitle")
-        left.addWidget(title)
-        path = QtWidgets.QLabel(str(core.WORKSPACE))
-        path.setObjectName("WorkPath")
-        path.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        left.addWidget(path)
-        head.addLayout(left, 1)
+        left.setSpacing(1)
+        self.page_title = QtWidgets.QLabel("")
+        self.page_title.setObjectName("PageTitle")
+        self.page_desc = QtWidgets.QLabel("")
+        self.page_desc.setObjectName("PageDesc")
+        self.page_desc.setWordWrap(True)
+        left.addWidget(self.page_title)
+        left.addWidget(self.page_desc)
+        bar.addLayout(left, 1)
 
         self.search = QtWidgets.QLineEdit()
         self.search.setObjectName("Search")
         self.search.setPlaceholderText("搜索工具 · 按 / 聚焦")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(280)
+        self.search.setFixedWidth(260)
         self.search.textChanged.connect(self.apply_filter)
-        head.addWidget(self.search, 0, QtCore.Qt.AlignVCenter)
-        return head
+        bar.addWidget(self.search, 0, QtCore.Qt.AlignVCenter)
+        return bar
 
-    def _hrule(self):
-        line = QtWidgets.QFrame()
-        line.setObjectName("Separator")
-        line.setFixedHeight(1)
-        return line
-
-    def _build_sections(self):
-        groups = []
-        for tool in self.tools:
-            if not groups or groups[-1][0] != tool["group"]:
-                groups.append((tool["group"], []))
-            groups[-1][1].append(tool)
-
-        for name, tools in groups:
-            section = QtWidgets.QWidget()
-            lay = QtWidgets.QVBoxLayout(section)
-            lay.setContentsMargins(0, 0, 0, 0)
-            lay.setSpacing(8)
-
-            label = QtWidgets.QLabel(name.upper())
-            label.setObjectName("GroupTitle")
-            lay.addWidget(label)
-
+    def _build_pages(self):
+        self.pages = {}
+        self.group_cards = {}
+        for group in self.groups:
+            page = QtWidgets.QWidget()
+            lay = QtWidgets.QVBoxLayout(page)
+            lay.setContentsMargins(0, 4, 6, 4)
+            lay.setSpacing(0)
+            scroll = QtWidgets.QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+            inner = QtWidgets.QWidget()
+            inner_lay = QtWidgets.QVBoxLayout(inner)
+            inner_lay.setContentsMargins(0, 0, 0, 8)
             grid = CardGrid()
+            inner_lay.addWidget(grid)
+            inner_lay.addStretch(1)
+            scroll.setWidget(inner)
+            lay.addWidget(scroll)
+
             cards = []
-            for tool in tools:
+            for tool in self.tools:
+                if tool["group"] != group:
+                    continue
                 card = ToolCard(tool)
                 card.run_requested.connect(self.on_run)
                 card.stop_requested.connect(self.on_stop)
@@ -575,18 +772,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.cards[tool["id"]] = card
                 cards.append(card)
             grid.set_cards(cards)
-            lay.addWidget(grid)
-            section.grid = grid
-            section.cards = cards
-            self.body_layout.addWidget(section)
-
-        self.body_layout.addStretch(1)
+            self.group_cards[group] = cards
+            self.pages[group] = page
+            self.stack.addWidget(page)
 
     def _build_output(self):
         box = QtWidgets.QFrame()
         box.setObjectName("OutputBox")
         lay = QtWidgets.QVBoxLayout(box)
-        lay.setContentsMargins(12, 8, 12, 10)
+        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(6)
 
         bar = QtWidgets.QHBoxLayout()
@@ -598,12 +792,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.out_meta.setObjectName("CardScript")
         bar.addWidget(self.out_meta)
         bar.addStretch(1)
-
         refresh = QtWidgets.QPushButton("刷新")
+        refresh.setObjectName("Secondary")
         refresh.setCursor(QtCore.Qt.PointingHandCursor)
         refresh.clicked.connect(self.reload_output)
         bar.addWidget(refresh)
         close = QtWidgets.QPushButton("关闭")
+        close.setObjectName("Ghost")
         close.setCursor(QtCore.Qt.PointingHandCursor)
         close.clicked.connect(lambda: box.hide())
         bar.addWidget(close)
@@ -613,12 +808,40 @@ class MainWindow(QtWidgets.QMainWindow):
         self.out_view.setObjectName("Output")
         self.out_view.setReadOnly(True)
         self.out_view.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
-        self.out_view.setMinimumHeight(180)
-        self.out_view.setMaximumHeight(320)
+        self.out_view.setMinimumHeight(170)
+        self.out_view.setMaximumHeight(300)
         lay.addWidget(self.out_view)
         return box
 
-    # ---------- 行为 ----------
+    # ---------- 主题 ----------
+
+    def apply_theme(self):
+        tokens = TOKENS["dark" if self._dark else "light"]
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(build_qss(tokens))
+        self.sidebar.set_theme_label(self._dark)
+        palette = self.palette()
+        palette.setColor(QtGui.QPalette.Window, QtGui.QColor(tokens["bg"]))
+        palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor(tokens["fg"]))
+        self.setPalette(palette)
+
+    def toggle_theme(self):
+        self._dark = not self._dark
+        self.apply_theme()
+
+    # ---------- 交互 ----------
+
+    def show_group(self, group):
+        if self.search.text().strip():
+            self.search.clear()
+        page = self.pages.get(group)
+        if page is None:
+            return
+        self.stack.setCurrentWidget(page)
+        self.page_title.setText(group)
+        self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+        self.sidebar.select(group)
 
     def on_run(self, key, extra):
         try:
@@ -654,6 +877,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.output_key:
             return
         lines = core.output_of(self.output_key)
+        self._out_lines = len(lines)
         self.out_view.setPlainText("\n".join(lines) if lines else "（还没有输出）")
         self.out_meta.setText("{} 行".format(len(lines)))
         bar = self.out_view.verticalScrollBar()
@@ -670,28 +894,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def apply_filter(self, text):
         q = text.strip().lower()
-        for i in range(self.body_layout.count()):
-            item = self.body_layout.itemAt(i)
-            section = item.widget() if item else None
-            if section is None or not hasattr(section, "cards"):
-                continue
-            visible = []
-            for card in section.cards:
-                t = card.tool
-                hay = " ".join((t["title"], t["desc"], t["script"], t["group"])).lower()
-                hit = (not q) or (q in hay)
-                card.setVisible(hit)
-                if hit:
-                    visible.append(card)
-            section.grid.set_cards(visible)
-            section.setVisible(bool(visible))
+        if not q:
+            # 回到当前组
+            for group, cards in self.group_cards.items():
+                self.pages[group].findChild(CardGrid).set_cards(cards)
+            current = self.stack.currentWidget()
+            for group, page in self.pages.items():
+                if page is current:
+                    self.page_title.setText(group)
+                    self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+                    break
+            self.sidebar.show()
+            return
+
+        matched = []
+        for tool in self.tools:
+            hay = " ".join((tool["title"], tool["desc"], tool["script"],
+                            tool["group"])).lower()
+            if q in hay:
+                matched.append(self.cards[tool["id"]])
+
+        # 用当前页承载搜索结果，其余页清空，避免控件在多个布局间反复搬
+        current = self.stack.currentWidget()
+        grid = current.findChild(CardGrid)
+        for group, page in self.pages.items():
+            if page is not current:
+                page.findChild(CardGrid).set_cards([])
+        grid.set_cards(matched)
+        self.page_title.setText("搜索结果")
+        self.page_desc.setText("“{}” 命中 {} 个工具".format(text.strip(), len(matched)))
+        if not matched:
+            self.page_desc.setText("“{}” 没有匹配的工具".format(text.strip()))
 
     def toast(self, text, bad=False):
-        bar = self.statusBar()
-        bar.setStyleSheet(
-            "QStatusBar { background: #161b22; color: %s; border-top: 1px solid #21262d; }"
-            % ("#ffb4ae" if bad else "#8b949e"))
-        bar.showMessage(text, 4000)
+        self.status_text.setText(text)
+        tokens = TOKENS["dark" if self._dark else "light"]
+        color = tokens["bad"] if bad else tokens["fg2"]
+        self.status_text.setStyleSheet("color: {};".format(color))
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Slash and not self.search.hasFocus():
@@ -709,34 +948,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("LaTeX 笔记工具集")
+    app.setApplicationName("LaTeX 工具箱")
     app.setStyle("Fusion")
-    font = QtGui.QFont("Microsoft YaHei UI", 9)
+    font = QtGui.QFont("Segoe UI Variable Text", 9)
+    font.setFamilies(["Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI"])
     app.setFont(font)
-    app.setStyleSheet(QSS)
 
     win = MainWindow()
     win.show()
     return app.exec()
-
-
-def _report_crash(exc):
-    """pythonw 启动时没有 stderr，异常要落盘再弹窗，否则表现成「双击没反应」。"""
-    import traceback
-    text = traceback.format_exc()
-    log = Path(__file__).with_name("_panel_error.log")
-    try:
-        with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
-            fh.write(text + "\n")
-    except OSError:
-        pass
-    try:
-        QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-        QtWidgets.QMessageBox.critical(
-            None, "面板启动失败",
-            text[-1500:] + "\n\n已写入 " + str(log))
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":
@@ -745,5 +965,18 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except BaseException as exc:  # noqa: BLE001 —— 兜底只为留下痕迹
-        _report_crash(exc)
+        import traceback
+        text = traceback.format_exc()
+        log = Path(__file__).with_name("_panel_error.log")
+        try:
+            with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
+                fh.write(text + "\n")
+        except OSError:
+            pass
+        try:
+            QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+            QtWidgets.QMessageBox.critical(
+                None, "面板启动失败", text[-1500:] + "\n\n已写入 " + str(log))
+        except Exception:
+            pass
         sys.exit(1)
