@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import secrets
 import threading
+import time
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
@@ -15,6 +16,12 @@ import workbench_daily as daily
 from workbench_store import BookStore, Conflict, StoreError, HASH
 
 LIMIT = 65536
+#: 只读展示的许可缓存时长（秒）。写操作不受影响，始终实时核验。
+PERMISSION_TTL = 2.0
+#: 目录快照缓存时长（秒）；POST 成功后立即失效，不影响保存后的读回
+CATALOG_TTL = 2.0
+#: 同时处理的请求上限，超出直接 503，避免一次刷新把线程数打满
+CONCURRENCY = 16
 
 
 class InputError(ValueError):
@@ -43,6 +50,16 @@ class Server(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(32)
         self.session_id = secrets.token_hex(16)
         self.changes = daily.Changes(self.root, ro.discover)
+        # 只读展示用的许可缓存：(单调时间, allowed, books)
+        # 每次请求都重扫整个 root 太贵；写操作不走缓存，仍然实时核验。
+        self._perm_cache = None
+        self._perm_lock = threading.Lock()
+        # 目录快照缓存：一次页面加载会多次请求 /data，全量扫描不必重复做。
+        # POST 成功后立刻失效，保存后读回不会拿到旧快照。
+        self._catalog_cache = None
+        self._catalog_lock = threading.Lock()
+        # 并发上限：ThreadingHTTPServer 默认每连接一线程，浏览器一次刷新就能开十几个
+        self._slots = threading.BoundedSemaphore(CONCURRENCY)
         super().__init__(('127.0.0.1', port), Handler)
         self.origin = 'http://127.0.0.1:' + str(self.server_port)
         self.host = '127.0.0.1:' + str(self.server_port)
@@ -55,13 +72,35 @@ class Server(ThreadingHTTPServer):
         validator = getattr(self, 'write_validator', None)
         if validator is None:
             return self.allow_write, self.write_books
+        now = time.monotonic()
+        with self._perm_lock:
+            cached = self._perm_cache
+            if cached is not None and now - cached[0] < PERMISSION_TTL:
+                return cached[1], set(cached[2])
         try:
             allowed, books = validator()
-            return allowed, set(books)
         except (ValueError, OSError):
-            return False, set()
+            allowed, books = False, set()
+        with self._perm_lock:
+            self._perm_cache = (now, allowed, frozenset(books))
+        return allowed, set(books)
 
     def catalog(self):
+        now = time.monotonic()
+        with self._catalog_lock:
+            cached = self._catalog_cache
+            if cached is not None and now - cached[0] < CATALOG_TTL:
+                return cached[1]
+        data = self._build_catalog()
+        with self._catalog_lock:
+            self._catalog_cache = (now, data)
+        return data
+
+    def invalidate_catalog(self):
+        with self._catalog_lock:
+            self._catalog_cache = None
+
+    def _build_catalog(self):
         allowed, books = self.effective_permission()
         data = ro.scan(self.root)
         data['audit_completed'] = True
@@ -132,6 +171,20 @@ class Handler(BaseHTTPRequestHandler):
         self.dispatch(True)
 
     def dispatch(self, post):
+        # 每连接一线程，浏览器一次刷新就能并发十几个；超出上限直接 503
+        if not self.server._slots.acquire(blocking=False):
+            try:
+                self.reply(503, {'error': '并发请求过多，请稍后重试'})
+            except (ConnectionError, BrokenPipeError, OSError):
+                pass
+            self.close_connection = True
+            return
+        try:
+            self._dispatch_inner(post)
+        finally:
+            self.server._slots.release()
+
+    def _dispatch_inner(self, post):
         try:
             self.guard(post)
             url = urlsplit(self.path)
@@ -301,6 +354,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.read_summary(args['scope']) if store.path('Materials/workbench/summaries.md').is_file() else {'missing': True}
             else:
                 result = store.list_backups()
+            if post:
+                # 写成功即失效目录快照，避免保存后读回拿到旧数据
+                self.server.invalidate_catalog()
             self.reply(200, result)
         except (ConnectionError, BrokenPipeError):
             # 页面关闭或取消请求后连接已断开，不再尝试向同一连接发送错误响应。

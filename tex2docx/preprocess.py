@@ -91,39 +91,47 @@ def collect_envs(sty_text):
 
 
 def number_theorems(text, thm_envs):
-    """按节给定理编号并写成静态文本，同时收集 {label: 编号}。
+    """按章节给定理编号并写成静态文本，同时收集 {label: 编号}。
 
     \\begin{theorem}{谱定理}{thm:spec} -> **定理 1.1（谱定理）**\\label{thm:spec}
+
+    计数边界不止 `\\section`：只用 `\\chapter` 或 `\\subsection` 组织正文的笔记，
+    原来会把所有定理都算进同一节。带星号的标题（导引 / 小结）不推进编号。
     """
     alt = "|".join(re.escape(e) for e in thm_envs)
     token = re.compile(
-        r"(\\section\*?\{[^}]*\})"
-        r"|\\begin\{(" + alt + r")\}\s*\{([^{}]*)\}\s*\{([^{}]*)\}"
-        r"|\\begin\{(" + alt + r")\}")
-    state = {"sec": 0, "cnt": 0}
+        r"\\(?P<level>chapter|section|subsection)(?P<star>\*?)\{[^}]*\}"
+        r"|\\begin\{(?P<env>" + alt + r")\}\s*\{(?P<title>[^{}]*)\}\s*\{(?P<label>[^{}]*)\}"
+        r"|\\begin\{(?P<bare>" + alt + r")\}")
+    order = ("chapter", "section", "subsection")
+    state = {"chapter": 0, "section": 0, "subsection": 0, "cnt": 0}
     labels = {}
 
+    def prefix():
+        parts = [str(state[lv]) for lv in order if state[lv]]
+        return ".".join(parts) if parts else "0"
+
     def repl(m):
-        if m.group(1):
-            state["sec"] += 1
-            state["cnt"] = 0
-            return m.group(1)
-        if m.group(5):
+        level = m.group("level")
+        if level:
+            if not m.group("star"):
+                state[level] += 1
+                for deeper in order[order.index(level) + 1:]:
+                    state[deeper] = 0
+                state["cnt"] = 0
+            return m.group(0)
+        env = m.group("bare") or m.group("env")
+        state["cnt"] += 1
+        num = f"{prefix()}.{state['cnt']}"
+        cn = thm_envs.get(env, FALLBACK_CN.get(env, env))
+        if m.group("bare"):
             # 无参 \begin{env}：也补上编号并转成静态文本，
             # 否则后面的 \end{env} 会被统一删掉，留下孤立的 \begin
-            env = m.group(5)
-            state["cnt"] += 1
-            num = f'{state["sec"]}.{state["cnt"]}'
-            cn = thm_envs.get(env, FALLBACK_CN.get(env, env))
             return "\n\n" + f"**{cn} {num}**" + "\\quad "
-        env = m.group(2)
-        title = m.group(3).strip()
-        label = m.group(4).strip()
-        state["cnt"] += 1
-        num = f'{state["sec"]}.{state["cnt"]}'
+        title = m.group("title").strip()
+        label = m.group("label").strip()
         if label:
             labels[label] = num
-        cn = thm_envs.get(env, FALLBACK_CN.get(env, env))
         head = f"**{cn} {num}**" + (f"（{title}）" if title else "")
         tail = f"\\label{{{label}}}" if label else ""
         return "\n\n" + head + "\\quad " + tail
@@ -288,7 +296,8 @@ def main():
     text, n_resolved = resolve_refs(text, labels)
     text, n_noise = drop_noise(text)
 
-    out = args.output or re.sub(r"\.tex$", "", os.path.basename(args.tex)) + "_flat.tex"
+    out = args.output or os.path.join(
+        base, re.sub(r"\.tex$", "", os.path.basename(args.tex)) + "_flat.tex")
     with open(out, "w", encoding="utf-8", newline="") as f:
         f.write(text)
 

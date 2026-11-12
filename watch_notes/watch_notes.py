@@ -44,6 +44,7 @@ LOG_DIR = TOOL_DIR / "_logs"
 
 DEFAULT_INTERVAL = 300      # 检测间隔（秒）
 DEFAULT_PRUNE_INTERVAL = 900  # 删历史间隔（秒）
+MIN_INTERVAL = 10           # 下限：再小就是空转，每次都跑 git 只会把 CPU 打满
 GIT_TIMEOUT = 60
 
 _GIT_CANDIDATES = (
@@ -423,7 +424,7 @@ def interactive():
             return default
         try:
             v = int(raw)
-            return v if v > 0 else default
+            return max(MIN_INTERVAL, v) if v > 0 else default
         except ValueError:
             return default
 
@@ -451,9 +452,9 @@ def parse_args(argv=None):
     p.add_argument("--dir", help="监测目录（绝对路径或 LaTeX_Notes 下仓库名）")
     p.add_argument("--list", action="store_true", help="列出可监测仓库后退出")
     p.add_argument("--interval", type=int, default=DEFAULT_INTERVAL,
-                   help="检测间隔秒数（默认 %(default)s）")
+                   help="检测间隔秒数（默认 %(default)s，最少 {}）".format(MIN_INTERVAL))
     p.add_argument("--prune-interval", type=int, default=DEFAULT_PRUNE_INTERVAL,
-                   help="删历史间隔秒数（默认 %(default)s）")
+                   help="删历史间隔秒数（默认 %(default)s，最少 {}）".format(MIN_INTERVAL))
     p.add_argument("--fresh", action="store_true",
                    help="忽略上次状态，重新开始")
     p.add_argument("--once", action="store_true", help="只跑一轮后退出")
@@ -478,7 +479,11 @@ def main(argv=None):
         return interactive()
 
     repo = resolve_repo(args.dir)
-    return run_loop(repo, args.interval, args.prune_interval,
+    interval = max(MIN_INTERVAL, args.interval)
+    prune = max(MIN_INTERVAL, args.prune_interval)
+    if (interval, prune) != (args.interval, args.prune_interval):
+        print("  间隔过小，已按 {} 秒起算（再小就是空转）".format(MIN_INTERVAL))
+    return run_loop(repo, interval, prune,
                     args.fresh, args.once, args.no_push,
                     log_path_for(repo))
 

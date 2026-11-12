@@ -104,6 +104,9 @@ DEFAULTS = {
         "mode": "subtitles",
         "subtitle_retries": "2",
         "keep_audio": "true",
+        # 默认不借用日常浏览器的登录态（文档承诺的行为）：
+        # 只在专用 profile 导出 cookie 文件后使用它。要借用须显式打开。
+        "use_browser_cookies": "false",
     },
 }
 
@@ -391,6 +394,12 @@ def _write_netscape(cookies: list) -> int:
 # --------------------------------------------------------------------------- #
 # 探测字幕
 # --------------------------------------------------------------------------- #
+#: 是否允许直接读日常浏览器的 cookie。文档承诺「不借用」，
+#: 所以默认关闭；只有配置 `[download] use_browser_cookies = true`
+#: 或命令行 `--use-browser-cookies` 才打开。
+ALLOW_BROWSER_COOKIES = False
+
+
 def ydl_opts(nocookie: bool, browser: str, cookies: str | None, quiet: bool) -> dict:
     opts = {
         "quiet": quiet,
@@ -407,7 +416,7 @@ def ydl_opts(nocookie: bool, browser: str, cookies: str | None, quiet: bool) -> 
     }
     if cookies:
         opts["cookiefile"] = cookies
-    elif not nocookie:
+    elif not nocookie and ALLOW_BROWSER_COOKIES:
         opts["cookiesfrombrowser"] = (browser,)
     return opts
 
@@ -1002,8 +1011,21 @@ def process(url: str, *, cp: configparser.ConfigParser, all_parts: bool = False,
         state["collections"][collection["id"]] = {
             "title": collection["title"], "episode_ids": known,
             "selected_ids": [e["id"] for e in episodes]}
-        retry_ids = {key for key, entry in state["episodes"].items()
-                     if entry.get("status") in ("failed", "pending")}
+        retry_ids = set()
+        for key, entry in state["episodes"].items():
+            status = entry.get("status")
+            if status in ("failed", "pending"):
+                retry_ids.add(key)
+            elif status == "success":
+                # 产物被删/被清空也算「待补」：只看状态会永远补不回来
+                saved = entry.get("path") or f"episodes/{key}/transcript.txt"
+                try:
+                    p = relative_output(root, saved)
+                    present = p.is_file() and p.stat().st_size > 0
+                except (ValueError, OSError):
+                    present = False   # 路径本身坏掉，同样按待补处理
+                if not present:
+                    retry_ids.add(key)
         for episode in episodes:
             key = episode["id"]
             if only_failed and key not in state["episodes"]:
@@ -1405,7 +1427,10 @@ def interactive(cp) -> int:
 # 命令行
 # --------------------------------------------------------------------------- #
 def main() -> int:
+    global ALLOW_BROWSER_COOKIES
     cp = load_conf()
+    ALLOW_BROWSER_COOKIES = cp.getboolean(
+        "download", "use_browser_cookies", fallback=False)
 
     # 无参数 → 交互面板（从总面板进来就是这条路）
     argv = sys.argv[1:]
@@ -1431,6 +1456,8 @@ def main() -> int:
     ap.add_argument("--compute-type", default=None)
     ap.add_argument("--cookies", default=None, help="Netscape cookie 文件")
     ap.add_argument("--no-cookies", action="store_true", help="匿名探测")
+    ap.add_argument("--use-browser-cookies", action="store_true",
+                    help="允许直接读日常浏览器 cookie（默认只认专用 profile 导出的 cookie 文件）")
     ap.add_argument("--lang", default=None, help="指定字幕语言码，如 ai-zh")
     ap.add_argument("--force-whisper", action="store_true", help="忽略字幕，强制转写；已有成功集仍跳过，重做需 --refresh")
     ap.add_argument("--single", action="store_true", help="只处理当前视频；无 p 的BV选择第1P，不展开所属合集")
@@ -1444,6 +1471,9 @@ def main() -> int:
     ap.add_argument("--status", action="store_true", help="显示环境与模型状态")
     ap.add_argument("--login", action="store_true", help="扫码登录 B站")
     args = ap.parse_args()
+
+    if args.use_browser_cookies:
+        ALLOW_BROWSER_COOKIES = True
 
     if args.export_to and not args.export_collection:
         ap.error("--export-to 必须与 --export-collection 同用")

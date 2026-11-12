@@ -377,20 +377,33 @@ def save_extract(data, path):
 # ================================================================ 符号解析
 
 def parse_symbols(sty_path):
-    """返回 {命令名: (原行, 代码, 注释)}，范围 [模块 VI] 到 [模块 VII]。"""
+    """返回 {命令名: (原行, 代码, 注释)}，范围 [模块 VI] 到 [模块 VII]。
+
+    定义体写成多行（`\\newcommand{\\x}[2]{%` 换行续写）时整段收集：原行用换行
+    连接、代码取各行去注释后的拼接。只认首行的话，跨行定义的后半段会被当成
+    无主残骸，比对时一律误报「内容有差异」。
+    """
     text = read_text(sty_path)
     start = text.find(SEC_START)
     seg = text[start:] if start != -1 else text
     end = seg.find(SEC_END)
     if end != -1:
         seg = seg[:end]
+    lines = seg.splitlines()
     out = {}
-    for line in seg.splitlines():
-        m = DEF_RE.match(line)
+    i = 0
+    while i < len(lines):
+        m = DEF_RE.match(lines[i])
         if not m:
+            i += 1
             continue
-        code, comment = split_comment(line)
-        out[m.group(1)] = (line.rstrip(), code, comment)
+        j = definition_end(lines, i)
+        block = lines[i:j]
+        _, comment = split_comment(lines[i])
+        raw = "\n".join(ln.rstrip() for ln in block)
+        code = "\n".join(split_comment(ln)[0].rstrip() for ln in block)
+        out[m.group(1)] = (raw, code, comment)
+        i = j
     return out
 
 
@@ -768,13 +781,18 @@ def insert_into_symbol_lib(sty_path, new_lines, replace_map=None, section=None):
             if m and m.group(1) in replace_map:
                 keep = "\r\n" if lines[i].endswith("\r\n") else "\n"
                 blk_end = definition_end(lines, i)
-                lines[i:blk_end] = [replace_map[m.group(1)] + keep]
-                end -= (blk_end - i - 1)
-                i += 1
+                # 新定义本身也可能是多行：拆成多行元素，后面的行号才不跑偏
+                repl = replace_map[m.group(1)].splitlines() or [""]
+                lines[i:blk_end] = [r + keep for r in repl]
+                end += len(repl) - (blk_end - i)
+                i += len(repl)
                 continue
             i += 1
     eol = "\r\n" if "\r\n" in text else "\n"
-    payload = [(l.rstrip("\r\n") + eol) for l in new_lines]
+    payload = []
+    for item in new_lines:
+        for piece in item.splitlines() or [""]:
+            payload.append(piece + eol)
 
     if section and section[0] == "num" and payload:
         marks = _section_marks(lines, start, end)

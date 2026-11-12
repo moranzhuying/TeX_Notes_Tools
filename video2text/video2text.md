@@ -147,6 +147,7 @@ python video2text.py --login                   # 扫码登录
 | `whisper` | `language` | 转写语言；留空自动识别 |
 | `whisper` | `prompt` | **注入的领域术语，对专业词识别影响很大** |
 | `download` | `browser` | 扫码登录用的浏览器通道 |
+| `download` | `use_browser_cookies` | 是否直接读日常浏览器 cookie（默认 false；命令行 `--use-browser-cookies` 等价） |
 | `download` | `mode` | subtitles（默认）/ auto / whisper |
 | `download` | `subtitle_retries` | 字幕探测与下载额外重试次数，0–5 |
 | `download` | `keep_audio` | 转写后是否保留音频 |

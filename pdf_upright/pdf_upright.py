@@ -329,6 +329,16 @@ def run_convert(rows, outdir=None, assume_yes=False, ccw=False):
     if not targets:
         print("  没有需要转正的页面。")
         return 0
+    out_root = None
+    if outdir:
+        out_root = Path(outdir).resolve()
+        # -o 的语义是「原件不动」；指到源目录就会直接覆盖原件，等于悄悄改成就地模式
+        clash = [Path(f) for f in targets
+                 if (out_root / Path(f).name).resolve() == Path(f).resolve()]
+        if clash:
+            print(f"  ✗ 输出目录就是源目录，会覆盖原件：{clash[0].parent}")
+            print("    -o 表示「原件不动」，请换一个输出目录；要就地覆盖就别传 -o。")
+            return 0
     if not assume_yes:
         where = outdir or "就地覆盖原文件（原件备份到临时目录）"
         ans = input(f"\n  转换这 {len(targets)} 份？{where} [y/N] ").strip().lower()

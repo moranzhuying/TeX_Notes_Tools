@@ -101,6 +101,20 @@ def show_menu():
     print("=" * 64)
 
 
+def split_args(text):
+    """按 Windows 习惯拆附加参数：反斜杠是路径分隔符，不当转义符。
+
+    shlex 默认 posix 模式会把 `--out D:\\a\\b` 里的反斜杠吃掉，路径变成 `D:ab`。
+    posix=False 保留引号，这里再手工去掉成对的引号。
+    """
+    try:
+        parts = shlex.split(text, posix=False)
+    except ValueError as e:
+        raise ValueError(f"附加参数写法有误：{e}") from e
+    return [p[1:-1] if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'" else p
+            for p in parts]
+
+
 def run(item):
     """执行菜单项。返回 False 表示无需等待回车。"""
     _no, _title, rel, mode, _grp = item
@@ -112,7 +126,7 @@ def run(item):
     args = [sys.executable, str(script)]
     try:
         if mode.startswith(("参数:", "后台:")):
-            args += shlex.split(mode.split(":", 1)[1])
+            args += split_args(mode.split(":", 1)[1])
         if mode == "后台" or mode.startswith("后台:"):
             subprocess.Popen(args, cwd=str(script.parent))
             print("  已在后台启动，本面板可继续使用。")

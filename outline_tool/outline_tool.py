@@ -231,7 +231,7 @@ def export_note(note):
         d = 1 + nn.tree_depth(kids)
         if d != depth:
             warn.append(f"{Path(srel).name} 只有 {d} 层（其余分支 {depth} 层），"
-                        f"按占位空节点处理")
+                        f"导出时该分支按现有深度结束，不补空标题")
 
     top_cmd = tops[0][0][0] if tops[0][0] else ""
     if not top_cmd:
@@ -581,6 +581,12 @@ def main():
         """剩下的自由参数（要剔掉被各选项吃掉的值，否则会把它当成输出路径）。"""
         consumed = {v for v in (opt(n) for n in OPT_NAMES) if v is not None}
         return [a for a in argv if not a.startswith("--") and a not in consumed]
+
+    # 选项后缺值时不能把 None 往下传：那会掉进交互提问或抛 TypeError
+    for name in OPT_NAMES:
+        if name in argv and opt(name) is None:
+            print(f"✗ {name} 后面缺少参数值")
+            return 1
 
     if "--check" in argv:
         # 命令行一律不弹提问：只给结论与改法；加 --write-levels 才动 md

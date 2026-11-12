@@ -146,6 +146,15 @@ def _verified_items(root, state, selected):
     return verified, failed
 
 
+def _name_claimed_elsewhere(index, collection_id, name):
+    """该目录名是否已被别的合集占用（含历史名）。"""
+    for other, names in index["history"].items():
+        if other != collection_id and name in names:
+            return True
+    return any(other != collection_id and other_name == name
+               for other, other_name in index["directories"].items())
+
+
 def _check_destination(root, directory, plans, index, collection_id):
     existing = {}
     for item in root.iterdir():
@@ -156,7 +165,12 @@ def _check_destination(root, directory, plans, index, collection_id):
     old = index["directories"].get(collection_id)
     found = existing.get(directory.casefold())
     if found is not None:
-        if found.name != directory or old != directory:
+        if found.name != directory:
+            raise FileExistsError(f"未登记或大小写冲突的标题目录：{found}")
+        history = index["history"].get(collection_id, [])
+        if old != directory and (found.name not in history
+                                 or _name_claimed_elsewhere(index, collection_id, found.name)):
+            # 标题改回旧名时，旧目录还在盘上；只有确属本合集的历史目录才允许复用
             raise FileExistsError(f"未登记或大小写冲突的标题目录：{found}")
         _plain(found, directory=True)
     elif old == directory:

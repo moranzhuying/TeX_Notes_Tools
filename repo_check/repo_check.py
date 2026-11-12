@@ -29,9 +29,11 @@ MANAGER_CONF = TOOLS_DIR / "manager" / "manager.conf"
 
 AREAS = {"notes": "LaTeX_Notes", "template": "Template", "tools": "Tools"}
 
-# 不该进版本控制的编译产物
-AUX_PAT = (r".*\.(aux|log|out|toc|lof|lot|fls|fdb_latexmk|synctex\.gz|xdv|listing"
-           r"|nav|snm|vrb|bbl|blg|dvi)$")
+# 不该进版本控制的编译产物（与 clean_aux.AUX_EXT 保持同一份清单）
+AUX_PAT = (r".*\.(aux|log|out|toc|lof|lot|fls|fdb_latexmk|synctex|synctex\.gz|xdv|listing"
+           r"|nav|snm|vrb|bbl|blg|dvi|idx|ind|ilg|run\.xml)$"
+           # 编译中被占用的 synctex 会带 (busy) 后缀，扩展名匹配不到它
+           r"|.*\.synctex\([a-z]+\)$")
 # 不该进版本控制的本机 / 运行档案
 LOCAL_PAT = r".*(\.conf$|\.cwl_source$|\.sensitive-words\.txt$|_extract\.json$|notes_tree\.json$|progress_marks\.json$|__pycache__)"
 

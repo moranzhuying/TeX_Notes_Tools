@@ -91,6 +91,43 @@
 * **`note_tools`**
     * `new_note` 改为容错导入，缺文件时只有「补导引与小结」不可用，其余功能照常。
 
+### 第三轮：剩余项收口
+
+把前两轮标注为「需重构 / 设计取舍 / 边缘场景」的项一并处理完。
+
+* **`symbols`：跨行定义整段解析**
+    * `parse_symbols` 原先只认定义首行，跨行定义（`\newcommand{\x}[2]{%` 换行续写）的后半段成为无主残骸：比对时误报差异，回填/替换只换掉首行、留下残体。改为按 `definition_end` 整段收集，`code` 取各行去注释后的拼接。
+    * `insert_into_symbol_lib` 的插入与替换按行拆分多行定义，行号不再因「一个元素含多行」而偏移，换行风格统一为文件自身的 EOL。
+* **`new_note`：预演、换行与命名**
+    * `--dry-run` 的「清理测试内容」原先扫的是尚未创建的目标目录，永远显示「（无）」。改为预演时扫模板。
+    * `strip_test_sections` / `rewrite_main_tex` 保留原换行风格，CRLF 文件不再被整体改成 LF；一行并列多个 `\input` 时逐个判断，不再漏删。
+    * `\title` / `\part{测试部分}` 匹配失败时明确告警（原先静默返回成功）。
+    * 笔记名拦 Windows 保留设备名（`CON`/`NUL`/`COM1`…）与尾部空格、句点。
+    * `levels` 连跳两层（如 `part` 直接接 `subsection`）给出提示。
+* **`video2text`：登录态、补做与改名**
+    * 默认不再直接读日常浏览器的 cookie —— 文档一直承诺「不借用」，实现却在无 cookie 文件时静默借用。改为配置 `[download] use_browser_cookies`（默认 false）或 `--use-browser-cookies` 显式开启。
+    * `--only-failed` 现在也补「标记成功但产物被删/被清空/路径损坏」的集，原先只看状态，产物丢了永远补不回来。
+    * `title_layout` 支持标题改回旧名：该目录确属本合集历史目录时复用，不再报「未登记或大小写冲突」。
+* **`progress`：缓存与并发**
+    * 只读展示的写许可核验加 2 秒缓存（原先每次请求都重扫整个 root、逐本校验永久 ID）；写操作仍实时核验。
+    * 目录快照加 2 秒缓存，POST 成功后立刻失效，保存后读回不拿旧数据。
+    * `ThreadingHTTPServer` 加并发上限（16），超限返回 503，一次刷新不再无限制开线程。
+* **`outline_tool` / `tex2docx`**
+    * 选项后缺值（`--check`、`--export`、`--from-text`、`--levels`）直接报错退出，不再掉进交互提问或抛 `TypeError`。
+    * 导出提示「按占位空节点处理」与实际行为不符，改为「按现有深度结束，不补空标题」。
+    * 定理编号的计数边界从只看 `\section` 扩展到 `\chapter` / `\section` / `\subsection`，带星号的标题不再推进编号。
+    * 中间文件默认写到主 tex 同目录（原先写到当前工作目录）。
+* **`git_setup`**
+    * 已有 `Host github.com` 段但没配 443 时，就地补 `HostName` / `Port`；原先再追加一段，而 ssh 只认第一个匹配段，第二段永不生效。已有 `Port 22` 也会改成 443。
+* **`repo_check`**
+    * 编译产物清单与 `clean_aux` 对齐，补 `.synctex`、`.idx`、`.ind`、`.ilg`、`.run.xml`，并识别 `main.synctex(busy)` 这类占用态文件。
+* **`pdf_upright`**
+    * `-o` 指向源目录时直接拒绝：该参数的语义是「原件不动」，指到源目录会静默覆盖原件。
+* **`launcher`**
+    * 附加参数改用 Windows 习惯拆分，`--out D:\a\b` 的反斜杠不再被 shlex 当转义符吃掉。
+* **`watch_notes`**
+    * `--interval` / 删历史间隔下限 10 秒，并给出提示，避免 `0` 造成忙循环。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**

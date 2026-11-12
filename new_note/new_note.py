@@ -201,6 +201,11 @@ def resolve_levels(spec):
     pos = [SECTION_CMDS.index(c) for c in cmds if c != "-"]
     if pos != sorted(pos) or len(set(pos)) != len(pos):
         raise OutlineError(f"层级命令顺序不对（应由外到内、不重复）：{', '.join(cmds)}")
+    # 跳过中间层属于合法写法（如 part → section），但连跳两层多半是笔误，提示一下
+    seq = [c for c in cmds if c != "-"]
+    for a, b in zip(seq, seq[1:]):
+        if SECTION_CMDS.index(b) - SECTION_CMDS.index(a) > 2:
+            print(f"  ! 层级跳跃：\\{a} 之后直接接 \\{b}，中间层级不会被使用")
     return cmds
 
 
@@ -666,13 +671,20 @@ def rewrite_main_tex(main_tex, name, chapters, top_cmd=None):
     """
     if not main_tex.is_file():
         return False
-    text = main_tex.read_text(encoding="utf-8")
+    # 保留原换行：text 模式读入会把 CRLF 变成 LF，写回就整文件改了行尾
+    raw_text = main_tex.read_text(encoding="utf-8", newline="")
+    eol = "\r\n" if "\r\n" in raw_text else "\n"
+    text = raw_text.replace("\r\n", "\n")
     # 标题里含 \textbf{}，必须贪婪匹配到行尾最后一个 }；
     # 用 lambda 作替换，避免 re 把转义反斜杠当组引用
     safe_name = latex_escape(name)
-    new = re.sub(r"\\title\{.*\}",
-                 lambda m: "\\title{\\Huge\\textbf{" + safe_name + "}}",
-                 text, count=1)
+    new, title_hits = re.subn(r"\\title\{.*\}",
+                              lambda m: "\\title{\\Huge\\textbf{" + safe_name + "}}",
+                              text, count=1)
+    if not title_hits:
+        print("  ! main.tex 中未找到 \\title{...}，标题未改写")
+    if "\\part{测试部分}" not in new:
+        print("  ! main.tex 中未找到 \\part{测试部分}，部分标题未改写")
     new = new.replace("\\part{测试部分}", "\\part{" + safe_name + "}")
 
     m = re.search(r"(\\mainmatter[ \t]*\n)(.*?)(\s*\\backmatter)", new, flags=re.S)
@@ -687,7 +699,13 @@ def rewrite_main_tex(main_tex, name, chapters, top_cmd=None):
         # 首行补一个空行；尾部的空行由末组（含 \backmatter）自带
         new = new[:m.start()] + m.group(1) + "\n" + "\n\n".join(groups) \
             + m.group(3) + new[m.end():]
+    elif chapters:
+        print("  ! main.tex 中未找到 \\mainmatter … \\backmatter 区间，正文主体未改写")
 
+    if eol != "\n":
+        new = new.replace("\n", eol)
+    if new == raw_text:
+        return True
     main_tex.write_text(new, encoding="utf-8", newline="")
     return True
 
@@ -1088,16 +1106,18 @@ def strip_test_sections(root, dry):
         return [str(p.relative_to(root)) for p in removed]
     for tex in root.rglob("*.tex"):
         try:
-            text = tex.read_text(encoding="utf-8")
+            # 保留原换行风格：text 模式会把 CRLF 读成 LF，写回时整文件被改成 LF
+            text = tex.read_text(encoding="utf-8", newline="")
         except OSError:
             continue
-        kept = []
-        for ln in text.splitlines(keepends=True):
-            m = re.search(r"\\input\{(.+?)\}", ln)
-            if m and test_re.search(m.group(1)):
-                continue
-            kept.append(ln)
-        new = re.sub(r"\n{3,}", "\n\n", "".join(kept))
+        eol = "\r\n" if "\r\n" in text else "\n"
+
+        def drop(m):
+            return "" if test_re.search(m.group(1)) else m.group(0)
+
+        # 一行里可能并列多个 \input，逐行只处理首个会漏删
+        new = re.sub(r"\\input\{([^{}]+)\}", drop, text)
+        new = re.sub(r"(?:[ \t]*\r?\n){3,}", eol + eol, new)
         if new != text:
             tex.write_text(new, encoding="utf-8", newline="")
     return [str(p.relative_to(root)) for p in removed]
@@ -1294,6 +1314,21 @@ def interactive():
 
 # ---------------------------------------------------------------- 主流程
 
+#: Windows 保留设备名：以这些名字建目录，系统会静默映射到设备，mkdir 报错或建出「看不见」的目录
+WIN_RESERVED_NAMES = ({"CON", "PRN", "AUX", "NUL"}
+                      | {f"COM{i}" for i in range(1, 10)}
+                      | {f"LPT{i}" for i in range(1, 10)})
+
+
+def bad_windows_name(name):
+    """Windows 下建目录会出问题的名字，返回原因；没问题返回空串。"""
+    if name.split(".")[0].upper() in WIN_RESERVED_NAMES:
+        return f"「{name}」是 Windows 保留设备名，不能用作目录名"
+    if name != name.rstrip(" ."):
+        return f"「{name}」以空格或句点结尾，Windows 会静默裁掉尾部字符"
+    return ""
+
+
 def run(name, template, target, do_push, tree, levels, dry,
         abbreviation=None, outline_text=None,
         with_intro=False, with_summary=False):
@@ -1306,6 +1341,10 @@ def run(name, template, target, do_push, tree, levels, dry,
         return 1
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_\-]*", name):
         print("✗ 笔记名建议用字母开头、仅含字母数字下划线连字符（会作为仓库名）")
+        return 1
+    bad = bad_windows_name(name)
+    if bad:
+        print(f"✗ {bad}")
         return 1
     if tree:
         bad = check_depth(tree, levels)
@@ -1340,7 +1379,8 @@ def run(name, template, target, do_push, tree, levels, dry,
             print(f"  {d}/")
 
     print("\n清理模板自带的测试内容：")
-    removed = strip_test_sections(target, dry)
+    # 预演时目标目录还没建，只能扫模板；否则这里永远显示「（无）」
+    removed = strip_test_sections(template if dry else target, dry)
     print("  （无）" if not removed else "\n".join(f"  已移除 {r}" for r in removed))
 
     print("\n调整 main.tex：")

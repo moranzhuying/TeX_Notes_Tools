@@ -46,6 +46,55 @@ def git(args, cwd=None):
     return run(["git"] + args, cwd=cwd)
 
 
+def ensure_github_443(content):
+    """确保 ~/.ssh/config 里的 github.com 走 ssh.github.com:443。
+
+    返回 (新内容, 状态)，状态为 'already' / 'patched' / 'appended'。
+    ssh 只认**第一个**匹配的 Host 段，已有 `Host github.com` 时再追加一段
+    是无效的（第二段永远不生效），所以必须就地补 HostName / Port。
+    """
+    lines = content.splitlines()
+    start = next((i for i, line in enumerate(lines)
+                  if re.fullmatch(r"\s*Host\s+github\.com\s*", line, flags=re.I)), None)
+    if start is None:
+        if not content:
+            return SSH_CONFIG_BLOCK, "appended"
+        sep = "\n" if content.endswith("\n") else "\n\n"
+        return content + sep + SSH_CONFIG_BLOCK, "appended"
+
+    end = next((j for j in range(start + 1, len(lines))
+                if re.match(r"\s*Host\s+", lines[j], flags=re.I)), len(lines))
+    block = lines[start:end]
+    fixed, changed = [], False
+    host_done = port_done = False
+    for line in block:
+        if re.match(r"\s*HostName\s+", line, flags=re.I):
+            host_done = True
+            if line.split()[-1].lower() != "ssh.github.com":
+                line = re.sub(r"(?i)(\s*HostName\s+)\S+", r"\1ssh.github.com", line)
+                changed = True
+        elif re.match(r"\s*Port\s+", line, flags=re.I):
+            port_done = True
+            if line.split()[-1] != "443":
+                line = re.sub(r"(?i)(\s*Port\s+)\S+", r"\g<1>443", line)
+                changed = True
+        fixed.append(line)
+
+    extra = []
+    if not host_done:
+        extra.append("    HostName ssh.github.com")
+    if not port_done:
+        extra.append("    Port 443")
+    if not extra and not changed:
+        return content, "already"
+    if extra:
+        fixed = [fixed[0]] + extra + fixed[1:]
+    result = "\n".join(lines[:start] + fixed + lines[end:])
+    if content.endswith("\n"):
+        result += "\n"
+    return result, "patched"
+
+
 def clear():
     """清屏，使画面只保留当前选项的内容（与其它工具保持一致）。"""
     try:
@@ -156,14 +205,15 @@ def config_ssh():
 
     cfg_file = ssh_dir / "config"
     content = cfg_file.read_text(encoding="utf-8", errors="replace") if cfg_file.is_file() else ""
-    if "ssh.github.com" in content:
+    new_content, state = ensure_github_443(content)
+    if state == "already":
         print("  SSH config 已指向 ssh.github.com:443 ✓")
     else:
         ans = input("  为 github.com 配置 443 端口？（国内网络通常需要）[y/N] ").strip().lower()
         if ans in ("y", "yes"):
-            with open(cfg_file, "a", encoding="utf-8", newline="") as f:
-                f.write(("\n" if content and not content.endswith("\n") else "") + SSH_CONFIG_BLOCK)
-            print("  ✓ 已写入 ~/.ssh/config")
+            cfg_file.write_text(new_content, encoding="utf-8", newline="")
+            print("  ✓ 已写入 ~/.ssh/config" if state == "appended"
+                  else "  ✓ 已在原有 Host github.com 段内补上 443")
 
     pub = key.with_suffix(".pub")
     if pub.is_file():
