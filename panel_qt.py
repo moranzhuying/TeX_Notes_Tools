@@ -224,7 +224,7 @@ GAP = 12
 
 #: 每个工具的图标（用彩色 emoji，不依赖字形码点，换机器也不会变方块）
 ICONS = {
-    "1": "⚙️", "2": "📚", "3": "🔤", "4": "🖥️",
+    "1": "🔀", "2": "📚", "3": "🔤", "4": "🖥️",
     "5": "➕", "6": "📋", "7": "📝", "8": "🧹",
     "9": "🔍", "10": "🛡️", "11": "🔗", "12": "⬆️",
     "13": "🎬", "14": "🧩", "15": "📄", "16": "👁️",
@@ -240,8 +240,14 @@ TOKENS = {
         "subtle": "rgba(255,255,255,0.06)", "subtle_hover": "rgba(255,255,255,0.10)",
         "nav_sel": "rgba(255,255,255,0.09)",
         "ok": "#6CCB5F", "warn": "#FCE100", "bad": "#FF99A4",
-        "field": "#1F1F1F", "icon_bg": "rgba(96,205,255,0.14)",
+        "field": "#1F1F1F",
+        # 图标块底色：实色而非半透明 —— 半透明底 + 淡色 emoji 在浅色主题下
+        # 整块发白，认不出是什么图标。
+        "icon_bg": "#0F4C75",
         "row_alt": "#23272D",
+        # 表头底色：必须不透明。半透明色在 windows11 样式下会被
+        # QHeaderView 当成「透明」并回落到系统色，浅色主题下就变黑底白字。
+        "head_bg": "#383838",
     },
     "light": {
         "bg": "#F3F3F3", "layer": "#EAEAEA", "card": "#FFFFFF",
@@ -251,8 +257,9 @@ TOKENS = {
         "subtle": "rgba(0,0,0,0.04)", "subtle_hover": "rgba(0,0,0,0.07)",
         "nav_sel": "rgba(0,0,0,0.06)",
         "ok": "#0F7B0F", "warn": "#9D5D00", "bad": "#C42B1C",
-        "field": "#FFFFFF", "icon_bg": "rgba(0,103,192,0.10)",
+        "field": "#FFFFFF", "icon_bg": "#B8D8F0",
         "row_alt": "#F5F6F8",
+        "head_bg": "#EFEFEF",
     },
 }
 
@@ -325,6 +332,7 @@ QFrame#Card[done="true"] {{ border-color: {warn}; }}
 QLabel#CardIcon {{
     background: {icon_bg};
     border-radius: 8px;
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI";
     font-size: 19px;
 }}
 QLabel#CardTitle {{ font-size: 13px; font-weight: 600; color: {fg}; }}
@@ -387,12 +395,17 @@ QTableWidget#ResultTable {{
 }}
 QTableWidget#ResultTable::item {{ padding: 5px 8px; border: none; }}
 QTableWidget#ResultTable::item:selected {{ background: {accent}; color: {accent_fg}; }}
+QHeaderView {{
+    background: {head_bg};
+    border: none;
+}}
 QHeaderView::section {{
-    background: {subtle}; color: {fg2};
-    padding: 6px 8px; border: none;
+    background: {head_bg}; color: {fg2};
+    padding: 6px 8px;
+    border: none; border-right: 1px solid {stroke};
     font-size: 11px; font-weight: 600;
 }}
-QTableCornerButton::section {{ background: {subtle}; border: none; }}
+QTableCornerButton::section {{ background: {head_bg}; border: none; }}
 
 /* ---------- 表单 ---------- */
 QLabel#FieldLabel {{ font-size: 12px; color: {fg2}; }}
@@ -523,6 +536,11 @@ class ToolCard(QtWidgets.QFrame):
         icon.setObjectName("CardIcon")
         icon.setFixedSize(40, 40)
         icon.setAlignment(QtCore.Qt.AlignCenter)
+        # 显式指定 emoji 字体：QSS 里的 font-family 会被 QLabel 的字体覆盖，
+        # 不显式设的话会落到默认的西文字体，彩色 emoji 就变 monochrome 了。
+        emoji_font = QtGui.QFont("Segoe UI Emoji", 17)
+        emoji_font.setFamilies(["Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI"])
+        icon.setFont(emoji_font)
         row.addWidget(icon, 0, QtCore.Qt.AlignTop)
 
         col = QtWidgets.QVBoxLayout()
@@ -677,9 +695,16 @@ class Sidebar(QtWidgets.QWidget):
         lay.addWidget(line)
         lay.addSpacing(6)
 
-        # 帮助与设置：和分组按钮同款，但不走 group_selected
+        # 「工具」与「其他」之间的分隔：让底部的帮助/设置不像是又一个分组
+        cap = QtWidgets.QLabel("其他")
+        cap.setObjectName("NavGroup")
+        lay.addWidget(cap)
+
+        # 帮助与设置：和分组按钮同款，但不走 group_selected。
+        # 不用 emoji —— ⚙️/🔧 在 Segoe UI Emoji 下分别是紫灰色齿轮和浅色扳手，
+        # 浅色主题里几乎看不见。纯文字更稳，换机器也不会变样。
         self.special_buttons = {}
-        for key, text in (("帮助", "❓  使用帮助"), ("设置", "⚙️  设置")):
+        for key, text in (("帮助", "使用帮助"), ("设置", "设置")):
             btn = QtWidgets.QPushButton(text)
             btn.setObjectName("NavBtn")
             btn.setCheckable(True)
@@ -690,28 +715,41 @@ class Sidebar(QtWidgets.QWidget):
             lay.addWidget(btn)
             self.special_buttons[key] = btn
 
-        self.theme_btn = QtWidgets.QPushButton("🌙  深色主题")
+        self.theme_btn = QtWidgets.QPushButton("深色主题")
         self.theme_btn.setObjectName("NavBtn")
         self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.theme_btn.clicked.connect(self.theme_toggled.emit)
         lay.addWidget(self.theme_btn)
 
     def select(self, group):
+        """选中某个分组按钮。
+
+        组按钮和特殊按钮（帮助/设置）分属两个 QButtonGroup，autoExclusive
+        不会互相取消，所以这里要手动把另一边清掉 —— 否则会出现
+        「核心工具」和「运行监测」同时显示选中态。
+        """
         btn = self.buttons.get(group)
         if btn is not None:
             btn.setChecked(True)
-            for other in self.special_buttons.values():
-                other.setChecked(False)
+        for other, other_btn in self.buttons.items():
+            if other != group:
+                other_btn.setChecked(False)
+        for other in self.special_buttons.values():
+            other.setChecked(False)
 
     def select_special(self, key):
+        """选中帮助或设置按钮，其余全部取消。"""
         btn = self.special_buttons.get(key)
         if btn is not None:
             btn.setChecked(True)
-            for other in self.buttons.values():
+        for other in self.special_buttons.values():
+            if other is not btn:
                 other.setChecked(False)
+        for other in self.buttons.values():
+            other.setChecked(False)
 
     def set_theme_label(self, dark):
-        self.theme_btn.setText("🌙  深色主题" if dark else "☀️  浅色主题")
+        self.theme_btn.setText("深色主题" if dark else "浅色主题")
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -950,6 +988,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.page_title.setText(tool["title"])
         # 工具页不放副标题：横线上面那行小字多余，留白反而更清爽
         self.page_desc.setText("")
+        # 侧栏高亮跟着工具所属的分组走，别停在「帮助」或「设置」上
+        group = tool.get("group")
+        if group:
+            self.sidebar.select(group)
 
     def close_panel(self):
         self._clear_detail()
@@ -957,6 +999,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stack.setCurrentWidget(self.pages[group])
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+        # 回到分组页，侧栏高亮也跟着回去
+        self.sidebar.select(group)
 
     def showEvent(self, event):
         super().showEvent(event)

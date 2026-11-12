@@ -151,6 +151,10 @@ class SettingsPage(QtWidgets.QWidget):
         if isinstance(widget, QtWidgets.QComboBox):
             widget.setFixedWidth(200)
             top.addWidget(widget, 0)
+        elif isinstance(widget, QtWidgets.QCheckBox):
+            # 复选框自带文字，固定宽度让各行的勾选框上下对齐
+            widget.setFixedWidth(260)
+            top.addWidget(widget, 0)
         else:
             top.addWidget(widget, 1)
         top.addStretch(1)
@@ -159,6 +163,8 @@ class SettingsPage(QtWidgets.QWidget):
             note = QtWidgets.QLabel(hint)
             note.setObjectName("StatusText")
             note.setWordWrap(True)
+            # 说明文字缩进到控件起点，跟控件左对齐
+            note.setContentsMargins(132, 0, 0, 0)
             lay.addWidget(note)
         box.layout().addWidget(wrap)
         return wrap

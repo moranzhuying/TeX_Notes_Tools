@@ -193,6 +193,13 @@
 * **全局异常兜底**
     * GUI 程序没有 stderr，未捕获的 Python 异常会被静默吞掉 —— 表现是「点了没反应、应用挂住」，极难查。`sys.excepthook` 落盘 `_panel_error.log` 并弹窗。
     * ⚠️ Qt 的信号槽回调里抛异常不会退出应用，事件循环照转，整个界面看着像卡死。写 Qt 代码时务必装这个钩子。
+* **修浅色主题下的显示问题**
+    * **表头黑底白字** —— QSS 里表头底色用了半透明 `rgba(...)`，而 windows11 样式对 `QHeaderView::section` 的半透明背景会回落到系统色（深）。改用不透明的专用色 `head_bg`（深 `#383838` / 浅 `#EFEFEF`），并给 `QHeaderView` 本身也设背景。
+    * **侧栏选中态不唯一** —— 组按钮与特殊按钮（帮助/设置）分属两个互斥组，`autoExclusive` 不跨组取消，会出现「核心工具」和「运行监测」同时高亮。改成显式清掉另一边。
+    * **工具页侧栏不跟随** —— 打开工具时侧栏停在「设置」上。现在指向工具所属分组，返回时回到来时的分组。
+    * **设置页复选框不对齐** —— `QCheckBox` 被拉伸、位置随文字长度漂移。改成固定宽度，说明文字缩进到控件起点。
+    * **卡片图标发白** —— 图标块底色是半透明淡蓝，emoji 的浅色笔画融进去了。改成实色底 + 显式指定 `Segoe UI Emoji` 字体（QSS 里的 `font-family` 会被 QLabel 字体覆盖，不显式设会落到西文字体，彩色 emoji 变 monochrome）。工具 1 的 ⚙ 换成 🔀 —— ⚙ 在 Segoe UI Emoji 里是淡紫灰色，浅色主题下看不见。
+    * **侧栏底部去 emoji** —— ⚙️/🔧/❓/🌙 在浅色主题下分别是紫灰齿轮、浅色扳手、深红问号、橙太阳，颜色不统一且部分看不清。改成纯文字「使用帮助 / 设置 / 深色主题」，上方加「其他」小标题分组。
 * **彻底不弹命令行窗口**
     * 工具内部调外部命令时全部加 `creationflags=CREATE_NO_WINDOW`（10 个脚本：git_setup / manager / new_note / note_tools / repo_check / check_sensitive / commit / video2text / pdf_upright / workbench_pdf）。**GUI 程序启动控制台子程序时，Windows 会新分配控制台并弹黑窗** —— 少这一层，exe 里跑工具就会闪黑框。
     * `note_tools.run_in_note` 改为捕获子脚本输出再转回自己的 stdout，否则子脚本的打印在面板里看不到。
