@@ -93,8 +93,13 @@ LATEX_KERNEL = {
 # ================================================================ 基础 IO
 
 def read_text(path):
-    with open(path, "r", encoding="utf-8", newline="") as fh:
-        return fh.read()
+    """读文本：优先 UTF-8（含 BOM），失败回退 GBK（Windows 记事本的 ANSI）。"""
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as fh:
+            return fh.read()
+    except UnicodeDecodeError:
+        with open(path, "r", encoding="gbk", errors="replace", newline="") as fh:
+            return fh.read()
 
 
 def write_text(path, text):
@@ -139,9 +144,13 @@ def norm(line):
     return " ".join(line.split())
 
 
-def backup(path, tag=None):
-    """备份文件。structure.sty 不做备份（按用户要求，其改动可随时由模板重新分发）。"""
-    if pathlib.Path(path).name == "structure.sty":
+def backup(path, tag=None, force=False):
+    """备份文件。
+
+    structure.sty 默认不备份（笔记端的可由模板重新分发）；
+    但模板自身是唯一真源，调用时须传 force=True 保留可回滚副本。
+    """
+    if not force and pathlib.Path(path).name == "structure.sty":
         return None
     name = f"{path.name}.bak-{tag or stamp()}"
     target = path.with_name(name)
@@ -769,7 +778,7 @@ def insert_into_symbol_lib(sty_path, new_lines, replace_map=None, section=None):
         idx = marks.index(hit)
         sec_end = marks[idx + 1][2] if idx + 1 < len(marks) else end
         defs = [i for i in range(hit[2], sec_end) if DEF_RE.match(lines[i])]
-        at = (max(defs) if defs else hit[2]) + 1
+        at = definition_end(lines, max(defs)) if defs else hit[2]
     elif section and section[0] == "new" and payload:
         at = end
         while at - 1 > start and lines[at - 1].lstrip().startswith("% ==="):
@@ -780,7 +789,7 @@ def insert_into_symbol_lib(sty_path, new_lines, replace_map=None, section=None):
         payload = [eol, f"% -------- {section[1]} --------" + eol] + payload
     else:
         defs = [i for i in range(start, end) if DEF_RE.match(lines[i])]
-        at = (max(defs) + 1) if defs else end
+        at = definition_end(lines, max(defs)) if defs else end
 
     if not payload:
         write_text(sty_path, "".join(lines))
@@ -1130,7 +1139,7 @@ def action_backfill(ctx):
     if not new_lines and not replace_map:
         print("  提取档案中的符号均已在模板中，无需回填。")
     else:
-        backup(ctx["template"])
+        backup(ctx["template"], force=True)
         ok = insert_into_symbol_lib(ctx["template"], new_lines, replace_map)
         if not ok:
             print("  ! 模板结构异常，已中止。")
@@ -1446,6 +1455,9 @@ def action_add(ctx):
         if raw.count("{") != raw.count("}"):
             print("  ! 花括号不配对，请重新输入。")
             continue
+        if has_bare_percent(raw):
+            print("  ! 定义里有未转义的 %（会把后面整行吞成注释），如需百分号请写 \\%。")
+            continue
         definition = raw.strip()
 
     comment = ask("注释", required=False)
@@ -1467,7 +1479,7 @@ def action_add(ctx):
     if not notes:
         print("  ! 未扫描到子文件夹，已中止。")
         return
-    backup(ctx["template"])
+    backup(ctx["template"], force=True)
     ok = insert_into_symbol_lib(
         ctx["template"],
         [] if overwrite else [line],
@@ -1601,7 +1613,7 @@ def cli_run(args, ctx):
         marker = f"合并自 {'、'.join(sorted({s for i in diff['additions'].values() for s in i['sources']}))}"
         block = [rewrite_comment(i["line"], marker) for i in diff["additions"].values()]
         repl = {k: rewrite_comment(v["line"], f"更新于 {today()}") for k, v in diff["comments"].items()}
-        backup(ctx["template"])
+        backup(ctx["template"], force=True)
         insert_into_symbol_lib(ctx["template"], block, repl)
         print(f"已回填：新增 {len(block)} 个，注释更新 {len(repl)} 处")
     if do_x:
@@ -1632,7 +1644,7 @@ def cli_run(args, ctx):
             kept.append(lines[i])
             i += 1
         if removed:
-            backup(ctx["template"])
+            backup(ctx["template"], force=True)
             write_text(ctx["template"], "".join(kept))
             print(f"已删除：{'、'.join('\\' + n for n in removed)}")
         else:

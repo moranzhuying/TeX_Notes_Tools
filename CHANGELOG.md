@@ -1,7 +1,53 @@
 # 更新日志 (ChangeLog)
 
-**版本日期**: 2026-11-07
+**版本日期**: 2026-11-12
 **当前状态**: 日常使用中。工作台的 PDF 预览为部分实现 —— 独立标签页路线可用，嵌入 Blob 与直接 HTTP iframe 仍受限，见 2026-10-14 条目。
+
+---
+
+## 2026-11-12 更新概览
+
+对 Tools 下全部工具做一轮缺陷排查，修复数据安全、功能失效、编码容错三类问题。
+
+### 缺陷修复
+
+* **`clean_aux`：删除范围收窄**
+    * 原来只按扩展名在整工作区匹配，实测会把 `outputs/` 的转录日志、`Tools/watch_notes/_logs/` 的运行日志一并删除。改为只认「LaTeX 上下文」：产物所在目录必须有 `.tex` 源文件。
+    * `--with-pdf` 原来删全部 PDF（本工作区 2189 个，含扫描书籍与参考资料）。改为只删与同目录某个 `.tex` 同名的 PDF。
+    * 默认跳过 `outputs/`、`SkillProjects/`、`_logs/`、`_state/`。
+* **`symbols`：模板备份与跨行定义**
+    * `backup()` 对任何 `structure.sty` 一律跳过，而模板自身没有可重建来源。改为模板调用时 `force=True`，保留可回滚副本。
+    * 插入新定义时按「上一条定义的结束行」定位，跨行定义（`\newcommand{\x}[2]{%` 换行续写）不再被拆开。
+    * 选项 6 录入定义时拦未转义的 `%`，避免把后续整行吞成注释、进而在 8 本笔记里编译失败。
+* **`new_note`：测试目录与标题转义**
+    * 清理测试目录改用「Test 作为独立段」匹配，`Testing_Notes`、`Contest_Problems` 不再被整棵删除；`rmtree` 失败给出提示而非崩栈。
+    * 笔记名与大纲中译名写入 `\title` / `\part` / 章节命令前做 LaTeX 转义，`_`、`&`、`%` 等不再导致编译失败。
+    * `notes_root()` 找不到根目录时明确报错，不再因 `target=None` 崩栈；`root` 支持 `~` 展开。
+* **`commit`：钩子与 CHANGELOG 路径**
+    * `--check` 移到 `chdir` 之前执行。原先会切到 `Tools/commit/`，钩子触发时扫的是本工具集仓库的暂存区，防泄露机制实际失效。
+    * `--log` 改为写 `Tools/CHANGELOG.md`（原先找 `Tools/commit/CHANGELOG.md`，该文件不存在）；找不到目标节时提示当前格式。
+* **`manager`：只推送与配置容错**
+    * 「只推送」不再按工作区是否干净过滤，工作区干净但本地有未推送提交的仓库也能重推。
+    * `manager.conf` 读取支持 UTF-8 BOM 与 GBK 回退，键名剥 BOM。
+* **`check_sensitive`：全量扫描盲区**
+    * `ls-files` 与 `diff` 关闭 `core.quotepath`。中文/希腊字母文件名原先被转义成八进制，拼出的路径不存在而被静默跳过（实测 Algebra 仓库漏 10 个正文文件）。
+    * `/home/` 模式加左边界，`https://example.com/home/...` 这类 URL 不再误报。
+* **`repo_check`：同一处 `quotepath` 修复**
+    * `ls-files` 关闭 `core.quotepath`，中文路径的编译产物入库检查不再失配。
+* **`watch_notes`：`--no-push` 不再清历史**
+    * `--no-push` 仍会执行 `reflog expire` 与 `gc --prune=now`，导致本地改写后的历史不可回退、且与远程彻底分叉。改为仅在推送成功后清理。
+* **`progress`：端口串台**
+    * `Server` 关闭 `allow_reuse_address`。Windows 上 `SO_REUSEADDR` 允许在已监听地址上再次 bind，两个实例可能同时监听同一端口，与「端口占用不接管」的承诺冲突。
+* **`tex2docx`：定理环境配平**
+    * 无参 `\begin{theorem}` 也补编号并转成静态文本。原先只删 `\end{theorem}`、不转换无参 `\begin`，输出里会留下孤立的 `\begin`。
+* **`video2text` / `symbols`：配置编码**
+    * 配置文件读取改用 `utf-8-sig`，Windows 编辑器写入 BOM 时不再静默回落默认值；`symbols` 的文本读取失败回退 GBK。
+
+### 新增功能
+
+* **`watch_notes`（面板选项 16）**
+    * 笔记目录监测：定时检测改动并提交推送；按设定间隔删除最早一条 git 记录（内容保留、历史重写），让历史长度滚动收敛。
+    * `--dir` 可指定任意仓库目录；状态持久化，中断后默认恢复，`--fresh` 重新开始。
 
 ---
 

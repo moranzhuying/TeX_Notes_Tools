@@ -27,6 +27,10 @@ class Denied(ValueError):
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
+    # Windows 上 SO_REUSEADDR 的语义是「允许在已被监听的地址上再次 bind」，
+    # 会让两个实例同时监听同一端口，与「端口占用时不接管」的承诺冲突。
+    # 关闭复用：端口真被占用时 bind 失败，由调用方提示用户。
+    allow_reuse_address = False
 
     def __init__(self, root, port=0, allow_write=False, write_books=(), *, allow_open=False, texstudio=None):
         self.root = Path(root).resolve(strict=True)

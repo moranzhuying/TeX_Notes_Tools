@@ -98,7 +98,8 @@ def number_theorems(text, thm_envs):
     alt = "|".join(re.escape(e) for e in thm_envs)
     token = re.compile(
         r"(\\section\*?\{[^}]*\})"
-        r"|\\begin\{(" + alt + r")\}\s*\{([^{}]*)\}\s*\{([^{}]*)\}")
+        r"|\\begin\{(" + alt + r")\}\s*\{([^{}]*)\}\s*\{([^{}]*)\}"
+        r"|\\begin\{(" + alt + r")\}")
     state = {"sec": 0, "cnt": 0}
     labels = {}
 
@@ -107,6 +108,14 @@ def number_theorems(text, thm_envs):
             state["sec"] += 1
             state["cnt"] = 0
             return m.group(1)
+        if m.group(5):
+            # 无参 \begin{env}：也补上编号并转成静态文本，
+            # 否则后面的 \end{env} 会被统一删掉，留下孤立的 \begin
+            env = m.group(5)
+            state["cnt"] += 1
+            num = f'{state["sec"]}.{state["cnt"]}'
+            cn = thm_envs.get(env, FALLBACK_CN.get(env, env))
+            return "\n\n" + f"**{cn} {num}**" + "\\quad "
         env = m.group(2)
         title = m.group(3).strip()
         label = m.group(4).strip()

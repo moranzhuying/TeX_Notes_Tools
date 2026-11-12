@@ -224,12 +224,12 @@ def prune_oldest(repo, do_push=True):
         if r.returncode != 0:
             return False, "已删本地历史但推送失败: " + sanitize(r.stderr)
 
-    # 彻底清除：让旧 commit 从 reflog 与对象库消失。
-    # 仅在推送成功后执行，推失败时保留现场便于回滚。
-    git(repo, "reflog", "expire", "--expire=now", "--all")
-    git(repo, "gc", "--prune=now", "--quiet")
+        # 彻底清除：让旧 commit 从 reflog 与对象库消失。
+        # 仅在推送成功后执行：--no-push 时保留现场，便于回退对比。
+        git(repo, "reflog", "expire", "--expire=now", "--all")
+        git(repo, "gc", "--prune=now", "--quiet")
 
-    return True, "已彻底删除最早一条 {}（新 root {}）".format(
+    return True, "已删除最早一条 {}（新 root {}）".format(
         root[:8], new_root_sha[:8])
 
 

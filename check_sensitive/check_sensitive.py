@@ -26,7 +26,7 @@ import pathlib
 # 这样本文件自身不会变成新的泄露源。
 SENSITIVE_PATTERNS = (
     (r"[A-Za-z]:\\+Users\\+[^\\\s\"'）)，。]+", "Windows 用户目录路径"),
-    (r"/(?:Users|home)/[A-Za-z0-9._-]{2,}", "Unix 用户目录路径"),
+    (r"(?<![:\w/])/(?:Users|home)/[A-Za-z0-9._-]{2,}", "Unix 用户目录路径"),
 )
 
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".gz",
@@ -87,7 +87,8 @@ def scan_staged(words):
 
     被删除的内容不会造成泄露，因此「清理本机信息」这类提交不会被误拦。
     """
-    ok, out, _ = sh(["diff", "--cached", "--unified=0"])
+    ok, out, _ = sh(["-c", "core.quotepath=false",
+                     "diff", "--cached", "--unified=0"])
     if not ok or not out:
         return []
     hits, cur = [], ""
@@ -124,7 +125,7 @@ def scan_tracked(words):
         return []
     # 固定以仓库根为工作目录：否则在子目录下 `git ls-files` 只列出该子树、且给出
     # 相对子目录的路径，拼到 root 上会指向不存在的文件 —— 会「全部通过」的假阴性。
-    ok, out, _ = sh(["-C", root, "ls-files"])
+    ok, out, _ = sh(["-C", root, "-c", "core.quotepath=false", "ls-files"])
     if not ok:
         return []
     hits = []

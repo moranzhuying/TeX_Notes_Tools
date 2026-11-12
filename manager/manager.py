@@ -194,10 +194,17 @@ def load_conf():
     d = {"root": "", "account": ""}
     p = Path(__file__).with_name(CONF_NAME)
     if p.is_file():
-        for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            text = p.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError):
+            try:
+                text = p.read_text(encoding="gbk")
+            except (OSError, UnicodeDecodeError):
+                text = ""
+        for line in text.splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
-                d[k.strip()] = v.strip()
+                d[k.strip().lstrip("\ufeff")] = v.strip()
     return d
 
 
@@ -370,19 +377,34 @@ def pick_repos(cfg, skip_clean=False):
     return out
 
 
+def has_unpushed(d):
+    """仓库是否有未推送的提交（无法判断时按有处理）。"""
+    ok, out, _ = git(["status", "-sb"], cwd=d)
+    if not ok:
+        return True
+    first = out.splitlines()[0] if out else ""
+    return "ahead" in first
+
+
 def commit_push_all(cfg):
     print("【三】批量提交并推送\n")
-    targets = pick_repos(cfg, skip_clean=True)
-    if not targets:
-        return
-    print(f"\n  将对 {len(targets)} 个仓库执行：add → commit → push")
 
     msg = input(f"  统一提交说明（回车＝「{DEFAULT_MSG}」）：").strip() or DEFAULT_MSG
     only_push = input("  只推送、不提交？[y/N] ").strip().lower() in ("y", "yes")
 
+    # 「只推送」要包含工作区干净但有未推送提交的仓库，
+    # 否则推送失败后按提示重跑时，这些仓库会被 skip_clean 过滤掉
+    targets = pick_repos(cfg, skip_clean=not only_push)
+    if not targets:
+        return
+    print(f"\n  将对 {len(targets)} 个仓库执行："
+          f"{'push' if only_push else 'add → commit → push'}")
+
     print()
     done, pushed, failed = 0, 0, []
     for d in targets:
+        if only_push and not has_unpushed(d):
+            continue
         print(f"  ▶ {d.name}")
         if not only_push:
             ok, _, err = git(["add", "-A"], cwd=d)

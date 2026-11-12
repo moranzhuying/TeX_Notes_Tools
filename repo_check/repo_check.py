@@ -93,7 +93,7 @@ def check_repo(d):
         if not (d / f).is_file():
             issues.append(f"缺少 {f}")
 
-    ok, tracked = sh(["git", "ls-files"], cwd=str(d))
+    ok, tracked = sh(["git", "-c", "core.quotepath=false", "ls-files"], cwd=str(d))
     if not ok:
         issues.append("无法读取 git 索引")
         return issues, notes

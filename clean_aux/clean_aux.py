@@ -17,8 +17,9 @@ clean_aux.py — 清理 LaTeX 编译产物
     python clean_aux.py --with-pdf     # 连同 PDF 一起清
     python clean_aux.py --area notes   # 只处理某区域：notes / template / tools / all
 
-安全性：只按**扩展名**匹配编译产物，绝不触碰源码；默认不动 PDF（那通常是
-你真正想留的东西）。
+安全性：只在**含 .tex 的目录**里删编译产物；PDF 仅当与同目录某个 .tex
+同名（如 `main.pdf` ↔ `main.tex`）时才删。`outputs/`、`SkillProjects/`
+一类区域里的同名 `.log/.out/.pdf` 不会被误删。
 """
 import os
 import sys
@@ -33,7 +34,6 @@ AUX_EXT = {
     ".synctex.gz", ".synctex", ".bbl", ".blg", ".dvi", ".xdv", ".listing",
     ".nav", ".snm", ".vrb", ".idx", ".ind", ".ilg", ".run.xml",
 }
-PDF_EXT = {".pdf"}
 
 # 区域名 → 相对工作区的目录（"all" 表示扫整个工作区）
 AREAS = {
@@ -42,7 +42,9 @@ AREAS = {
     "tools": "Tools",
 }
 
-SKIP_DIRS = {".git", "__pycache__", "node_modules", ".workbuddy"}
+# 默认不扫的区域：outputs 是混合交付区（含重要产物），SkillProjects 是探针副本
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".workbuddy",
+             "outputs", "SkillProjects", "_logs", "_state"}
 
 
 def human(n):
@@ -50,30 +52,48 @@ def human(n):
 
 
 def collect(root, with_pdf):
-    """扫描 root 下的编译产物，返回 {仓库相对路径: [(文件, 大小), ...]}。"""
-    targets = PDF_EXT if with_pdf else set()
-    exts = AUX_EXT | targets
-    found = {}
+    """扫描 root 下的编译产物，返回 {仓库相对路径: [(文件, 大小), ...]}。
 
+    只认「LaTeX 上下文」：产物所在目录必须有 .tex 源文件；PDF 还要求
+    文件名 stem 与该目录某个 .tex 相同。这样 outputs/、SkillProjects/
+    里的同名 .log/.out/.pdf 不会被误删。
+    """
+    # 第一遍：按目录收集 .tex 的 stem
+    tex_stems = {}
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
+            if name.lower().endswith(".tex"):
+                key = os.path.normcase(str(Path(dirpath)))
+                tex_stems.setdefault(key, set()).add(Path(name).stem.lower())
+
+    found = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        key = os.path.normcase(str(Path(dirpath)))
+        stems = tex_stems.get(key)
+        if not stems:
+            continue  # 该目录没有 .tex，不属于 LaTeX 上下文
+        for name in filenames:
             p = Path(dirpath) / name
-            # 处理 .synctex.gz / .run.xml 这类双段后缀
             low = name.lower()
-            if not (p.suffix.lower() in exts
-                    or low.endswith(".synctex.gz")
-                    or low.endswith(".run.xml")):
+            is_aux = (p.suffix.lower() in AUX_EXT
+                      or low.endswith(".synctex.gz")
+                      or low.endswith(".run.xml"))
+            is_pdf = with_pdf and p.suffix.lower() == ".pdf"
+            if not (is_aux or is_pdf):
+                continue
+            if is_pdf and p.stem.lower() not in stems:
                 continue
             try:
                 size = p.stat().st_size
             except OSError:
                 continue
             try:
-                key = str(p.parent.relative_to(WORKSPACE))
+                rel = str(p.parent.relative_to(WORKSPACE))
             except ValueError:
-                key = str(p.parent)
-            found.setdefault(key, []).append((p, size))
+                rel = str(p.parent)
+            found.setdefault(rel, []).append((p, size))
     return found
 
 

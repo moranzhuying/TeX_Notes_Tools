@@ -117,7 +117,7 @@ def load_conf() -> configparser.ConfigParser:
         cp[sec] = kv
     if CONF.is_file():
         try:
-            cp.read(CONF, encoding="utf-8")
+            cp.read(CONF, encoding="utf-8-sig")
         except Exception as e:  # noqa: BLE001
             print(f"  ⚠ 配置文件读取失败（用默认值）：{e}")
     return cp

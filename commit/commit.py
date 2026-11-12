@@ -138,7 +138,9 @@ def update_changelog(path, msg, mode):
 
     section = {"config": "## tex 配置调整", "content": "## 正文内容调整"}[mode]
     if section not in text:
-        return False, f"CHANGELOG.md 中未找到「{section}」节"
+        return False, (
+            "CHANGELOG.md 中未找到「{}」节；当前用的是"
+            "「## YYYY-MM-DD 更新概览」格式，请手动补记".format(section))
 
     now = datetime.now()
     year, month, day = f"{now.year} 年", f"{now.month} 月", now.strftime("%Y-%m-%d")
@@ -246,15 +248,14 @@ def push_with_fallback():
 
 
 def main():
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
     argv = sys.argv[1:]
     if any(a in ("-h", "--help") for a in argv):
         print(USAGE)
         return 0
 
     # --check：供 git 钩子（.git/hooks/pre-commit）调用，只检查不提交。
-    # 有了它，就算绕开本脚本直接 `git commit`，暂存区里的本机信息照样会被拦下。
+    # 必须在 chdir 之前处理：钩子触发时 cwd 是被提交的仓库，若先 chdir 到
+    # Tools/commit/，扫描的会是本工具集仓库的暂存区，防泄露实际失效。
     if "--check" in argv:
         hits = scan_sensitive()
         if not hits:
@@ -268,6 +269,8 @@ def main():
         p.write("\n本次提交已中止。请改掉这些内容后重新提交；\n")
         p.write("确需强行提交可用：git commit --no-verify\n")
         return 1
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     dry = "--dry-run" in argv
     yes = "-y" in argv
@@ -305,7 +308,10 @@ def main():
         if dry:
             print(f"[预览] 将写入 CHANGELOG.md（{mode}）")
         else:
-            written, info = update_changelog(os.path.join(os.getcwd(), "CHANGELOG.md"), msg, mode)
+            tools_root = os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))
+            written, info = update_changelog(
+                os.path.join(tools_root, "CHANGELOG.md"), msg, mode)
             print(("[提示] " if not written else "[OK] ") + info)
             if not written and log_mode != "auto":
                 return 1

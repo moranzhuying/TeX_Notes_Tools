@@ -406,7 +406,7 @@ def notes_root():
     cfg = read_conf(MANAGER_CONF)
     root = cfg.get("root", "")
     if root:
-        p = Path(os.path.expandvars(root))
+        p = Path(os.path.expanduser(os.path.expandvars(root)))
         if p.is_dir():
             return p
     guess = WORKSPACE / "LaTeX_Notes"
@@ -530,11 +530,24 @@ def numbered_name(node, index):
     return node["name"] if re.match(r"^\d+_", node["name"]) else f"{index}_{node['name']}"
 
 
+_LATEX_ESCAPE = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
+    "_": r"\_", "{": r"\{", "}": r"\}",
+    "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+}
+
+
+def latex_escape(text):
+    """把纯文本转义成可安全放进标题命令的形式（`_`、`&`、`%` 等）。"""
+    return "".join(_LATEX_ESCAPE.get(ch, ch) for ch in text)
+
+
 def title_cmd(level, label):
     """该层的标题命令；`-`（分组层）或标题为空时返回 None。"""
     if level == "-" or not label:
         return None
-    return f"\\{level}{{{label}}}"
+    return f"\\{level}{{{latex_escape(label)}}}"
 
 
 def content_files(tree, levels, with_intro=False, with_summary=False):
@@ -654,10 +667,13 @@ def rewrite_main_tex(main_tex, name, chapters, top_cmd=None):
     if not main_tex.is_file():
         return False
     text = main_tex.read_text(encoding="utf-8")
-    # 标题里含 \textbf{}，必须贪婪匹配到行尾最后一个 }
-    new = re.sub(r"\\title\{.*\}", f"\\\\title{{\\\\Huge\\\\textbf{{{name}}}}}",
+    # 标题里含 \textbf{}，必须贪婪匹配到行尾最后一个 }；
+    # 用 lambda 作替换，避免 re 把转义反斜杠当组引用
+    safe_name = latex_escape(name)
+    new = re.sub(r"\\title\{.*\}",
+                 lambda m: "\\title{\\Huge\\textbf{" + safe_name + "}}",
                  text, count=1)
-    new = new.replace("\\part{测试部分}", f"\\part{{{name}}}")
+    new = new.replace("\\part{测试部分}", "\\part{" + safe_name + "}")
 
     m = re.search(r"(\\mainmatter[ \t]*\n)(.*?)(\s*\\backmatter)", new, flags=re.S)
     if m and chapters:
@@ -1050,12 +1066,21 @@ def install_hook(target, dry):
 
 
 def strip_test_sections(root, dry):
+    """删除模板的测试目录与对应 \\input。
+
+    目录名按「Test 作为独立段」匹配（`01_Test_Chapter`、`Appendix_Test_A`），
+    避免把 `Testing_Notes`、`Contest_Problems` 这类名字误删。
+    """
+    test_re = re.compile(r"(^|[_\-\s])Test([_\-\s]|$)")
     removed = []
     for p in sorted(root.rglob("*"), key=lambda x: -len(x.parts)):
-        if p.is_dir() and "Test" in p.name:
+        if p.is_dir() and test_re.search(p.name):
             removed.append(p)
             if not dry:
-                shutil.rmtree(p)
+                try:
+                    shutil.rmtree(p)
+                except OSError as e:
+                    print(f"  ! 清理测试目录 {p.name} 失败：{e}")
     if dry:
         return [str(p.relative_to(root)) for p in removed]
     for tex in root.rglob("*.tex"):
@@ -1063,9 +1088,12 @@ def strip_test_sections(root, dry):
             text = tex.read_text(encoding="utf-8")
         except OSError:
             continue
-        kept = [ln for ln in text.splitlines(keepends=True)
-                if not (re.search(r"\\input\{(.+?)\}", ln)
-                        and "Test" in re.search(r"\\input\{(.+?)\}", ln).group(1))]
+        kept = []
+        for ln in text.splitlines(keepends=True):
+            m = re.search(r"\\input\{(.+?)\}", ln)
+            if m and test_re.search(m.group(1)):
+                continue
+            kept.append(ln)
         new = re.sub(r"\n{3,}", "\n\n", "".join(kept))
         if new != text:
             tex.write_text(new, encoding="utf-8", newline="")
@@ -1219,7 +1247,12 @@ def interactive():
         elif ans in ("s", "summary", "小结"):
             with_summary = True
 
-    target = notes_root() / name if notes_root() else None
+    root = notes_root()
+    if root is None:
+        print("  ! 未找到笔记根目录：manager.conf 的 root 无效，"
+              "工作区下也没有 LaTeX_Notes。")
+        return 1
+    target = root / name
     template = tdir / tpl
 
     print()
