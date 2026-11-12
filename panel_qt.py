@@ -13,14 +13,50 @@ panel_qt.py — 工具集图形面板（Qt 桌面窗口）
 
 依赖 PySide6（装在 .workbuddy 的 venv 里，不进系统 Python）。
 """
+import os
+import subprocess
 import sys
 from pathlib import Path
+
+
+def _venv_python():
+    """找装了 PySide6 的工具 venv 解释器；没有就返回 None。
+
+    为什么要在脚本里自找：双击 .py、从别的目录 `python panel_qt.py`、
+    或者 bat 的路径判断被系统环境影响时，拉起的都是系统那个精简 Python，
+    它没有 PySide6。与其让用户自己配环境，不如换解释器重启一次。
+
+    注意 venv 在**用户主目录**下的 .workbuddy（工具数据区），
+    不是工作区里的那个 .workbuddy（项目数据区），两者同名但不同处。
+    """
+    override = os.environ.get("PANEL_PYTHON")
+    if override and Path(override).is_file():
+        return Path(override)
+    bases = [Path.home() / ".workbuddy" / "binaries" / "python" / "envs" / "default"]
+    bases.append(Path(__file__).resolve().parent.parent
+                 / ".workbuddy" / "binaries" / "python" / "envs" / "default")
+    for base in bases:
+        if not (base / "Lib" / "site-packages" / "PySide6").is_dir():
+            continue
+        for name in ("pythonw.exe", "python.exe"):
+            cand = base / "Scripts" / name
+            if cand.is_file():
+                return cand
+    return None
+
 
 try:
     from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError:  # pragma: no cover - 只在环境缺包时触发
+    if os.environ.get("PANEL_QT_REEXEC") != "1":
+        alt = _venv_python()
+        if alt is not None and Path(sys.executable).resolve() != alt.resolve():
+            env = dict(os.environ, PANEL_QT_REEXEC="1")
+            subprocess.Popen([str(alt), str(Path(__file__).resolve()), *sys.argv[1:]],
+                             env=env)
+            raise SystemExit(0)
     sys.stderr.write(
-        "缺少 PySide6。装到工具专用环境：\n"
+        "缺少 PySide6，且没找到可用的工具 venv。装到工具专用环境：\n"
         "  <venv>/Scripts/python.exe -m pip install PySide6-Essentials "
         "--index-url https://mirrors.aliyun.com/pypi/simple/\n")
     raise SystemExit(2)
