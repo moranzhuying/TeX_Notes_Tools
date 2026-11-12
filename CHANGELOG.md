@@ -224,6 +224,19 @@
     * 钩子模板的查找列表改成「一段 / 两段」都试：`Tools/*/check_sensitive.py` 与 `Tools/*/*/check_sensitive.py`。脚本沉到 `Tools/tools/` 后是两级，只写一段会一个都匹配不到 —— 钩子找不到脚本就放行，防泄露静默失效。12 个仓库已再同步一次，并在 `Algebra` / `General_Topology` 实跑确认。
     * README 目录树再次重写，并新增「数据放在哪」一节说明两态的数据位置。
 
+### 第五轮：应用化改造后的回归
+
+改造完按两态（便携 / 安装）各跑一遍全工具，收敛出四处漏改，都属「数据落点跟着目录走时少算一层」。
+
+* **`video2text`：数据目录少一层 `_data`（影响最大）**
+    * `DATA` 直接取 `app_paths.data_dir("video2text")` 得到 `tools/video2text`，而模型、cookie、profile、转写产物都在它下面的 `_data/` 里。表现是「登录态未登录、本地模型无、已转写 0 份」—— 5.4 GB 数据全都在，只是找不到。补回 `_data` 这一层后恢复正常（转写 490 份、cookie 有效至 2027-04）。
+* **`symbols`：三处仍指向工具目录**
+    * `default_cwl()` 在无 `%APPDATA%` 时回退 `SCRIPT_DIR / custom.cwl`，装到只读目录会写失败，改 `DATA_DIR`。
+    * `.cwl_source`（cwl 来源记录）从 `SCRIPT_DIR` 改 `DATA_DIR` —— 它和 `symbols.conf` 一样是本机数据。
+    * `resolve_root()` 的兜底从 `SCRIPT_DIR` 改 `workspace()`：工具已不在笔记根下，返回工具目录毫无意义。
+* **一条纪律：工具里不许用 `sys.executable` 起 python**
+    * 打包后它就是 `LaTeX-Toolbox.exe`，`exe -c "..."` 会被当成「无参数启动」，直接弹 GUI。测试脚本踩了一次（一次性起了两个窗口），工具里早先已规避（`pdf_upright` / `video2text` 都显式找 venv 解释器）。写新工具要走 `panel_core.tool_python()` 或 `app_paths`。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**

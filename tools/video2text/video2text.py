@@ -80,8 +80,10 @@ except Exception:
 HERE = Path(__file__).resolve().parent
 CONF = app_paths.conf_file("video2text", "video2text.conf", ensure=True)
 #: 大件数据（模型 / cookie / profile / 转写产物）不放程序目录：
-#: 便携形态仍是程序目录，安装形态进 %LOCALAPPDATA%。conf 的 [paths] data 可覆盖。
-DATA = app_paths.data_dir("video2text", ensure=True)
+#: 便携形态仍是工具目录，安装形态进 %LOCALAPPDATA%。conf 的 [paths] data 可覆盖。
+#: 注意尾部要留着 `_data` 这一层 —— 便携时代它就是 `tools/video2text/_data`，
+#: 少了它 5.4 GB 模型会「消失」。
+DATA = app_paths.data_dir("video2text", ensure=True) / "_data"
 MODELS_DIR = DATA / "models"
 COOKIES_DIR = DATA / "cookies"
 PROFILE_DIR = DATA / "profile"

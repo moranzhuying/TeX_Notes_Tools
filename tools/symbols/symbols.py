@@ -210,7 +210,7 @@ def default_cwl():
     appdata = os.environ.get("APPDATA")
     if appdata:
         return str(pathlib.Path(appdata) / "texstudio" / "completion" / "user" / "custom.cwl")
-    return str(SCRIPT_DIR / "custom.cwl")
+    return str(DATA_DIR / "custom.cwl")
 
 
 def resolve_root(cli_root, cfg):
@@ -223,7 +223,7 @@ def resolve_root(cli_root, cfg):
         subs = [d for d in parent.iterdir() if d.is_dir() and (d / "structure.sty").is_file()]
     except OSError:
         subs = []
-    return parent if len(subs) >= 2 else SCRIPT_DIR
+    return parent if len(subs) >= 2 else _workspace()
 
 
 def resolve_template(cli_template, cfg):
@@ -231,7 +231,7 @@ def resolve_template(cli_template, cfg):
         return pathlib.Path(cli_template)
     if cfg.get("template"):
         return pathlib.Path(cfg["template"])
-    src = SCRIPT_DIR / ".cwl_source"
+    src = DATA_DIR / ".cwl_source"
     if src.is_file():
         for line in read_text(src).splitlines():
             line = line.strip()
