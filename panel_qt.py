@@ -62,41 +62,54 @@ def _dbg(msg):
 
 
 def _bind_console():
-    """windowed exe 没有标准流，需要自己开一个控制台并接回 CONOUT$/CONIN$。
+    """把标准流接回来。windowed exe 启动时 stdout/stdin 是 None。
 
-    为什么不是靠 CREATE_NEW_CONSOLE：那个标志只对**控制台子系统**程序有效，
-    GUI 子系统（PyInstaller --windowed）会直接忽略它，进程仍然没有控制台，
-    CONOUT$ 打开报「句柄无效」，input() 立刻 EOF、窗口一闪而过。
-    所以这里自己 AllocConsole，再绑标准流。
+    两种来源，按优先级：
+    1. **继承来的句柄**（父进程给的管道）：直接接管 fd 0/1。QProcess 启动时
+       就是这种，交互工具的 input() 要靠它。
+    2. **自己开控制台**：双击 exe、没有管道时，AllocConsole 后绑 CONOUT$/CONIN$。
+       注意 `CREATE_NEW_CONSOLE` 对 GUI 子系统程序无效，不能指望它。
     """
     if sys.stdout is not None and sys.stdin is not None:
-        _dbg("bind: 标准流已就绪（重定向场景），跳过")
+        _dbg("bind: 标准流已就绪，跳过")
         return
 
-    if os.name == "nt":
+    if sys.stdout is None:
         try:
-            import ctypes
-            kernel32 = ctypes.windll.kernel32
-            if not kernel32.GetConsoleWindow():
-                if not kernel32.AllocConsole():
-                    _dbg("AllocConsole 返回失败")
-        except Exception as exc:  # noqa: BLE001 —— 开控制台失败不该拖垮工具
-            _dbg("AllocConsole 异常: {}".format(exc))
+            sys.stdout = open(1, "w", encoding="utf-8", errors="replace",
+                              buffering=1, closefd=False)
+        except OSError as exc:
+            _dbg("接管 fd 1 失败: {}".format(exc))
+    if sys.stdin is None:
+        try:
+            sys.stdin = open(0, "r", encoding="utf-8", errors="replace",
+                             closefd=False)
+        except OSError as exc:
+            _dbg("接管 fd 0 失败: {}".format(exc))
 
-    try:
+    if sys.stdout is None or sys.stdin is None:
+        if os.name == "nt":
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                if not kernel32.GetConsoleWindow():
+                    if not kernel32.AllocConsole():
+                        _dbg("AllocConsole 返回失败")
+            except Exception as exc:  # noqa: BLE001 —— 开控制台失败不该拖垮工具
+                _dbg("AllocConsole 异常: {}".format(exc))
         if sys.stdout is None:
-            sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace",
-                              buffering=1)
-        if sys.stderr is None:
-            sys.stderr = sys.stdout
+            try:
+                sys.stdout = open("CONOUT$", "w", encoding="utf-8",
+                                  errors="replace", buffering=1)
+            except OSError:
+                sys.stdout = open(os.devnull, "w", encoding="utf-8")
         if sys.stdin is None:
-            sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
-    except OSError as exc:
-        _dbg("绑定标准流失败: {}".format(exc))
-        if sys.stdout is None:
-            sys.stdout = open(os.devnull, "w", encoding="utf-8")
-        if sys.stderr is None:
-            sys.stderr = sys.stdout
+            try:
+                sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+    if sys.stderr is None:
+        sys.stderr = sys.stdout
     _dbg("bind 之后: stdout={!r} stdin={!r}".format(sys.stdout, sys.stdin))
 
 
@@ -201,6 +214,7 @@ except ImportError:  # pragma: no cover - 只在环境缺包时触发
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import panel_core as core  # noqa: E402
+import panel_actions as actions  # noqa: E402
 
 CARD_MIN_WIDTH = 360
 CARD_MAX_WIDTH = 660
@@ -352,6 +366,16 @@ QLineEdit#Args {{
 }}
 QLineEdit#Args:focus {{ border-color: {accent}; }}
 
+/* ---------- 表单 ---------- */
+QLabel#FieldLabel {{ font-size: 12px; color: {fg2}; }}
+QPlainTextEdit#FormOutput {{
+    background: {field}; color: {fg2};
+    border: 1px solid {stroke}; border-radius: 8px;
+    padding: 8px;
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px;
+    selection-background-color: {accent};
+}}
+
 /* ---------- 输出面板 ---------- */
 QFrame#OutputBox {{
     background: {card};
@@ -410,6 +434,7 @@ class ToolCard(QtWidgets.QFrame):
     run_requested = QtCore.Signal(str, str)
     stop_requested = QtCore.Signal(str)
     output_requested = QtCore.Signal(str)
+    panel_requested = QtCore.Signal(str)
 
     def __init__(self, tool, parent=None):
         super().__init__(parent)
@@ -481,12 +506,22 @@ class ToolCard(QtWidgets.QFrame):
         self.stop_btn.hide()
         foot.addWidget(self.stop_btn)
 
+        self.has_form = actions.has_form(tool["id"])
         self.run_btn = QtWidgets.QPushButton("启动")
-        self.run_btn.setObjectName("Primary")
+        self.run_btn.setObjectName("Secondary" if self.has_form else "Primary")
         self.run_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.run_btn.setEnabled(tool["exists"])
         self.run_btn.clicked.connect(self._on_run)
         foot.addWidget(self.run_btn)
+
+        self.panel_btn = QtWidgets.QPushButton("打开" if self.has_form else "终端")
+        self.panel_btn.setObjectName("Primary")
+        self.panel_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.panel_btn.setEnabled(tool["exists"])
+        self.panel_btn.setVisible(self.has_form)
+        self.panel_btn.clicked.connect(
+            lambda _c=False: self.panel_requested.emit(tool["id"]))
+        foot.addWidget(self.panel_btn)
         col.addLayout(foot)
 
         row.addLayout(col, 1)
@@ -511,6 +546,7 @@ class ToolCard(QtWidgets.QFrame):
             self.status.setText("● {} · {}".format(where, rel_time(run["started"])))
             self.run_btn.setText("运行中")
             self.run_btn.setEnabled(False)
+            self.panel_btn.setEnabled(False)
             self.stop_btn.show()
             self.out_btn.setVisible(bool(run["hasOutput"]))
         elif run:
@@ -519,14 +555,16 @@ class ToolCard(QtWidgets.QFrame):
             self.setProperty("done" if ok else "failed", "true")
             self.status.setProperty("done" if ok else "failed", "true")
             self.status.setText("● 已结束 · 退出码 {}".format("?" if rc is None else rc))
-            self.run_btn.setText("重新运行")
+            self.run_btn.setText("重开" if self.has_form else "重新运行")
             self.run_btn.setEnabled(self.tool["exists"])
+            self.panel_btn.setEnabled(self.tool["exists"])
             self.stop_btn.hide()
             self.out_btn.setVisible(bool(run["hasOutput"]))
         else:
             self.status.setText("● 未启动" if self.tool["exists"] else "脚本缺失")
-            self.run_btn.setText("启动")
+            self.run_btn.setText("控制台" if self.has_form else "启动")
             self.run_btn.setEnabled(self.tool["exists"])
+            self.panel_btn.setEnabled(self.tool["exists"])
             self.stop_btn.hide()
             self.out_btn.hide()
 
@@ -690,6 +728,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stack = QtWidgets.QStackedWidget()
         right_lay.addWidget(self.stack, 1)
 
+        self.detail_host = QtWidgets.QWidget()
+        self.detail_lay = QtWidgets.QVBoxLayout(self.detail_host)
+        self.detail_lay.setContentsMargins(0, 2, 6, 2)
+        self.detail_lay.setSpacing(8)
+        self.stack.addWidget(self.detail_host)
+
         self.output_box = self._build_output()
         self.output_box.hide()
         right_lay.addWidget(self.output_box, 0)
@@ -769,6 +813,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 card.run_requested.connect(self.on_run)
                 card.stop_requested.connect(self.on_stop)
                 card.output_requested.connect(self.on_output)
+                card.panel_requested.connect(self.open_panel)
                 self.cards[tool["id"]] = card
                 cards.append(card)
             grid.set_cards(cards)
@@ -832,12 +877,65 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------- 交互 ----------
 
+    def _clear_detail(self):
+        while self.detail_lay.count():
+            item = self.detail_lay.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+                continue
+            sub = item.layout()
+            if sub is not None:
+                while sub.count():
+                    child = sub.takeAt(0).widget()
+                    if child is not None:
+                        child.setParent(None)
+                        child.deleteLater()
+                sub.deleteLater()
+
+    def open_panel(self, key):
+        tool = next((t for t in self.tools if t["id"] == key), None)
+        if tool is None:
+            return
+        panel = actions.build(key, tool)
+        if panel is None:
+            self.toast("该工具还没有可视化面板，先用控制台")
+            return
+        self._clear_detail()
+
+        back = QtWidgets.QPushButton("← 返回")
+        back.setObjectName("Ghost")
+        back.setCursor(QtCore.Qt.PointingHandCursor)
+        back.clicked.connect(self.close_panel)
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(back)
+        row.addStretch(1)
+        self.detail_lay.addLayout(row)
+        self.detail_lay.addWidget(panel, 1)
+
+        self.stack.setCurrentWidget(self.detail_host)
+        self.page_title.setText(tool["title"])
+        if actions.has_form(key):
+            self.page_desc.setText("可视化面板 · 结果留在下方，不再弹控制台")
+        else:
+            self.page_desc.setText("内嵌终端 · 输出与输入都在这里")
+
+    def close_panel(self):
+        self._clear_detail()
+        group = getattr(self, "_current_group", self.groups[0])
+        self.stack.setCurrentWidget(self.pages[group])
+        self.page_title.setText(group)
+        self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+
     def show_group(self, group):
         if self.search.text().strip():
             self.search.clear()
         page = self.pages.get(group)
         if page is None:
             return
+        self._current_group = group
         self.stack.setCurrentWidget(page)
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
@@ -893,6 +991,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.reload_output()
 
     def apply_filter(self, text):
+        if text.strip() and self.stack.currentWidget() is self.detail_host:
+            self.close_panel()
         q = text.strip().lower()
         if not q:
             # 回到当前组

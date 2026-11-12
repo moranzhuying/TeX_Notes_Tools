@@ -151,6 +151,12 @@
     * 依赖 PySide6-Essentials，装在工具专用 venv，不碰系统 Python；`run_panel.bat` 双击启动。
 * **`panel_core`：面板共用逻辑**
     * 工具清单、启动、停止、运行状态集中在这里，Qt 版与网页备用版都调用，避免两套启动规则漂移。清单仍来自 `launcher.MENU`，只有一处定义。
+* **`panel_actions`：工具真正 GUI 化**
+    * 不重写工具，而是给它们的**既有命令行接口**配表单：界面填参数 → 拼命令行 → `QProcess` 跑 → 输出留在面板里。工具代码一行未改，命令行接口就是稳定 API。
+    * 已配表单：`new_note`、`outline_tool`、`clean_aux`、`repo_check`、`check_sensitive`、`sync_paths`、`commit`、`spec_sync`、`pdf_upright`、`watch_notes`。
+    * 表单引擎：字段类型 text/int/path/file/choice/check；`show_if` 支持字段联动（切换操作只显示相关字段，隐藏字段不进参数）；路径字段带「浏览…」；破坏性操作默认不勾选。
+    * 纯交互工具（`git_setup`/`manager`/`symbols`/`progress`/`note_tools`/`video2text`）走**内嵌终端**：`QProcess` 交互式运行，输出显示在面板，输入行回车写进子进程 stdin。**至此全部 16 个工具都能在面板内使用，不再需要弹外部控制台。**
+    * 子进程统一注入 `PYTHONIOENCODING=utf-8`，否则 Windows 下 stdin 按 GBK 读，中文输入会乱码。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。

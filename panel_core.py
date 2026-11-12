@@ -107,12 +107,21 @@ def _pump(rec, proc):
         rec["returncode"] = proc.poll()
 
 
-def _spawn_prefix(script):
-    """「用什么命令执行这个 .py」的前缀。
+def spawn_command(script, args=()):
+    """返回 (program, argv)：执行某个 .py 的命令行。
 
-    打包成 exe 时没有外部 Python 可用，让 exe 自己充当解释器（`--exec` 模式）；
-    源码运行时用当前解释器。`--` 之后一律原样传给目标脚本。
+    打包成 exe 时没有外部 Python，让 exe 自己当解释器（`--exec` 模式）。
+    供启动器与「可视化表单」两条路径共用，避免各写一套。
     """
+    script = Path(script)
+    extra = [str(a) for a in args]
+    if getattr(sys, "frozen", False):
+        return sys.executable, ["--exec", str(script), "--"] + extra
+    return PYTHON, [str(script)] + extra
+
+
+def _spawn_prefix(script):
+    """「用什么命令执行这个 .py」的前缀（`--` 之后原样传给目标脚本）。"""
     if getattr(sys, "frozen", False):
         return [sys.executable, "--exec", str(script), "--"]
     return [PYTHON, str(script)]
