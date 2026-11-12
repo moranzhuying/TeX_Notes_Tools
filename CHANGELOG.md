@@ -157,6 +157,12 @@
     * 表单引擎：字段类型 text/int/path/file/choice/check；`show_if` 支持字段联动（切换操作只显示相关字段，隐藏字段不进参数）；路径字段带「浏览…」；破坏性操作默认不勾选。
     * 纯交互工具（`git_setup`/`manager`/`symbols`/`progress`/`note_tools`/`video2text`）走**内嵌终端**：`QProcess` 交互式运行，输出显示在面板，输入行回车写进子进程 stdin。**至此全部 16 个工具都能在面板内使用，不再需要弹外部控制台。**
     * 子进程统一注入 `PYTHONIOENCODING=utf-8`，否则 Windows 下 stdin 按 GBK 读，中文输入会乱码。
+* **三个纯交互工具补上非交互子命令**（原有交互行为不变）
+    * `manager`：`--status`、`--commit-all [--push-only] [--msg]`、`--create-repo [--selection] [--account]`、`--set-root <路径> [--account]`。做法是给 `set_root` / `commit_push_all` / `create_repo` 加可选参数，**默认 None 时仍走原提问流程**，图形面板传值时才走非交互。
+    * `note_tools`：`--note <名字>` 跳过选本菜单，`--action commit|exercise|intro-summary`，`--scope both|intro|summary`，`--yes` 免确认。
+    * `git_setup`：`--check`、`--account [--name] [--email]`、`--ssh [--gen-key] [--write-443] [--test]`。
+    * `note_tools` 跑笔记目录下的脚本时，打包成 exe 后 `sys.executable` 是 exe 本身，改成 `exe --exec <脚本>`，否则子脚本跑不起来。
+    * 至此 **16 个工具全部有可视化表单**。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。

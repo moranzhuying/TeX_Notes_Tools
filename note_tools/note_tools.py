@@ -13,6 +13,7 @@ note_tools.py — 单本笔记的工具入口
 
     python note_tools.py
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -95,7 +96,16 @@ def changed_count(note):
         return -1
 
 
-def pick_note(root):
+def pick_note(root, name=None):
+    """选一本笔记。给了 name 就直接用（图形面板没有标准输入可提问）。"""
+    if name:
+        cand = root / str(name).strip()
+        if cand.is_dir():
+            print(f"  笔记根目录：{root}")
+            print(f"  选定笔记：{cand.name}")
+            return cand
+        print(f"  ✗ 在 {root} 下没有笔记「{name}」")
+        return None
     notes = list_notes(root)
     if not notes:
         print(f"  ✗ 在 {root} 下没有找到笔记（需含 main.tex 的子目录）")
@@ -124,8 +134,11 @@ def run_in_note(note, script_name):
     if not script.is_file():
         print(f"  ✗ {note.name} 下没有 {script_name}")
         return
+    # 打包成 exe 时没有外部 Python，让 exe 自己当解释器（--exec 模式）
+    cmd = ([sys.executable, "--exec", script_name]
+           if getattr(sys, "frozen", False) else [sys.executable, script_name])
     try:
-        subprocess.run([sys.executable, script_name], cwd=str(note))
+        subprocess.run(cmd, cwd=str(note))
     except KeyboardInterrupt:
         print("\n  已中断。")
     except OSError as e:
@@ -134,8 +147,20 @@ def run_in_note(note, script_name):
 
 # ---------------------------------------------------------------- 补导引与小结
 
-def pick_intro_summary_scope():
-    """问加哪些。返回 (do_intro, do_summary)；取消返回 None。"""
+def pick_intro_summary_scope(choice=None):
+    """问加哪些。返回 (do_intro, do_summary)；取消返回 None。
+
+    给了 choice 就直接用：both/intro/summary，或 1/2/3。
+    """
+    if choice is not None:
+        c = str(choice).strip().lower()
+        if c in ("", "1", "both"):
+            return True, True
+        if c in ("2", "intro"):
+            return True, False
+        if c in ("3", "summary"):
+            return False, True
+        return None
     print("    1. 导引＋小结（默认）")
     print("    2. 只加导引（各章 intro.tex）")
     print("    3. 只加小结（各级 Summary/）")
@@ -160,7 +185,7 @@ def _quiet(_msg):
     """干跑时吞掉明细，只留我们自己排版的摘要。"""
 
 
-def action_intro_summary(note):
+def action_intro_summary(note, scope=None, assume_yes=False):
     """按 new_note.py 的规则给一本笔记补导引与小结（只补缺、不覆盖）。"""
     clear()
     print("=" * 62)
@@ -171,7 +196,11 @@ def action_intro_summary(note):
         print("    请检查 Tools/new_note/ 是否存在且无语法错误。")
         return
 
-    scope = pick_intro_summary_scope()
+    if scope is None:
+        scope = pick_intro_summary_scope()
+    elif isinstance(scope, str):
+        # 图形面板直接给 "both"/"intro"/"summary"
+        scope = pick_intro_summary_scope(scope)
     if scope is None:
         return
     do_intro, do_summary = scope
@@ -218,12 +247,37 @@ def action_intro_summary(note):
     print("  改动尚未提交 —— 用「提交并推送」或笔记目录里的 commit.py。")
 
 
+def parse_cli(argv):
+    """解析非交互子命令（图形面板用）。"""
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--note", help="笔记目录名；给了就跳过选本菜单")
+    ap.add_argument("--action", choices=("commit", "exercise", "intro-summary"),
+                    help="要做的动作；给了就只做这一件事")
+    ap.add_argument("--scope", choices=("both", "intro", "summary"),
+                    help="补导引小结的范围")
+    ap.add_argument("--yes", action="store_true", help="补导引小结免确认")
+    known, _unknown = ap.parse_known_args(argv)
+    return known
+
+
+def run_action(note, cli):
+    """执行一个指定动作（非交互）。"""
+    if cli.action == "commit":
+        run_in_note(note, "commit.py")
+    elif cli.action == "exercise":
+        run_in_note(note, "setup_mode.py")
+    elif cli.action == "intro-summary":
+        action_intro_summary(note, scope=cli.scope, assume_yes=cli.yes)
+    return 0
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
+    cli = parse_cli(sys.argv[1:])
     root = notes_root()
     clear()
     print("=" * 62)
@@ -233,10 +287,13 @@ def main():
         print("  ✗ 未找到笔记根目录（请在 manager 里设置，或确认 LaTeX_Notes 存在）")
         return 1
 
-    note = pick_note(root)
+    note = pick_note(root, cli.note)
     if note is None:
         clear()
         return 0
+
+    if cli.action:
+        return run_action(note, cli)
 
     while True:
         clear()

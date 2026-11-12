@@ -135,9 +135,197 @@ def _watch_repo_choices():
     return [p.name for p in sorted(root.iterdir()) if (p / ".git").is_dir()]
 
 
+def _build_symbols(v):
+    action = v["action"]
+    if action.startswith("回填"):
+        args = ["--merge"]
+    elif action.startswith("分发"):
+        args = ["--distribute"]
+    elif action == "刷新补全":
+        args = ["--cwl"]
+    elif action == "删除符号":
+        args = ["--drop"]
+        if v["drop"]:
+            args += [w for w in v["drop"].split() if w]
+    else:
+        args = ["--all"]
+    if v["write"]:
+        args.append("--write")
+    return args
+
+
+def _build_progress(v):
+    args = ["--root", v["root"], "--port", str(v["port"])]
+    if v["allow_write"]:
+        args.append("--allow-write")
+        for book in v["books"].split(","):
+            if book.strip():
+                args += ["--write-book", book.strip()]
+    if v["allow_open"]:
+        args.append("--allow-open")
+    return args
+
+
+def _build_video2text(v):
+    op = v["op"]
+    if op == "列出合集":
+        return ["--collections"]
+    if op == "补做失败项":
+        return ["--only-failed"]
+    args = []
+    if v["url"]:
+        args.append(v["url"])
+    if v["mode"] != "默认":
+        args += ["--mode", v["mode"]]
+    if v["lang"]:
+        args += ["--lang", v["lang"]]
+    if v["model"]:
+        args += ["--model", v["model"]]
+    if v["refresh"]:
+        args.append("--refresh")
+    if v["single"]:
+        args.append("--single")
+    if v["no_cookies"]:
+        args.append("--no-cookies")
+    if v["browser_cookies"]:
+        args.append("--use-browser-cookies")
+    return args
+
+
+def _build_manager(v):
+    op = v["op"]
+    if op == "显示各仓库状态":
+        return ["--status"]
+    if op == "批量提交并推送":
+        args = ["--commit-all"]
+        if v["msg"]:
+            args += ["--msg", v["msg"]]
+        return args
+    if op == "只推送、不提交":
+        args = ["--commit-all", "--push-only"]
+        if v["msg"]:
+            args += ["--msg", v["msg"]]
+        return args
+    if op == "为未入库的文件夹建仓库":
+        args = ["--create-repo"]
+        if v["selection"]:
+            args += ["--selection", v["selection"]]
+        if v["account"]:
+            args += ["--account", v["account"]]
+        return args
+    args = ["--set-root", v["root"]]
+    if v["account"]:
+        args += ["--account", v["account"]]
+    return args
+
+
+def _build_note_tools(v):
+    args = ["--note", v["note"]]
+    action = v["action"]
+    if action == "提交并推送":
+        args += ["--action", "commit"]
+    elif action == "切换习题编排模式":
+        args += ["--action", "exercise"]
+    else:
+        args += ["--action", "intro-summary"]
+        args += ["--scope", v["scope"]]
+        if v["yes"]:
+            args.append("--yes")
+    return args
+
+
+def _build_git_setup(v):
+    op = v["op"]
+    if op == "检测环境":
+        return ["--check"]
+    if op == "配置 Git 账户":
+        args = ["--account"]
+        if v["name"]:
+            args += ["--name", v["name"]]
+        if v["email"]:
+            args += ["--email", v["email"]]
+        return args
+    args = ["--ssh"]
+    if v["gen_key"]:
+        args.append("--gen-key")
+    if v["write_443"]:
+        args.append("--write-443")
+    if v["test"]:
+        args.append("--test")
+    return args
+
+
+def _note_choices():
+    """LaTeX_Notes 下含 main.tex 的笔记目录名。"""
+    root = core.WORKSPACE / "LaTeX_Notes"
+    if not root.is_dir():
+        return []
+    names = [p.name for p in sorted(root.iterdir())
+             if p.is_dir() and (p / "main.tex").is_file()]
+    return names
+
+
 # ---------------------------------------------------------------- 表单规格
 
 SPECS = {
+    "3": {
+        "title": "符号库管理",
+        "desc": "在模板与各笔记之间搬运符号，或刷新 TeXStudio 补全。默认只预览，不写文件。",
+        "fields": [
+            {"key": "action", "label": "操作", "type": "choice",
+             "choices": ["回填（笔记 → 模板）", "分发（模板 → 笔记）", "刷新补全",
+                         "删除符号", "全套（回填 + 补全 + 分发）"],
+             "default": "回填（笔记 → 模板）"},
+            {"key": "drop", "label": "要删除的符号名", "type": "text",
+             "placeholder": "多个用空格分隔", "show_if": ("action", "删除符号")},
+            {"key": "write", "label": "真正写入（默认仅预览）", "type": "check", "default": False,
+             "danger": True},
+        ],
+        "build": _build_symbols,
+    },
+    "4": {
+        "title": "写作工作台",
+        "desc": "启动本机写作工作台（浏览器界面）。默认只读；授权写入要按书单独给。",
+        "script": "progress/workbench_server.py",
+        "fields": [
+            {"key": "root", "label": "笔记根目录", "type": "path",
+             "default": str(Path(core.WORKSPACE) / "LaTeX_Notes")},
+            {"key": "port", "label": "端口", "type": "int", "default": 7656},
+            {"key": "allow_write", "label": "允许写入（否则只读）", "type": "check",
+             "default": False, "danger": True},
+            {"key": "books", "label": "授权写入的书", "type": "text",
+             "placeholder": "逗号分隔；需同时勾选允许写入", "show_if": ("allow_write", True)},
+            {"key": "allow_open", "label": "允许调起 TeXstudio（不授权 TeX 写入）",
+             "type": "check", "default": False},
+        ],
+        "build": _build_progress,
+    },
+    "13": {
+        "title": "视频转文字",
+        "desc": "字幕优先，没有字幕时用本地 whisper 转写。",
+        "fields": [
+            {"key": "op", "label": "操作", "type": "choice",
+             "choices": ["转写视频", "列出合集", "补做失败项"], "default": "转写视频"},
+            {"key": "url", "label": "视频地址", "type": "text",
+             "placeholder": "BV 号或视频链接", "show_if": ("op", "转写视频")},
+            {"key": "mode", "label": "取源方式", "type": "choice",
+             "choices": ["默认", "subtitles", "auto", "whisper"], "default": "默认",
+             "show_if": ("op", "转写视频")},
+            {"key": "lang", "label": "字幕语言码", "type": "text", "placeholder": "如 ai-zh",
+             "show_if": ("op", "转写视频")},
+            {"key": "model", "label": "whisper 模型", "type": "text", "placeholder": "默认 medium",
+             "show_if": ("op", "转写视频")},
+            {"key": "single", "label": "只处理当前视频", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "refresh", "label": "强制重做（含已成功的）", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "no_cookies", "label": "匿名探测（不用 cookie）", "type": "check",
+             "default": False, "show_if": ("op", "转写视频")},
+            {"key": "browser_cookies", "label": "借用浏览器登录态", "type": "check",
+             "default": False, "show_if": ("op", "转写视频")},
+        ],
+        "build": _build_video2text,
+    },
     "5": {
         "title": "新建笔记",
         "desc": "从模板复制骨架、清掉测试内容、初始化 git。默认只预演，确认无误再去掉勾选。",
@@ -174,6 +362,63 @@ SPECS = {
             {"key": "list", "label": "清单文件", "type": "file", "show_if": ("mode", "从清单新建")},
         ],
         "build": _build_outline,
+    },
+    "1": {
+        "title": "Git 基本信息",
+        "desc": "检测环境、配置账户与 SSH。SSH 部分会显示公钥，复制到 GitHub 即可。",
+        "fields": [
+            {"key": "op", "label": "操作", "type": "choice",
+             "choices": ["检测环境", "配置 Git 账户", "配置 SSH"], "default": "检测环境"},
+            {"key": "name", "label": "用户名", "type": "text",
+             "placeholder": "留空则不改动", "show_if": ("op", "配置 Git 账户")},
+            {"key": "email", "label": "邮箱", "type": "text",
+             "placeholder": "留空则不改动", "show_if": ("op", "配置 Git 账户")},
+            {"key": "gen_key", "label": "没有密钥时生成 ed25519", "type": "check",
+             "default": False, "show_if": ("op", "配置 SSH")},
+            {"key": "write_443", "label": "写 ssh config 的 443 端口", "type": "check",
+             "default": True, "show_if": ("op", "配置 SSH")},
+            {"key": "test", "label": "测试连通性", "type": "check", "default": True,
+             "show_if": ("op", "配置 SSH")},
+        ],
+        "build": _build_git_setup,
+    },
+    "2": {
+        "title": "笔记工作区管理",
+        "desc": "查看各仓库状态、批量提交推送、为未入库的文件夹建仓库。",
+        "fields": [
+            {"key": "op", "label": "操作", "type": "choice",
+             "choices": ["显示各仓库状态", "批量提交并推送", "只推送、不提交",
+                         "为未入库的文件夹建仓库", "设置笔记根目录"],
+             "default": "显示各仓库状态"},
+            {"key": "msg", "label": "提交说明", "type": "text",
+             "placeholder": "留空用默认消息",
+             "show_if": ("op", ["批量提交并推送", "只推送、不提交"])},
+            {"key": "selection", "label": "要建仓库的编号", "type": "text",
+             "placeholder": "逗号分隔；留空＝全选", "show_if": ("op", "为未入库的文件夹建仓库")},
+            {"key": "account", "label": "远程账户名", "type": "text",
+             "placeholder": "如 GitHub 用户名", "show_if": ("op", "为未入库的文件夹建仓库")},
+            {"key": "root", "label": "笔记根目录", "type": "path",
+             "default": str(Path(core.WORKSPACE) / "LaTeX_Notes"),
+             "show_if": ("op", "设置笔记根目录")},
+        ],
+        "build": _build_manager,
+    },
+    "7": {
+        "title": "单本笔记工具",
+        "desc": "对选定的笔记提交推送、切换习题编排模式，或补导引与小结。",
+        "fields": [
+            {"key": "note", "label": "笔记", "type": "choice",
+             "choices": _note_choices, "default": ""},
+            {"key": "action", "label": "动作", "type": "choice",
+             "choices": ["提交并推送", "切换习题编排模式", "补导引与小结"],
+             "default": "提交并推送"},
+            {"key": "scope", "label": "补哪些", "type": "choice",
+             "choices": ["both", "intro", "summary"], "default": "both",
+             "show_if": ("action", "补导引与小结")},
+            {"key": "yes", "label": "免确认直接写入", "type": "check", "default": False,
+             "danger": True, "show_if": ("action", "补导引与小结")},
+        ],
+        "build": _build_note_tools,
     },
     "8": {
         "title": "清理编译产物",
@@ -415,25 +660,28 @@ class FormPanel(QtWidgets.QWidget):
             return widget.edit.text().strip()
         return widget.text().strip()
 
+    @staticmethod
+    def _match(cond, raw):
+        """show_if 条件是否满足。want 可以是列表（任一匹配即可）。"""
+        key, want = cond
+        if isinstance(want, (list, tuple)):
+            return str(raw.get(key)) in [str(w) for w in want]
+        return str(raw.get(key)) == str(want)
+
     def values(self):
         raw = {f["key"]: self._read(f) for f in self.spec["fields"]}
         out = dict(raw)
         for field in self.spec["fields"]:
             cond = field.get("show_if")
-            if cond:
-                key, want = cond
-                if str(raw.get(key)) != str(want):
-                    out[field["key"]] = ""
+            if cond and not self._match(cond, raw):
+                out[field["key"]] = ""
         return out
 
     def _sync_visibility(self):
         raw = {f["key"]: self._read(f) for f in self.spec["fields"]}
         for field in self.spec["fields"]:
             cond = field.get("show_if")
-            visible = True
-            if cond:
-                key, want = cond
-                visible = str(raw.get(key)) == str(want)
+            visible = True if not cond else self._match(cond, raw)
             self.rows[field["key"]].setVisible(visible)
 
     # ---------- 执行 ----------
@@ -447,7 +695,7 @@ class FormPanel(QtWidgets.QWidget):
                 self.hint.setText("请填写：{}".format(field["label"]))
                 return
 
-        script = core.TOOLS_ROOT / self.tool["script"]
+        script = core.TOOLS_ROOT / self.spec.get("script", self.tool["script"])
         if not script.is_file():
             self.hint.setText("找不到脚本：{}".format(self.tool["script"]))
             return
@@ -559,7 +807,7 @@ class TerminalPanel(QtWidgets.QWidget):
     def start(self):
         if self.proc is not None:
             return
-        script = core.TOOLS_ROOT / self.tool["script"]
+        script = core.TOOLS_ROOT / self.spec.get("script", self.tool["script"])
         if not script.is_file():
             self.out.setPlainText("找不到脚本：{}".format(self.tool["script"]))
             return

@@ -59,12 +59,21 @@ python Tools/panel_qt.py              # 直接开窗口
 
 做的是**启动器**，不是把 16 个工具各重写一遍。清单来自 `launcher.MENU`（经 `panel_core` 转成界面用的结构），命令行面板、Qt 面板、网页备用版共用同一份，不会漂移。
 
-工具分两种入口，都在面板里完成，不再弹外部控制台：
+**16 个工具全部有可视化表单**，点卡片上的「打开」进表单页：填参数 → 点「执行」→ 输出留在面板里，不再弹外部控制台。
 
-- **有表单的**（`new_note`、`outline_tool`、`clean_aux`、`repo_check`、`check_sensitive`、`sync_paths`、`commit`、`spec_sync`、`pdf_upright`、`watch_notes`）→ 点卡片上的「打开」进表单页：填参数 → 点「执行」→ 输出留在下方。有完整命令行接口的工具都配了表，工具本身一行没改。
-- **纯交互的**（`git_setup`、`manager`、`symbols`、`progress`、`note_tools`、`video2text`）→ 点「终端」进内嵌终端：输出显示在面板里，输入行回车直接送进子进程 stdin。
+做法不是把工具重写一遍，而是**给每个工具的既有命令行接口配一张表单** —— 界面填参数 → 拼成命令行 → `QProcess` 跑真脚本 → 输出留在面板。工具本身的命令行接口就是稳定 API。
 
-表单与终端都是用 `QProcess` 跑真脚本，不做模拟。
+为此给三个原本只有交互菜单的工具补了非交互子命令（默认行为不变，不带参数时仍走原交互面板）：
+
+| 工具 | 新增子命令 |
+|---|---|
+| `manager` | `--status` / `--commit-all [--push-only] [--msg]` / `--create-repo [--selection] [--account]` / `--set-root <路径> [--account]` |
+| `note_tools` | `--note <名字>` / `--action commit\|exercise\|intro-summary` / `--scope both\|intro\|summary` / `--yes` |
+| `git_setup` | `--check` / `--account [--name] [--email]` / `--ssh [--gen-key] [--write-443] [--test]` |
+
+表单引擎：字段类型 text / int / path / file / choice / check；`show_if` 支持字段联动（切换操作只显示相关字段，隐藏字段不进参数）；路径字段带「浏览…」；破坏性操作默认不勾选，先出预览再决定。
+
+跑不动的工具仍留「控制台」入口（弹外部窗口），以及一个内嵌终端兜底。
 - 卡片：图标 + 标题 + 说明 + 状态 + 操作，同排等高；主按钮进表单/终端，次按钮仍可弹外部控制台。
 - 搜索：`/` 聚焦，跨组匹配后单独成页并显示命中数，`Esc` 清空回到当前组。
 - 窗口变宽时卡片列数自动重排；只搜到一两个结果时卡片不会被拉成横幅。

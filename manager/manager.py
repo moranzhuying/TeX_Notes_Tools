@@ -12,6 +12,7 @@ manager.py — 笔记工作区管理面板
 
 配置保存在脚本同目录的 manager.conf。
 """
+import argparse
 import os
 import re
 import subprocess
@@ -280,10 +281,18 @@ def zones(cfg):
 # ---------------------------------------------------------------- 功能
 
 
-def set_root(cfg):
+def set_root(cfg, new_root=None, account=None):
+    """设置笔记根目录。
+
+    new_root / account 为 None 时走交互提问；给了值就用给定值，
+    供图形面板直接调用（面板里没有标准输入可提问）。
+    """
     print("【一】设置笔记根目录\n")
     print(f"  当前：{cfg.get('root') or '（未设置）'}\n")
-    new = input("新的根目录（回车保持不变）：").strip().strip('"')
+    if new_root is None:
+        new = input("新的根目录（回车保持不变）：").strip().strip('"')
+    else:
+        new = str(new_root).strip().strip('"')
     if not new:
         print("  未作改动。")
         return cfg
@@ -297,7 +306,10 @@ def set_root(cfg):
     print(f"  ✓ 已设为 {new}")
     print(f"    子文件夹 {len(ds)} 个，其中 git 仓库 {len(rs)} 个")
 
-    acct = input("\n  远程账户名（如 GitHub 用户名，回车保持不变）：").strip()
+    if account is None:
+        acct = input("\n  远程账户名（如 GitHub 用户名，回车保持不变）：").strip()
+    else:
+        acct = str(account).strip()
     if acct:
         cfg["account"] = acct
         save_conf(cfg)
@@ -387,11 +399,22 @@ def has_unpushed(d):
     return "ahead" in first
 
 
-def commit_push_all(cfg):
+def commit_push_all(cfg, msg=None, only_push=None):
+    """批量提交并推送。
+
+    msg / only_push 为 None 时走交互提问；给了值直接用，
+    供图形面板调用（面板里没有标准输入可提问）。
+    """
     print("【三】批量提交并推送\n")
 
-    msg = input(f"  统一提交说明（回车＝「{DEFAULT_MSG}」）：").strip() or DEFAULT_MSG
-    only_push = input("  只推送、不提交？[y/N] ").strip().lower() in ("y", "yes")
+    if msg is None:
+        msg = input(f"  统一提交说明（回车＝「{DEFAULT_MSG}」）：").strip() or DEFAULT_MSG
+    else:
+        msg = str(msg).strip() or DEFAULT_MSG
+    if only_push is None:
+        only_push = input("  只推送、不提交？[y/N] ").strip().lower() in ("y", "yes")
+    else:
+        only_push = bool(only_push)
 
     # 「只推送」要包含工作区干净但有未推送提交的仓库，
     # 否则推送失败后按提示重跑时，这些仓库会被 skip_clean 过滤掉
@@ -436,7 +459,12 @@ def commit_push_all(cfg):
         print("  推送失败的仓库，本地提交已成功，网络恢复后重跑本选项即可。")
 
 
-def create_repo(cfg):
+def create_repo(cfg, selection=None, account=None):
+    """为未入版本控制的文件夹创建仓库。
+
+    selection（编号）/ account 为 None 时走交互提问；给了值直接用，
+    供图形面板调用。
+    """
     print("【四】为未入版本控制的文件夹创建仓库\n")
     root = cfg.get("root")
     if not root or not Path(root).is_dir():
@@ -456,7 +484,10 @@ def create_repo(cfg):
     for i, d in enumerate(todo, 1):
         print(f"    {i:>2}. {d.name}")
     print("\n  输入编号（英文逗号分隔，回车＝全选，0＝取消）：")
-    sel = input("  > ").strip()
+    if selection is None:
+        sel = input("  > ").strip()
+    else:
+        sel = str(selection).strip()
     if sel == "0":
         return
     if not sel:
@@ -465,7 +496,8 @@ def create_repo(cfg):
         idxs = [int(s) for s in sel.replace("，", ",").split(",") if s.strip().isdigit()]
     targets = [todo[i - 1] for i in idxs if 1 <= i <= len(todo)]
 
-    acct = cfg.get("account") or input("  GitHub 账户名：").strip()
+    acct = (cfg.get("account") or (str(account).strip() if account else "")
+            or input("  GitHub 账户名：").strip())
     if not acct:
         print("  ✗ 需要账户名才能创建远程仓库。")
         return
@@ -537,6 +569,24 @@ def create_repo(cfg):
 # ---------------------------------------------------------------- 主循环
 
 
+def parse_cli(argv):
+    """解析非交互子命令（图形面板用）。没有子命令时各项皆为假。
+
+    用 parse_known_args：面板传的额外参数不该让整个工具报错。
+    """
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--status", action="store_true", help="显示各仓库状态")
+    ap.add_argument("--commit-all", action="store_true", help="批量提交并推送")
+    ap.add_argument("--push-only", action="store_true", help="只推送、不提交")
+    ap.add_argument("--msg", help="统一提交说明")
+    ap.add_argument("--create-repo", action="store_true", help="为未入库的文件夹建仓库")
+    ap.add_argument("--selection", help="要建仓库的编号（逗号分隔）；留空＝全选")
+    ap.add_argument("--set-root", help="设置笔记根目录")
+    ap.add_argument("--account", help="远程账户名")
+    known, _unknown = ap.parse_known_args(argv)
+    return known
+
+
 def main():
     if "--help" in sys.argv or "-h" in sys.argv:
         print(__doc__)
@@ -548,6 +598,23 @@ def main():
         pass
 
     cfg = load_conf()
+
+    # 非交互子命令：图形面板直接调，不再进交互面板
+    cli = parse_cli(sys.argv[1:])
+    if cli.status:
+        show_status(cfg)
+        return 0
+    if cli.commit_all:
+        commit_push_all(cfg, msg=cli.msg,
+                        only_push=True if cli.push_only else None)
+        return 0
+    if cli.create_repo:
+        create_repo(cfg, selection=cli.selection, account=cli.account)
+        return 0
+    if cli.set_root:
+        set_root(cfg, new_root=cli.set_root, account=cli.account)
+        return 0
+
     try:
         run_panel(cfg)
     except (EOFError, KeyboardInterrupt):

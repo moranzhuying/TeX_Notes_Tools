@@ -12,6 +12,7 @@ git_setup.py — Git 基本信息设置
 用法：
     python git_setup.py
 """
+import argparse
 import os
 import re
 import subprocess
@@ -165,15 +166,22 @@ def check_env():
         print(f"      {msg[:200]}")
 
 
-def config_git():
+def config_git(new_name=None, new_mail=None):
+    """配置 Git 账户。给了值就直接设，否则走交互提问。"""
     print("【二】配置 Git 账户\n")
     _, name, _ = git(["config", "--global", "user.name"])
     _, mail, _ = git(["config", "--global", "user.email"])
     print(f"  当前用户名：{name or '（空）'}")
     print(f"  当前邮箱　：{mail or '（空）'}\n")
 
-    new_name = input("新的用户名（回车保持不变）：").strip()
-    new_mail = input("新的邮箱（回车保持不变）：").strip()
+    if new_name is None:
+        new_name = input("新的用户名（回车保持不变）：").strip()
+    else:
+        new_name = str(new_name).strip()
+    if new_mail is None:
+        new_mail = input("新的邮箱（回车保持不变）：").strip()
+    else:
+        new_mail = str(new_mail).strip()
 
     if new_name:
         ok, _, err = git(["config", "--global", "user.name", new_name])
@@ -185,7 +193,8 @@ def config_git():
         print("  未作改动。")
 
 
-def config_ssh():
+def config_ssh(gen_key=None, write_443=None, test=None):
+    """配置 SSH。三个开关给 None 时走交互提问，给值则直接用。"""
     print("【三】配置 SSH\n")
     account = load_account()
     ssh_dir = Path.home() / ".ssh"
@@ -195,8 +204,12 @@ def config_ssh():
     if key.is_file():
         print(f"  密钥已存在：{key.name}")
     else:
-        ans = input("  未找到 ed25519 密钥，现在生成？[y/N] ").strip().lower()
-        if ans in ("y", "yes"):
+        if gen_key is None:
+            ans = input("  未找到 ed25519 密钥，现在生成？[y/N] ").strip().lower()
+            want = ans in ("y", "yes")
+        else:
+            want = bool(gen_key)
+        if want:
             ok, out, err = run(["ssh-keygen", "-t", "ed25519", "-N", "",
                                 "-C", account or "note", "-f", str(key)])
             print("  ✓ 已生成密钥" if ok else f"  ✗ 生成失败：{err}")
@@ -209,8 +222,12 @@ def config_ssh():
     if state == "already":
         print("  SSH config 已指向 ssh.github.com:443 ✓")
     else:
-        ans = input("  为 github.com 配置 443 端口？（国内网络通常需要）[y/N] ").strip().lower()
-        if ans in ("y", "yes"):
+        if write_443 is None:
+            ans = input("  为 github.com 配置 443 端口？（国内网络通常需要）[y/N] ").strip().lower()
+            want = ans in ("y", "yes")
+        else:
+            want = bool(write_443)
+        if want:
             cfg_file.write_text(new_content, encoding="utf-8", newline="")
             print("  ✓ 已写入 ~/.ssh/config" if state == "appended"
                   else "  ✓ 已在原有 Host github.com 段内补上 443")
@@ -247,11 +264,37 @@ def show_menu():
     print("=" * 62)
 
 
+def parse_cli(argv):
+    """解析非交互子命令（图形面板用）。"""
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--check", action="store_true", help="检测环境")
+    ap.add_argument("--account", action="store_true", help="配置 Git 账户")
+    ap.add_argument("--name", help="Git 用户名")
+    ap.add_argument("--email", help="Git 邮箱")
+    ap.add_argument("--ssh", action="store_true", help="配置 SSH")
+    ap.add_argument("--gen-key", action="store_true", help="生成 ed25519 密钥")
+    ap.add_argument("--write-443", action="store_true", help="写 ssh config 的 443 端口")
+    ap.add_argument("--test", action="store_true", help="测试连通性")
+    known, _unknown = ap.parse_known_args(argv)
+    return known
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+    cli = parse_cli(sys.argv[1:])
+    if cli.check:
+        check_env()
+        return 0
+    if cli.account:
+        config_git(cli.name, cli.email)
+        return 0
+    if cli.ssh:
+        config_ssh(gen_key=cli.gen_key, write_443=cli.write_443, test=cli.test)
+        return 0
 
     actions = {"1": check_env, "2": config_git, "3": config_ssh}
 
