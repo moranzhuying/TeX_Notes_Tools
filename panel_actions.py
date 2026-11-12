@@ -117,6 +117,264 @@ def _clean_summary(rows):
     return "{} 个目录，共 {} 个文件".format(len(rows), total)
 
 
+# ---------------------------------------------------------------- 输出解析
+#
+# 工具的输出大多是「一行一条」的键值或列表，逐个写成表格比给一坨文本好用。
+# 解析不出结构时返回空列表，界面自动退回文本模式。
+
+
+def _kv_rows(text):
+    """「键：值」逐行 → 两列表。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or "：" not in s:
+            continue
+        key, _, value = s.partition("：")
+        key, value = key.strip(), value.strip()
+        if key and value:
+            rows.append([key, value])
+    return rows
+
+
+def _fallback_summary(text):
+    """表格解析不出内容时，从输出里捞一句结论当摘要。"""
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        return "无输出"
+    for line in reversed(lines):
+        if any(k in line for k in ("没有", "已取消", "通过", "一致", "完成",
+                                   "无改动", "跳过", "失败")):
+            return line[:90]
+    return lines[-1][:90]
+
+
+def _parse_env_rows(text):
+    """git_setup --check：环境检测项。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if "：" not in s or s.startswith("【"):
+            continue
+        key, _, value = s.partition("：")
+        key = key.strip()
+        if key and value.strip():
+            rows.append([key, value.strip()])
+    return rows
+
+
+def _env_summary(rows):
+    bad = [r for r in rows if "✗" in r[1]]
+    if bad:
+        return "{} 项检查，{} 项有问题".format(len(rows), len(bad))
+    return "{} 项检查，全部正常".format(len(rows))
+
+
+def _parse_symbols_rows(text):
+    """symbols：根目录 / 符号数 / 差异统计。"""
+    return _kv_rows(text)
+
+
+def _symbols_summary(rows):
+    for key, value in rows:
+        if key.startswith("模板符号"):
+            return "模板符号 " + value
+    return "{} 项检查".format(len(rows))
+
+
+def _parse_new_note_rows(text):
+    """new_note：按「复制骨架 / 清理测试内容」等小节分组列条目。"""
+    rows = []
+    section = "概览"
+    for raw in text.splitlines():
+        if not raw.strip():
+            continue
+        indented = raw[:1].isspace()
+        s = raw.strip()
+        if not indented and s.endswith("："):
+            section = s[:-1]
+            continue
+        rows.append([section, s])
+    return rows
+
+
+def _new_note_summary(rows):
+    return "{} 个条目".format(len(rows))
+
+
+def _parse_outline_rows(text):
+    """outline_tool --check：✗ 第 N 行：问题。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^✗\s*第\s*(\d+)\s*行：(.+)$", s)
+        if m:
+            rows.append([m.group(1), m.group(2)])
+    if not rows and "✓ 格式正确" in text:
+        rows.append(["整体", "✓ 格式正确"])
+    return rows
+
+
+def _outline_summary(rows):
+    if not rows:
+        return "没有解析出问题"
+    if len(rows) == 1 and rows[0][1].startswith("✓"):
+        return "格式正确"
+    return "{} 处问题".format(len(rows))
+
+
+def _parse_note_files(text):
+    """note_tools：＋ 新建 / ~ 修改 的文件清单。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if s.startswith("＋"):
+            rows.append(["新建", s[1:].strip()])
+        elif s.startswith("~"):
+            rows.append(["修改", s[1:].strip()])
+    return rows
+
+
+def _note_summary(rows):
+    return "{} 个文件有变动".format(len(rows))
+
+
+def _parse_sync_rows(text):
+    """sync_paths：[OK] 文件:行 键 = 值 / [OK] 文件 -> 值。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^\[([^\]]+)\]\s+(.*)$", s)
+        if not m:
+            continue
+        status, rest = m.group(1), m.group(2)
+        if "->" in rest:
+            item, _, value = rest.partition("->")
+            rows.append([status, item.strip(), "→", value.strip()])
+        elif "=" in rest:
+            item, _, value = rest.partition("=")
+            parts = item.strip().split(None, 1)
+            where = parts[0]
+            key = parts[1] if len(parts) > 1 else ""
+            rows.append([status, where, key, value.strip()])
+        else:
+            rows.append([status, rest, "", ""])
+    return rows
+
+
+def _sync_summary(rows):
+    bad = [r for r in rows if r[0] != "OK"]
+    if bad:
+        return "{} 项检查，{} 项异常".format(len(rows), len(bad))
+    return "{} 项检查，全部正常".format(len(rows))
+
+
+def _parse_commit_rows(text):
+    """commit --dry-run：待提交文件清单。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^([?MADRCU!]{1,2})\s+(.+)$", s)
+        if m:
+            rows.append([m.group(1), m.group(2).strip()])
+    return rows
+
+
+def _commit_summary(rows):
+    if not rows:
+        return "没有待提交的改动"
+    return "{} 个文件待提交".format(len(rows))
+
+
+def _parse_collection_rows(text):
+    """video2text --collections：ID | 标题 | 进度。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if "|" not in s:
+            continue
+        parts = [p.strip() for p in s.split("|")]
+        if len(parts) >= 3:
+            rows.append(parts[:3])
+    return rows
+
+
+def _collection_summary(rows):
+    return "{} 个合集".format(len(rows))
+
+
+def _parse_spec_rows(text):
+    """spec_sync --check：状态 / 原件 / 副本与哈希。"""
+    rows = []
+    cur = None
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^\[([^\]]+)\]\s+(.+)$", s)
+        if m:
+            cur = [m.group(1), m.group(2), ""]
+            rows.append(cur)
+            continue
+        if cur is None or not s:
+            continue
+        if s.startswith("↔"):
+            cur[2] = s.lstrip("↔ ").strip()
+        elif s.startswith("sha256"):
+            cur[2] = (cur[2] + "　" + s).strip()
+    return rows
+
+
+def _spec_summary(rows):
+    bad = [r for r in rows if r[0] not in ("一致", "OK")]
+    if bad:
+        return "{} 份副本，{} 份不一致".format(len(rows), len(bad))
+    return "{} 份副本，全部一致".format(len(rows))
+
+
+def _parse_watch_rows(text):
+    """watch_notes：[时间][pid][级别] 消息。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^\[([^\]]+)\]\[\d+\]\[(\w+)\]\s*(.*)$", s)
+        if m:
+            rows.append([m.group(1), m.group(2), m.group(3)])
+    return rows
+
+
+def _watch_summary(rows):
+    if not rows:
+        return "没有输出"
+    return rows[-1][2][:60]
+
+
+def _parse_pdf_rows(text):
+    """pdf_upright：序号 文件 页数 尺寸 结论。"""
+    rows = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        m = re.match(r"^(\d+)\.\s+(.+?)\s{2,}(\d+)\s*页\s*(.*)$", s)
+        if not m:
+            continue
+        name, pages, rest = m.group(2), m.group(3), m.group(4).strip()
+        # 尺寸与结论之间是全角空格
+        parts = [p.strip() for p in rest.split("　") if p.strip()]
+        size = parts[0] if parts else ""
+        verdict = parts[1] if len(parts) > 1 else (parts[0] if parts else "")
+        if len(parts) == 1:
+            size, verdict = "", parts[0]
+        rows.append([name, pages, size, verdict])
+    return rows
+
+
+def _pdf_summary(rows):
+    if not rows:
+        return "没有扫描到 PDF"
+    need = [r for r in rows if "跳过" not in r[3]]
+    if need:
+        return "{} 个 PDF，{} 个需要转正".format(len(rows), len(need))
+    return "{} 个 PDF，都不需要转正".format(len(rows))
+
+
 # ---------------------------------------------------------------- 参数拼装
 
 
@@ -430,6 +688,12 @@ SPECS = {
                                     "刷新补全", "删除符号", "全套（回填 + 补全 + 分发）"])},
         ],
         "build": _build_symbols,
+        "result": {
+            "kind": "table",
+            "columns": ['检查项', '结果'],
+            "parse": _parse_symbols_rows,
+            "summary": _symbols_summary,
+        },
     },
     "4": {
         "title": "写作工作台",
@@ -453,9 +717,9 @@ SPECS = {
         "desc": "字幕优先，没有字幕时用本地 whisper 转写。",
         "fields": [
             {"key": "op", "label": "操作", "type": "choice",
-             "choices": ["转写视频", "列出合集", "补做失败项", "导出合集 ZIP",
+             "choices": ["列出合集", "转写视频", "补做失败项", "导出合集 ZIP",
                          "同步标题文件夹", "锁状态诊断"],
-             "default": "转写视频"},
+             "default": "列出合集"},
             {"key": "url", "label": "视频地址", "type": "text",
              "placeholder": "BV 号或视频链接", "show_if": ("op", "转写视频")},
             {"key": "mode", "label": "取源方式", "type": "choice",
@@ -501,6 +765,12 @@ SPECS = {
              "placeholder": "留空用默认名", "show_if": ("op", "导出合集 ZIP")},
         ],
         "build": _build_video2text,
+        "result": {
+            "kind": "table",
+            "columns": ['ID', '标题', '进度'],
+            "parse": _parse_collection_rows,
+            "summary": _collection_summary,
+        },
     },
     "5": {
         "title": "新建笔记",
@@ -522,6 +792,12 @@ SPECS = {
             {"key": "push", "label": "建好后推送到远程", "type": "check", "default": False},
         ],
         "build": _build_new_note,
+        "result": {
+            "kind": "table",
+            "columns": ['类别', '条目'],
+            "parse": _parse_new_note_rows,
+            "summary": _new_note_summary,
+        },
     },
     "6": {
         "title": "大纲工具",
@@ -538,6 +814,12 @@ SPECS = {
             {"key": "list", "label": "清单文件", "type": "file", "show_if": ("mode", "从清单新建")},
         ],
         "build": _build_outline,
+        "result": {
+            "kind": "table",
+            "columns": ['位置', '问题'],
+            "parse": _parse_outline_rows,
+            "summary": _outline_summary,
+        },
     },
     "1": {
         "title": "Git 基本信息",
@@ -557,6 +839,12 @@ SPECS = {
              "show_if": ("op", "配置 SSH")},
         ],
         "build": _build_git_setup,
+        "result": {
+            "kind": "table",
+            "columns": ['项目', '值'],
+            "parse": _parse_env_rows,
+            "summary": _env_summary,
+        },
     },
     "2": {
         "title": "笔记工作区管理",
@@ -601,6 +889,12 @@ SPECS = {
              "danger": True, "show_if": ("action", "补导引与小结")},
         ],
         "build": _build_note_tools,
+        "result": {
+            "kind": "table",
+            "columns": ['动作', '文件'],
+            "parse": _parse_note_files,
+            "summary": _note_summary,
+        },
     },
     "8": {
         "title": "清理编译产物",
@@ -651,6 +945,12 @@ SPECS = {
         "desc": "检查配置里的路径是否有效，并按需修复。没有参数，直接跑即可。",
         "fields": [],
         "build": _build_sync_paths,
+        "result": {
+            "kind": "table",
+            "columns": ['状态', '位置', '键', '值'],
+            "parse": _parse_sync_rows,
+            "summary": _sync_summary,
+        },
     },
     "12": {
         "title": "提交本工具集",
@@ -663,6 +963,12 @@ SPECS = {
              "danger": True},
         ],
         "build": _build_commit,
+        "result": {
+            "kind": "table",
+            "columns": ['状态', '文件'],
+            "parse": _parse_commit_rows,
+            "summary": _commit_summary,
+        },
     },
     "14": {
         "title": "项目规范副本一致性",
@@ -672,6 +978,12 @@ SPECS = {
              "choices": ["只检查", "直接同步", "防呆同步"], "default": "只检查"},
         ],
         "build": _build_spec_sync,
+        "result": {
+            "kind": "table",
+            "columns": ['状态', '原件', '副本'],
+            "parse": _parse_spec_rows,
+            "summary": _spec_summary,
+        },
     },
     "15": {
         "title": "PDF 转正",
@@ -687,6 +999,12 @@ SPECS = {
             {"key": "dry", "label": "预演（不真的转）", "type": "check", "default": True},
         ],
         "build": _build_pdf_upright,
+        "result": {
+            "kind": "table",
+            "columns": ["文件", "页数", "尺寸", "结论"],
+            "parse": _parse_pdf_rows,
+            "summary": _pdf_summary,
+        },
     },
     "16": {
         "title": "笔记目录监测",
@@ -701,6 +1019,12 @@ SPECS = {
             {"key": "no_push", "label": "只提交不推送", "type": "check", "default": False},
         ],
         "build": _build_watch_notes,
+        "result": {
+            "kind": "table",
+            "columns": ['时间', '级别', '消息'],
+            "parse": _parse_watch_rows,
+            "summary": _watch_summary,
+        },
     },
 }
 
@@ -736,14 +1060,17 @@ class FormPanel(QtWidgets.QWidget):
         desc.setWordWrap(True)
         lay.addWidget(desc)
 
-        form_box = QtWidgets.QFrame()
-        form_box.setObjectName("Card")
-        form = QtWidgets.QGridLayout(form_box)
-        form.setContentsMargins(18, 16, 18, 16)
-        form.setHorizontalSpacing(12)
-        form.setVerticalSpacing(10)
+        form_box = None
+        form = None
+        if self.spec["fields"]:
+            form_box = QtWidgets.QFrame()
+            form_box.setObjectName("Card")
+            form = QtWidgets.QGridLayout(form_box)
+            form.setContentsMargins(18, 16, 18, 16)
+            form.setHorizontalSpacing(12)
+            form.setVerticalSpacing(10)
         row = 0
-        for field in self.spec["fields"]:
+        for field in (self.spec["fields"] if form is not None else []):
             container = QtWidgets.QWidget()
             box = QtWidgets.QHBoxLayout(container)
             box.setContentsMargins(0, 0, 0, 0)
@@ -759,7 +1086,8 @@ class FormPanel(QtWidgets.QWidget):
             self.widgets[field["key"]] = widget
             self.rows[field["key"]] = container
             row += 1
-        lay.addWidget(form_box)
+        if form_box is not None:
+            lay.addWidget(form_box)
 
         actions = QtWidgets.QHBoxLayout()
         actions.setSpacing(8)
@@ -827,8 +1155,9 @@ class FormPanel(QtWidgets.QWidget):
             header = self.table.horizontalHeader()
             # 首列按内容拉伸（仓库名长短不一），其余按内容宽度
             header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-            if columns:
-                header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            stretch = self.result.get("stretch", 0)
+            if columns and 0 <= stretch < len(columns):
+                header.setSectionResizeMode(stretch, QtWidgets.QHeaderView.Stretch)
             lay.addWidget(self.table)
         else:
             self.out = QtWidgets.QPlainTextEdit()
@@ -850,7 +1179,11 @@ class FormPanel(QtWidgets.QWidget):
                         self.table.setItem(
                             r, c, QtWidgets.QTableWidgetItem(str(val)))
             summary = self.result.get("summary")
-            self.result_summary.setText(summary(rows) if summary else "")
+            if rows:
+                self.result_summary.setText(summary(rows) if summary else "")
+            else:
+                # 没解析出结构化行时，至少把工具的结论那句话显示出来
+                self.result_summary.setText(_fallback_summary(cleaned))
         else:
             self.out.setPlainText(cleaned)
             lines = cleaned.splitlines()
@@ -998,6 +1331,9 @@ class FormPanel(QtWidgets.QWidget):
         proc.errorOccurred.connect(self._failed)
         self.proc = proc
         proc.start()
+        # 关掉子进程的 stdin：GUI 里没有终端可输入，任何 input() 会立刻拿到 EOF
+        # 并走各自的「取消」分支。少了这一步，需要确认的工具会一直挂着不返回。
+        proc.closeWriteChannel()
 
     def _read_output(self):
         if self.proc is None:

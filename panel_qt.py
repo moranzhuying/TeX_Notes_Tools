@@ -987,8 +987,31 @@ def _claim_taskbar_identity():
     return
 
 
+def _excepthook(exc_type, exc, tb):
+    """未捕获的 Python 异常兜底。
+
+    GUI 程序没有 stderr，异常默认被静默吞掉 —— 表现是「点了没反应、应用挂住」，
+    很难查。这里落盘 + 弹窗，让问题看得见。
+    """
+    import traceback
+    text = "".join(traceback.format_exception(exc_type, exc, tb))
+    log = Path(__file__).with_name("_panel_error.log")
+    try:
+        with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
+            fh.write(text + "\n")
+    except OSError:
+        pass
+    try:
+        QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        QtWidgets.QMessageBox.critical(
+            None, "面板出错了", text[-1200:] + "\n\n已写入 " + str(log))
+    except Exception:
+        pass
+
+
 def main():
     _claim_taskbar_identity()
+    sys.excepthook = _excepthook
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("LaTeX 工具箱")
     app.setStyle("Fusion")

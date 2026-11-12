@@ -184,6 +184,15 @@
     * 运行时图标从包里读：`--add-data tools.ico;.` + `app_icon()` 按 `sys._MEIPASS` 定位。
     * **图标缓存**：Windows 按路径缓存 exe 图标，换图标后任务栏/资源管理器仍是旧的，重启资源管理器不够，要删 `%LOCALAPPDATA%\IconCache.db` 与 `Microsoft\Windows\Explorer\iconcache_*.db` 再重启 Explorer。
     * 图标造型由工具箱改成**齿轮**：拱形提手加中间搭扣在 16px 下会被读成挂锁，齿轮没有这个歧义。
+* **14 个工具的结果表格化**
+    * 给每个工具的输出写解析函数：键值型（`git_setup`/`symbols`）、分节型（`new_note`）、问题型（`outline_tool`）、文件清单型（`note_tools`/`commit`）、检查项型（`sync_paths`/`spec_sync`）、PDF 清单型（`pdf_upright`）、合集型（`video2text`）、日志型（`watch_notes`）。
+    * spec 里用 `result` 声明列名、解析函数、摘要函数，以及要拉伸的列（`stretch`）。解析不出结构时自动退回文本，摘要改为显示工具的结论句。
+    * **执行后立即关闭子进程 stdin**：GUI 里没有终端可输入，任何 `input()` 会拿到 EOF 走各自的「取消」分支。少了这一步，需要确认的工具（如 `note_tools` 补导引小结）会一直挂着不返回。
+    * `video2text` 默认操作改成只读的「列出合集」，避免一点就下载转写。
+    * 没有字段的工具不再留一张空表单卡。
+* **全局异常兜底**
+    * GUI 程序没有 stderr，未捕获的 Python 异常会被静默吞掉 —— 表现是「点了没反应、应用挂住」，极难查。`sys.excepthook` 落盘 `_panel_error.log` 并弹窗。
+    * ⚠️ Qt 的信号槽回调里抛异常不会退出应用，事件循环照转，整个界面看着像卡死。写 Qt 代码时务必装这个钩子。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。
