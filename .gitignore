@@ -49,3 +49,6 @@ video2text/video2text.conf
 # ===== watch_notes 运行时数据（状态 / 日志 / 实例锁） =====
 watch_notes/_state/
 watch_notes/_logs/
+
+# ===== panel_qt 崩溃日志（pythonw 无 stderr 时的落盘痕迹） =====
+_panel_error.log

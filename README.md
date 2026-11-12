@@ -5,7 +5,9 @@
 | 脚本 | 用途 | 详细说明 |
 |---|---|---|
 | `launcher.py` | **命令行总面板**：列出并调起下面各工具 | 见下 |
-| `panel_gui.py` | **图形总面板**（本地网页）：卡片式列出全部工具，一键启动控制台，一次性命令的结果留在页面上 | 见下 |
+| `panel_qt.py` | **图形总面板**（Qt 桌面窗口）：卡片式列出全部工具，一键启动控制台，一次性命令的结果显示在下方面板 | 见下 |
+| `panel_core.py` | 面板共用逻辑（工具清单 / 启动 / 停止 / 状态），Qt 版与网页备用版都调用它 | 见下 |
+| `panel_gui.py` | 图形面板的**网页备用版**：没有 Qt 环境时用，纯标准库、浏览器界面 | 见下 |
 | `git_setup/git_setup.py` | Git 基本信息：环境检测 / 配置账户 / 配置 SSH | `git_setup.md` |
 | `manager/manager.py` | 笔记工作区管理：仓库状态 / 批量提交 / 建仓库 | `manager.md` |
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 / 删除 / 修改 | `symbols.md` |
@@ -39,24 +41,29 @@
 
 每个工具也可以进自己的目录单独运行，配置与运行档案都放在它自己目录里。
 
-## panel_gui.py — 图形总面板
+## panel_qt.py — 图形总面板
 
 ```bash
-python Tools/panel_gui.py              # 打开面板（127.0.0.1:7658，自动开浏览器）
-python Tools/panel_gui.py --port 7660  # 换端口
-python Tools/panel_gui.py --no-browser # 只起服务
+python Tools/panel_qt.py              # 直接开窗口
 ```
 
-也双击 `Tools/run_panel.bat`。关掉页面不会停服务，结束要关掉那个控制台窗口或按 Ctrl+C。
+也双击 `Tools/run_panel.bat`（会优先用工具 venv 里的解释器，回退到 PATH 的 python）。
 
-做的是**启动器**，不是把各工具重写一遍：`MENU` 直接 import `launcher.py` 的那一份，两处不各维护一套。
+**依赖**：PySide6-Essentials，装在 `.workbuddy/binaries/python/envs/default`，不碰系统 Python：
 
-- **交互面板类** → 弹独立控制台窗口，`input()` 正常，行为与命令行一致。
-- **一次性命令类**（`check_sensitive` / `sync_paths`）→ 捕获输出，结果留在页面的侧栏里，不会开了就关。
-- 搜索框按标题、说明、脚本路径过滤；按 `/` 聚焦，`Esc` 清空或关侧栏。
-- 运行中的卡片显示状态点与耗时，可点「停止」（`taskkill /T /F` 连子进程一起）。
+```bash
+<venv>/Scripts/python.exe -m pip install PySide6-Essentials     --index-url https://mirrors.aliyun.com/pypi/simple/
+```
 
-只绑 `127.0.0.1`。POST 需要页面内嵌的随机令牌，并校验 `Host` / `Origin`，别的网页无法代你启动进程。没有 `tkinter`（本机 Python 是精简发行版）时这也是唯一零依赖的图形方案。
+做的是**启动器**，不是把 16 个工具各重写一遍。清单来自 `launcher.MENU`（经 `panel_core` 转成界面用的结构），命令行面板、Qt 面板、网页备用版共用同一份，不会漂移。
+
+- **交互面板类** → 弹独立控制台窗口。这些工具是 `input()` 循环，必须真终端，`CREATE_NEW_CONSOLE` 与命令行行为完全一致。
+- **一次性命令类**（`check_sensitive` / `sync_paths`）→ 捕获输出，显示在窗口下方的输出面板，跑完不会一闪而过。
+- 卡片显示状态点、耗时与退出码；运行中可「停止」（`taskkill /T /F` 连子进程）。
+- 搜索框按标题、说明、脚本路径过滤；按 `/` 聚焦，`Esc` 清空或关输出面板。
+- 窗口变宽时卡片列数自动重排；只搜到一两个结果时卡片不会被拉成横幅。
+
+**网页备用版** `panel_gui.py` 功能相同，纯标准库：`python Tools/panel_gui.py`，浏览器打开 `127.0.0.1:7658`。只在 Qt 装不上或坏掉时用；它同样只绑回环地址，POST 要内联随机令牌并校验 `Host` / `Origin`。
 
 ## progress/ — 写作工作台
 
