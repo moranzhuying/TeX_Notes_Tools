@@ -2,33 +2,33 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><title>7. 单本笔记工具 — LaTeX 工具箱</title><style>
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -38,11 +38,11 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
-</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 创建与维护</p><h1>7. 单本笔记工具</h1><p class="lead">对某一本书做三件事：提交推送、切换习题编排模式、补导引与小结的骨架。</p><table class="kv"><tr><th>面板入口</th><td>创建与维护 → 卡片「单本笔记工具」→ 选书与动作 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/note_tools/note_tools.py</code></td></tr></table><img src="img/tool-07.png" width="560" height="350" alt="界面"><p class="cap">先选书，再选动作；「补导引与小结」会多出范围与免确认两项。</p><h2>什么时候用</h2><ul><li>只改了一本书，不想用批量提交（免得把别的仓库一起动）。</li><li>想给某一章切到「习题模式」（题目与答案分开编排）。</li><li>某一层的正文已经写完，要补上该层的导引与小结骨架。</li></ul><h2>怎么做</h2><ol><li>在「笔记」下拉里选一本书（列表来自当前笔记根下含 <code>main.tex</code> 的目录）。</li><li>选动作：提交并推送 / 切换习题编排模式 / 补导引与小结。</li><li>补导引与小结时选范围（both / intro / summary）。</li><li>「免确认直接写入」默认不勾，勾了才跳过逐项确认。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>笔记</td><td>下拉选择，来自实时扫描，不会列出已删除的书。</td></tr><tr><td>动作</td><td>三选一。</td></tr><tr><td>补哪些</td><td>both = 导引与小结都补；intro 只补导引；summary 只补小结。</td></tr><tr><td>免确认直接写入</td><td>关掉后每处写入前都会列出来问一次。默认关。</td></tr></table><h2>命令行用法</h2><pre>python tools/note_tools/note_tools.py --note General_Topology --action commit
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 创建与维护</p><h1>7. 单本笔记工具</h1><p class="lead">对某一本书做三件事：提交推送、切换习题编排模式、补导引与小结的骨架。</p><table class="kv"><tr><th width="90">面板入口</th><td>创建与维护 → 卡片「单本笔记工具」→ 选书与动作 → 执行</td></tr><tr><th width="90">命令行</th><td><code>python tools/note_tools/note_tools.py</code></td></tr></table><p align="center"><a href="img/light/tool-07.png"><img src="img/light/tool-07.png" width="1000" height="679" alt="界面"></a></p><p class="cap" align="center">先选书，再选动作；「补导引与小结」会多出范围与免确认两项。（点击图片用看图器放大）</p><h2>什么时候用</h2><ul><li>只改了一本书，不想用批量提交（免得把别的仓库一起动）。</li><li>想给某一章切到「习题模式」（题目与答案分开编排）。</li><li>某一层的正文已经写完，要补上该层的导引与小结骨架。</li></ul><h2>怎么做</h2><ol><li>在「笔记」下拉里选一本书（列表来自当前笔记根下含 <code>main.tex</code> 的目录）。</li><li>选动作：提交并推送 / 切换习题编排模式 / 补导引与小结。</li><li>补导引与小结时选范围（both / intro / summary）。</li><li>「免确认直接写入」默认不勾，勾了才跳过逐项确认。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th width="28%">项</th><th width="72%">说明</th></tr><tr><td>笔记</td><td>下拉选择，来自实时扫描，不会列出已删除的书。</td></tr><tr><td>动作</td><td>三选一。</td></tr><tr><td>补哪些</td><td>both = 导引与小结都补；intro 只补导引；summary 只补小结。</td></tr><tr><td>免确认直接写入</td><td>关掉后每处写入前都会列出来问一次。默认关。</td></tr></table><h2>命令行用法</h2><pre>python tools/note_tools/note_tools.py --note General_Topology --action commit
 python tools/note_tools/note_tools.py --note General_Topology --action intro-summary --scope both
-python tools/note_tools/note_tools.py --note General_Topology --action exercise</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>改的文件</td><td>该笔记目录下的 <code>index.tex</code> / <code>main.tex</code> / <code>structure.sty</code></td></tr><tr><td>读的配置</td><td><code>manager.conf</code></td></tr></table><div class="warn">补导引与小结会插入 <code>\section*</code> 与 <code>\unnumberedsection</code> 骨架。按项目约定，这些块应保持注释状态、只在正在写的那一层打开 —— 工具插入后不会自动注释，记得手工收紧。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：下拉里没有我要的书</p><p class="a">A：扫描规则是「笔记根下含 <code>main.tex</code> 的目录」。新书还没建 <code>main.tex</code> 就不会出现，先用「新建笔记」。</p><p class="q">Q：补小结时报「正文没有 \label」</p><p class="a">A：小结里的 <code>\ref</code> / <code>\cref</code> 需要正文有对应 label。缺 label 时只生成标题不生成引用。</p><p class="q">Q：提交后远程没更新</p><p class="a">A：看结果里是否写了 push 失败。常见原因是远程有别人的提交，需要先拉。</p><p class="q">Q：习题模式会不会删掉我的正文？</p><p class="a">A：不会删，只是把题目与解答分到不同文件并调整入口。改动前有 git 兜底，建议先提交一次。</p></div><h2>相关</h2><ul><li>2. 笔记工作区管理</li><li>6. 大纲工具</li><li>9. 仓库体检</li></ul><p class="nav"><a href="06-outline.html">← 6. 大纲工具</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="08-clean-aux.html">8. 清理编译产物 →</a></p></body></html>
+python tools/note_tools/note_tools.py --note General_Topology --action exercise</pre><h2>文件都在哪</h2><table width="100%"><tr><th width="28%">内容</th><th width="72%">位置</th></tr><tr><td>改的文件</td><td>该笔记目录下的 <code>index.tex</code> / <code>main.tex</code> / <code>structure.sty</code></td></tr><tr><td>读的配置</td><td><code>manager.conf</code></td></tr></table><div class="warn">补导引与小结会插入 <code>\section*</code> 与 <code>\unnumberedsection</code> 骨架。按项目约定，这些块应保持注释状态、只在正在写的那一层打开 —— 工具插入后不会自动注释，记得手工收紧。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：下拉里没有我要的书</p><p class="a">A：扫描规则是「笔记根下含 <code>main.tex</code> 的目录」。新书还没建 <code>main.tex</code> 就不会出现，先用「新建笔记」。</p><p class="q">Q：补小结时报「正文没有 \label」</p><p class="a">A：小结里的 <code>\ref</code> / <code>\cref</code> 需要正文有对应 label。缺 label 时只生成标题不生成引用。</p><p class="q">Q：提交后远程没更新</p><p class="a">A：看结果里是否写了 push 失败。常见原因是远程有别人的提交，需要先拉。</p><p class="q">Q：习题模式会不会删掉我的正文？</p><p class="a">A：不会删，只是把题目与解答分到不同文件并调整入口。改动前有 git 兜底，建议先提交一次。</p></div><h2>相关</h2><ul><li>2. 笔记工作区管理</li><li>6. 大纲工具</li><li>9. 仓库体检</li></ul><p class="nav"><a href="06-outline.html">← 6. 大纲工具</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="08-clean-aux.html">8. 清理编译产物 →</a></p></body></html>

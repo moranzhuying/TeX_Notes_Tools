@@ -6,6 +6,7 @@
 """
 from PySide6 import QtCore, QtGui, QtWidgets
 
+import re
 import sys
 from pathlib import Path
 
@@ -267,11 +268,40 @@ class HelpPage(QtWidgets.QWidget):
                 f'<p style="color:#c42b1c">帮助文档缺失：{path}<br>{exc}</p>')
             return
         self._name = name
+        text = self._fit_images(text)
         if self._dark:
+            # 配图也换深色那一套 —— 只改文字颜色不改图，暗色下会很刺眼
+            text = text.replace("img/light/", "img/dark/")
             for src, dst in self.DARK_SWAP.items():
                 text = text.replace(src, dst)
         self.doc.setHtml(text)
         self.doc.moveCursor(QtGui.QTextCursor.Start)
+
+    def _fit_images(self, text):
+        """按当前视口宽度等比缩放图片。
+
+        HTML 里的宽高是「设计宽度」（1000），窗口窄了会出横向滚动条、宽了图又偏小。
+        这里统一换成实测宽度再按原比例算高度 —— 只给宽度不给高度时 Qt 会按图片
+        DPI 另算高度，图下会留一大块空白。
+        """
+        avail = max(520, self.doc.viewport().width() - 40)
+        if avail == getattr(self, "_img_w", None):
+            return text
+        self._img_w = avail
+
+        def repl(m):
+            w, h = int(m.group(1)), int(m.group(2))
+            return f'width="{avail}" height="{max(1, round(h * avail / w))}"'
+
+        return re.sub(r'width="(\d+)" height="(\d+)"', repl, text)
+
+    def resizeEvent(self, event):
+        """窗口宽度变得够多时重排一次图片（防抖，避免拖动时反复重渲染）。"""
+        super().resizeEvent(event)
+        now = self.doc.viewport().width()
+        if abs(now - getattr(self, "_last_w", 0)) > 60:
+            self._last_w = now
+            QtCore.QTimer.singleShot(220, self.reload)
 
     def set_dark(self, dark):
         """主题切换时重算文档配色。"""
@@ -281,9 +311,14 @@ class HelpPage(QtWidgets.QWidget):
         self.reload()
 
     def _go(self, url):
+        """站内链接跳转；点到图片就用系统看图器打开原图。"""
         name = url.fileName() or "index.html"
-        if (help_dir() / name).is_file():
+        if name.endswith(".html") and (help_dir() / name).is_file():
             self.show_doc(name)
+            return
+        local = help_dir() / url.toString().lstrip("/")
+        if local.is_file():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(local)))
         else:
             QtGui.QDesktopServices.openUrl(url)
 

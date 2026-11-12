@@ -2,33 +2,33 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><title>16. 笔记目录监测 — LaTeX 工具箱</title><style>
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -38,10 +38,10 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
-</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 运行监测</p><h1>16. 笔记目录监测</h1><p class="lead">盯着一个仓库，有改动就自动提交推送，并按条数上限裁剪历史，让提交记录不无限增长。</p><table class="kv"><tr><th>面板入口</th><td>运行监测 → 卡片「笔记目录监测」→ 选仓库与间隔 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/watch_notes/watch_notes.py</code></td></tr></table><img src="img/tool-16.png" width="560" height="350" alt="界面"><p class="cap">「只跑一轮」默认勾着，适合先试一次看行为；长期跑要去掉这个勾。</p><h2>什么时候用</h2><ul><li>写作时不想频繁手动提交，希望几分钟自动存一次。</li><li>自动提交攒了几百条历史，想把旧记录裁掉只留最近 N 条。</li><li>想先试跑一轮，确认它会提交什么、不会误推。</li></ul><h2>怎么做</h2><ol><li>选监测仓库（下拉来自笔记根下各仓库）。</li><li>设间隔：检测 300 秒、裁剪检查 900 秒、保留 20 条。</li><li>先保持「只跑一轮」执行一次，看日志里它做了什么。</li><li>确认无误后去掉该勾，让它常驻；关掉窗口即停止。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>监测仓库</td><td>一次盯一个仓库。</td></tr><tr><td>检测间隔</td><td>多久看一次改动，最小 10 秒。</td></tr><tr><td>裁剪检查间隔</td><td>多久检查一次历史条数，最小 10 秒。</td></tr><tr><td>历史保留条数</td><td>超出就按条数上限一次裁到该值。</td></tr><tr><td>只跑一轮</td><td>默认开。测行为时用，长期跑要关。</td></tr><tr><td>只提交不推送</td><td>想先在本地攒着时用。注意这只影响推送，裁剪仍然只在推送成功后做。</td></tr></table><h2>命令行用法</h2><pre>python tools/watch_notes/watch_notes.py --dir LaTeX_Notes/Algebra --once
-python tools/watch_notes/watch_notes.py --dir LaTeX_Notes/Algebra --keep 20</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>状态与日志</td><td>便携：<code>tools/watch_notes/_state</code> 与 <code>_logs</code>；安装：<code>%LOCALAPPDATA%\LaTeX-Toolbox\watch_notes\</code></td></tr><tr><td>锁文件</td><td>同一状态目录下的 <code>watch-*.lock</code></td></tr></table><div class="warn">裁剪历史会**改写本地 git 历史**（保留内容、提交信息与时间，只断掉更早的父链）。如果远程已有那些提交，裁剪后本地与远程会分叉，需要强推。别在没有备份的仓库上乱试。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：设了「每 15 分钟删一次」，历史还是越来越长</p><p class="a">A：旧版语义是「删最早一条」，而提交速度比删除快，永远追不上。现在改成「按条数上限一次裁到该值」，配 <code>--keep</code> 用。</p><p class="q">Q：裁剪后 push 被拒</p><p class="a">A：历史被改写了，远程还是旧链。确认本地内容无误后 <code>git push --force-with-lease</code>。</p><p class="q">Q：日志里一直写「无改动」</p><p class="a">A：正常。它只在检测到改动时才提交。</p><p class="q">Q：关掉窗口后还在跑吗？</p><p class="a">A：不会。「只跑一轮」之外的模式是前台常驻，窗口关掉进程就结束。</p><p class="q">Q：为什么裁剪没发生？</p><p class="a">A：只在推送成功后裁剪。设了「只提交不推送」时不会裁。</p></div><h2>相关</h2><ul><li>2. 笔记工作区管理</li><li>9. 仓库体检</li></ul><p class="nav"><a href="15-pdf-upright.html">← 15. PDF 转正</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a></p></body></html>
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 运行监测</p><h1>16. 笔记目录监测</h1><p class="lead">盯着一个仓库，有改动就自动提交推送，并按条数上限裁剪历史，让提交记录不无限增长。</p><table class="kv"><tr><th width="90">面板入口</th><td>运行监测 → 卡片「笔记目录监测」→ 选仓库与间隔 → 执行</td></tr><tr><th width="90">命令行</th><td><code>python tools/watch_notes/watch_notes.py</code></td></tr></table><p align="center"><a href="img/light/tool-16.png"><img src="img/light/tool-16.png" width="1000" height="679" alt="界面"></a></p><p class="cap" align="center">「只跑一轮」默认勾着，适合先试一次看行为；长期跑要去掉这个勾。（点击图片用看图器放大）</p><h2>什么时候用</h2><ul><li>写作时不想频繁手动提交，希望几分钟自动存一次。</li><li>自动提交攒了几百条历史，想把旧记录裁掉只留最近 N 条。</li><li>想先试跑一轮，确认它会提交什么、不会误推。</li></ul><h2>怎么做</h2><ol><li>选监测仓库（下拉来自笔记根下各仓库）。</li><li>设间隔：检测 300 秒、裁剪检查 900 秒、保留 20 条。</li><li>先保持「只跑一轮」执行一次，看日志里它做了什么。</li><li>确认无误后去掉该勾，让它常驻；关掉窗口即停止。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th width="28%">项</th><th width="72%">说明</th></tr><tr><td>监测仓库</td><td>一次盯一个仓库。</td></tr><tr><td>检测间隔</td><td>多久看一次改动，最小 10 秒。</td></tr><tr><td>裁剪检查间隔</td><td>多久检查一次历史条数，最小 10 秒。</td></tr><tr><td>历史保留条数</td><td>超出就按条数上限一次裁到该值。</td></tr><tr><td>只跑一轮</td><td>默认开。测行为时用，长期跑要关。</td></tr><tr><td>只提交不推送</td><td>想先在本地攒着时用。注意这只影响推送，裁剪仍然只在推送成功后做。</td></tr></table><h2>命令行用法</h2><pre>python tools/watch_notes/watch_notes.py --dir LaTeX_Notes/Algebra --once
+python tools/watch_notes/watch_notes.py --dir LaTeX_Notes/Algebra --keep 20</pre><h2>文件都在哪</h2><table width="100%"><tr><th width="28%">内容</th><th width="72%">位置</th></tr><tr><td>状态与日志</td><td>便携：<code>tools/watch_notes/_state</code> 与 <code>_logs</code>；安装：<code>%LOCALAPPDATA%\LaTeX-Toolbox\watch_notes\</code></td></tr><tr><td>锁文件</td><td>同一状态目录下的 <code>watch-*.lock</code></td></tr></table><div class="warn">裁剪历史会**改写本地 git 历史**（保留内容、提交信息与时间，只断掉更早的父链）。如果远程已有那些提交，裁剪后本地与远程会分叉，需要强推。别在没有备份的仓库上乱试。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：设了「每 15 分钟删一次」，历史还是越来越长</p><p class="a">A：旧版语义是「删最早一条」，而提交速度比删除快，永远追不上。现在改成「按条数上限一次裁到该值」，配 <code>--keep</code> 用。</p><p class="q">Q：裁剪后 push 被拒</p><p class="a">A：历史被改写了，远程还是旧链。确认本地内容无误后 <code>git push --force-with-lease</code>。</p><p class="q">Q：日志里一直写「无改动」</p><p class="a">A：正常。它只在检测到改动时才提交。</p><p class="q">Q：关掉窗口后还在跑吗？</p><p class="a">A：不会。「只跑一轮」之外的模式是前台常驻，窗口关掉进程就结束。</p><p class="q">Q：为什么裁剪没发生？</p><p class="a">A：只在推送成功后裁剪。设了「只提交不推送」时不会裁。</p></div><h2>相关</h2><ul><li>2. 笔记工作区管理</li><li>9. 仓库体检</li></ul><p class="nav"><a href="15-pdf-upright.html">← 15. PDF 转正</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a></p></body></html>

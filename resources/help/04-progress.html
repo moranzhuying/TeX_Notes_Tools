@@ -2,33 +2,33 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><title>4. 写作工作台 — LaTeX 工具箱</title><style>
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -38,10 +38,10 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
-</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 核心工具</p><h1>4. 写作工作台</h1><p class="lead">在本机起一个浏览器界面来写作与预览：左边目录、右边正文，改动直接写回 .tex。默认只读，写入要按书单独授权。</p><table class="kv"><tr><th>面板入口</th><td>核心工具 → 卡片「写作工作台」→ 填参数 → 执行（会打开浏览器）</td></tr><tr><th>命令行</th><td><code>python tools/progress/workbench_launcher.py</code></td></tr></table><img src="img/tool-04.png" width="560" height="350" alt="界面"><p class="cap">笔记根目录与端口；「允许写入」默认不勾，勾了还要在下面列出授权哪几本。</p><h2>什么时候用</h2><ul><li>想在浏览器里连续改多篇笔记，比在 TeXStudio 里来回切文件快。</li><li>只想读、不想误改：默认只读模式适合通读与校对。</li><li>多个 TeXstudio 窗口冲突时，换个界面先看图、后回编辑器改。</li></ul><h2>怎么做</h2><ol><li>确认「笔记根目录」正确（默认是工作区下的 <code>LaTeX_Notes</code>），端口一般不用改。</li><li>只读通读：直接执行，浏览器会打开工作台。</li><li>要能保存：勾「允许写入」，在「授权写入的书」里填书名（逗号分隔），再执行。</li><li>关闭面板或点工具里的「停止」会关掉本面板起的服务，端口立即释放。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>笔记根目录</td><td>工作台的根；必须是含各书目录的那一层。</td></tr><tr><td>端口</td><td>默认 7656。被占用时换一个，工具不会去接管别人的端口。</td></tr><tr><td>允许写入</td><td>总开关。不勾时全部请求只读，任何保存都会被拒。</td></tr><tr><td>授权写入的书</td><td>逐本授权，逗号分隔。授权状态按书的永久 ID 记录，书改名不会失效。</td></tr><tr><td>允许调起 TeXstudio</td><td>只负责打开文件，不等于授权 TeX 写入。</td></tr></table><h2>命令行用法</h2><pre>python tools/progress/workbench_launcher.py --no-browser
-python tools/progress/workbench_launcher.py --config 另一个配置.json</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>启动配置（root / 端口 / 授权）</td><td>便携：<code>tools/progress/workbench_local.json</code>；安装：<code>%APPDATA%\LaTeX-Toolbox\progress\</code></td></tr><tr><td>书 ID 与写入许可</td><td>同上配置文件里的 <code>write_book_ids</code></td></tr><tr><td>备份</td><td>写入前先备份到根目录下的备份区，可在工作台里回滚</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：浏览器打开了但页面空白</p><p class="a">A：服务可能没起来。看工具页结果区的日志末尾，通常是端口被占用（换端口）或笔记根目录填错。</p><p class="q">Q：保存按钮点了没反应 / 提示无权限</p><p class="a">A：没勾「允许写入」，或这本不在授权列表里。授权是按书 ID 记的，换书要重新授权。</p><p class="q">Q：端口 7656 被占用</p><p class="a">A：换一个端口重开，例如 7657。工具不会杀掉占用端口的进程 —— 那可能是别的程序。</p><p class="q">Q：改完发现写坏了，能回滚吗？</p><p class="a">A：可以。写入前会自动备份，工作台里有备份列表与恢复入口。</p><p class="q">Q：关闭面板后服务还在跑吗？</p><p class="a">A：面板起的服务随面板关闭而关闭。用 <code>--no-browser</code> 独立启动的，要用「停止」或关掉那个窗口。</p></div><h2>相关</h2><ul><li>7. 单本笔记工具</li><li>9. 仓库体检</li></ul><p class="nav"><a href="03-symbols.html">← 3. 符号库管理</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="05-new-note.html">5. 新建笔记 →</a></p></body></html>
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 核心工具</p><h1>4. 写作工作台</h1><p class="lead">在本机起一个浏览器界面来写作与预览：左边目录、右边正文，改动直接写回 .tex。默认只读，写入要按书单独授权。</p><table class="kv"><tr><th width="90">面板入口</th><td>核心工具 → 卡片「写作工作台」→ 填参数 → 执行（会打开浏览器）</td></tr><tr><th width="90">命令行</th><td><code>python tools/progress/workbench_launcher.py</code></td></tr></table><p align="center"><a href="img/light/tool-04.png"><img src="img/light/tool-04.png" width="1000" height="679" alt="界面"></a></p><p class="cap" align="center">笔记根目录与端口；「允许写入」默认不勾，勾了还要在下面列出授权哪几本。（点击图片用看图器放大）</p><h2>什么时候用</h2><ul><li>想在浏览器里连续改多篇笔记，比在 TeXStudio 里来回切文件快。</li><li>只想读、不想误改：默认只读模式适合通读与校对。</li><li>多个 TeXstudio 窗口冲突时，换个界面先看图、后回编辑器改。</li></ul><h2>怎么做</h2><ol><li>确认「笔记根目录」正确（默认是工作区下的 <code>LaTeX_Notes</code>），端口一般不用改。</li><li>只读通读：直接执行，浏览器会打开工作台。</li><li>要能保存：勾「允许写入」，在「授权写入的书」里填书名（逗号分隔），再执行。</li><li>关闭面板或点工具里的「停止」会关掉本面板起的服务，端口立即释放。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th width="28%">项</th><th width="72%">说明</th></tr><tr><td>笔记根目录</td><td>工作台的根；必须是含各书目录的那一层。</td></tr><tr><td>端口</td><td>默认 7656。被占用时换一个，工具不会去接管别人的端口。</td></tr><tr><td>允许写入</td><td>总开关。不勾时全部请求只读，任何保存都会被拒。</td></tr><tr><td>授权写入的书</td><td>逐本授权，逗号分隔。授权状态按书的永久 ID 记录，书改名不会失效。</td></tr><tr><td>允许调起 TeXstudio</td><td>只负责打开文件，不等于授权 TeX 写入。</td></tr></table><h2>命令行用法</h2><pre>python tools/progress/workbench_launcher.py --no-browser
+python tools/progress/workbench_launcher.py --config 另一个配置.json</pre><h2>文件都在哪</h2><table width="100%"><tr><th width="28%">内容</th><th width="72%">位置</th></tr><tr><td>启动配置（root / 端口 / 授权）</td><td>便携：<code>tools/progress/workbench_local.json</code>；安装：<code>%APPDATA%\LaTeX-Toolbox\progress\</code></td></tr><tr><td>书 ID 与写入许可</td><td>同上配置文件里的 <code>write_book_ids</code></td></tr><tr><td>备份</td><td>写入前先备份到根目录下的备份区，可在工作台里回滚</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：浏览器打开了但页面空白</p><p class="a">A：服务可能没起来。看工具页结果区的日志末尾，通常是端口被占用（换端口）或笔记根目录填错。</p><p class="q">Q：保存按钮点了没反应 / 提示无权限</p><p class="a">A：没勾「允许写入」，或这本不在授权列表里。授权是按书 ID 记的，换书要重新授权。</p><p class="q">Q：端口 7656 被占用</p><p class="a">A：换一个端口重开，例如 7657。工具不会杀掉占用端口的进程 —— 那可能是别的程序。</p><p class="q">Q：改完发现写坏了，能回滚吗？</p><p class="a">A：可以。写入前会自动备份，工作台里有备份列表与恢复入口。</p><p class="q">Q：关闭面板后服务还在跑吗？</p><p class="a">A：面板起的服务随面板关闭而关闭。用 <code>--no-browser</code> 独立启动的，要用「停止」或关掉那个窗口。</p></div><h2>相关</h2><ul><li>7. 单本笔记工具</li><li>9. 仓库体检</li></ul><p class="nav"><a href="03-symbols.html">← 3. 符号库管理</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="05-new-note.html">5. 新建笔记 →</a></p></body></html>

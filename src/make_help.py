@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "resources" / "help"
-IMG_W = 560
+IMG_W = 1000
 
 
 def png_size(path):
@@ -37,42 +37,49 @@ def png_size(path):
 
 
 def img_tag(name):
-    w, h = png_size(OUT / "img" / name)
+    """图片：引用浅色那一套，宽度写「设计宽度」，由 HelpPage 按窗口实测宽等比缩放。
+
+    静态 HTML 里写死宽度的话，窗口一宽图就偏小、一窄就出横向滚动条。
+    `img/light/` 这个前缀在深色主题下会被换成 `img/dark/`。
+    """
+    w, h = png_size(OUT / "img" / "light" / name)
+    boxes = f'width="{IMG_W}"'
     if w:
-        height = max(1, round(IMG_W * h / w))
-        return (f'<img src="img/{name}" width="{IMG_W}" height="{height}" alt="界面">')
-    return f'<img src="img/{name}" width="{IMG_W}" alt="界面">'
+        boxes += f' height="{max(1, round(IMG_W * h / w))}"'
+    # 外面套一层链接：面板里点击会用系统看图器打开原图，细节能看清
+    return (f'<p align="center"><a href="img/light/{name}">'
+            f'<img src="img/light/{name}" {boxes} alt="界面"></a></p>')
 
 CSS = """
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -82,8 +89,8 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
@@ -95,8 +102,15 @@ def e(text):
     return text
 
 
-def table(headers, rows):
-    head = "".join(f"<th>{e(h)}</th>" for h in headers)
+def table(headers, rows, widths=None):
+    """表格。`widths` 给每列的百分比，缺省时两列按 28/72 分。
+
+    Qt 会把列宽摊平（一半一半），说明列被挤得没法读；给出百分比后
+    QTextTable 会按比例分配。
+    """
+    if widths is None:
+        widths = [28, 72] if len(headers) == 2 else [100 // len(headers)] * len(headers)
+    head = "".join(f'<th width="{widths[i]}%">{e(h)}</th>' for i, h in enumerate(headers))
     body = "".join(
         "<tr>" + "".join(f"<td>{e(c)}</td>" for c in row) + "</tr>" for row in rows)
     return f'<table width="100%"><tr>{head}</tr>{body}</table>'
@@ -131,12 +145,12 @@ def page(doc, prev=None, nxt=None):
         '<p class="crumb"><a href="index.html">帮助目录</a> · ' + e(doc["group"]) + "</p>",
         f'<h1>{e(doc["title"])}</h1>',
         f'<p class="lead">{e(doc["lead"])}</p>',
-        '<table class="kv"><tr><th>面板入口</th><td>' + e(doc["entry"]) + "</td></tr>"
-        + '<tr><th>命令行</th><td><code>' + e(doc["cli"]) + "</code></td></tr></table>",
+        '<table class="kv"><tr><th width="90">面板入口</th><td>' + e(doc["entry"]) + "</td></tr>"
+        + '<tr><th width="90">命令行</th><td><code>' + e(doc["cli"]) + "</code></td></tr></table>",
     ]
     if doc.get("image"):
         body.append(img_tag(doc["image"]))
-        body.append(f'<p class="cap">{e(doc.get("caption", ""))}</p>')
+        body.append(f'<p class="cap" align="center">{e(doc.get("caption", ""))}（点击图片用看图器放大）</p>')
 
     body.append("<h2>什么时候用</h2>" + ul(doc["when"]))
     body.append("<h2>怎么做</h2>" + ol(doc["steps"]))

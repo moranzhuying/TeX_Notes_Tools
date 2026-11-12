@@ -537,7 +537,7 @@ QTextBrowser#HelpDoc {{
     /* 文档正文的颜色由 HTML 自带（会随主题重算），这里只管容器 */
     background: {card};
     border: 1px solid {stroke}; border-radius: 8px;
-    padding: 14px 16px;
+    padding: 10px 12px;
     color: {fg2};
     font-size: 13px;
     selection-background-color: {accent};

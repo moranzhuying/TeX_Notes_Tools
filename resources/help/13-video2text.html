@@ -2,33 +2,33 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><title>13. 视频转文字 — LaTeX 工具箱</title><style>
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -38,12 +38,12 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
-</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 素材与转写</p><h1>13. 视频转文字</h1><p class="lead">给一个视频链接，优先取字幕；没有字幕就用本地 whisper 转写。产物按合集归档，可断点续做。</p><table class="kv"><tr><th>面板入口</th><td>素材与转写 → 卡片「视频转文字」→ 选操作 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/video2text/video2text.py</code></td></tr></table><img src="img/tool-13.png" width="560" height="350" alt="界面"><p class="cap">默认操作是「列出合集」（只读）；选「转写视频」才会露出二十来项参数。</p><h2>什么时候用</h2><ul><li>看到一门课的录像，想要可检索的文字稿。</li><li>想先把已转写的合集列出来，看看哪几集还缺。</li><li>批量补做失败的集数，或把整个合集导出成一个 ZIP。</li></ul><h2>怎么做</h2><ol><li>先选「列出合集」执行，确认已有归档与进度。</li><li>选「转写视频」，填 BV 号或链接，取源方式保持「默认」。</li><li>默认会展开全部分 P；只想要当前这一集就勾「只处理当前视频」。</li><li>登录态过期时，先在工作台里跑一次扫码登录（见下方 Q&A）。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>操作</td><td>列出合集 / 转写视频 / 补做失败项 / 导出合集 ZIP / 同步标题文件夹 / 锁状态诊断。</td></tr><tr><td>视频地址</td><td>BV 号或完整链接。</td></tr><tr><td>取源方式</td><td>默认（先字幕后 whisper）/ subtitles（只要字幕）/ auto / whisper（强制转写）。</td></tr><tr><td>whisper 模型</td><td>默认 medium。换 small 更快、更糊。</td></tr><tr><td>设备 / 计算精度</td><td>CPU 用 int8；有 N 卡可试 cuda + float16。</td></tr><tr><td>忽略字幕强制转写</td><td>字幕质量差时用。</td></tr><tr><td>保留音频</td><td>转完留着音频文件；默认删除。</td></tr><tr><td>强制重做</td><td>连已成功的一起重做，用于换模型重转。</td></tr></table><h2>命令行用法</h2><pre>python tools/video2text/video2text.py --collections
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 素材与转写</p><h1>13. 视频转文字</h1><p class="lead">给一个视频链接，优先取字幕；没有字幕就用本地 whisper 转写。产物按合集归档，可断点续做。</p><table class="kv"><tr><th width="90">面板入口</th><td>素材与转写 → 卡片「视频转文字」→ 选操作 → 执行</td></tr><tr><th width="90">命令行</th><td><code>python tools/video2text/video2text.py</code></td></tr></table><p align="center"><a href="img/light/tool-13.png"><img src="img/light/tool-13.png" width="1000" height="679" alt="界面"></a></p><p class="cap" align="center">默认操作是「列出合集」（只读）；选「转写视频」才会露出二十来项参数。（点击图片用看图器放大）</p><h2>什么时候用</h2><ul><li>看到一门课的录像，想要可检索的文字稿。</li><li>想先把已转写的合集列出来，看看哪几集还缺。</li><li>批量补做失败的集数，或把整个合集导出成一个 ZIP。</li></ul><h2>怎么做</h2><ol><li>先选「列出合集」执行，确认已有归档与进度。</li><li>选「转写视频」，填 BV 号或链接，取源方式保持「默认」。</li><li>默认会展开全部分 P；只想要当前这一集就勾「只处理当前视频」。</li><li>登录态过期时，先在工作台里跑一次扫码登录（见下方 Q&A）。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th width="28%">项</th><th width="72%">说明</th></tr><tr><td>操作</td><td>列出合集 / 转写视频 / 补做失败项 / 导出合集 ZIP / 同步标题文件夹 / 锁状态诊断。</td></tr><tr><td>视频地址</td><td>BV 号或完整链接。</td></tr><tr><td>取源方式</td><td>默认（先字幕后 whisper）/ subtitles（只要字幕）/ auto / whisper（强制转写）。</td></tr><tr><td>whisper 模型</td><td>默认 medium。换 small 更快、更糊。</td></tr><tr><td>设备 / 计算精度</td><td>CPU 用 int8；有 N 卡可试 cuda + float16。</td></tr><tr><td>忽略字幕强制转写</td><td>字幕质量差时用。</td></tr><tr><td>保留音频</td><td>转完留着音频文件；默认删除。</td></tr><tr><td>强制重做</td><td>连已成功的一起重做，用于换模型重转。</td></tr></table><h2>命令行用法</h2><pre>python tools/video2text/video2text.py --collections
 python tools/video2text/video2text.py BV1xx411c7mD
 python tools/video2text/video2text.py --only-failed
-python tools/video2text/video2text.py --export-collection 合集ID --export-to out.zip</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>模型 / cookie / 浏览器档案 / 转写产物</td><td>便携：<code>tools/video2text/_data/</code>；安装：<code>%LOCALAPPDATA%\LaTeX-Toolbox\video2text\_data\</code></td></tr><tr><td>工具配置</td><td>同目录的 <code>video2text.conf</code></td></tr><tr><td>模型体积</td><td>medium 约 1.5 GB；换成 large 会更大</td></tr></table><div class="warn">whisper 模型与浏览器档案加起来可能有几个 GB。换机器时不要连 <code>_data</code> 一起拷进版本库 —— 它已经在 <code>.gitignore</code> 里。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：提示「未登录」或转写报 403</p><p class="a">A：cookie 过期了。要用扫码登录：工具菜单里有登录入口，会拉起 Edge。登录后 cookie 落在 <code>_data/cookies</code>。</p><p class="q">Q：「本地模型：无」是怎么回事？</p><p class="a">A：模型文件不在 <code>_data/models</code> 下。要么先跑一次让它下载，要么在「本地模型目录」里指到已有模型。</p><p class="q">Q：转写很慢</p><p class="a">A：CPU 上 medium 大约是音长的 1–2 倍。想快就把模型换成 small，或勾「关闭静音过滤」以外的东西别乱动。</p><p class="q">Q：中途断了，要重来吗？</p><p class="a">A：不用。默认断点续做，重跑同一条命令会跳过已完成的集。</p><p class="q">Q：导出的 ZIP 里文件名是乱的</p><p class="a">A：先用「同步标题文件夹」把集标题对齐，再导出。</p><p class="q">Q：为什么有些集只有几行字？</p><p class="a">A：那集只拿到了字幕（可能不完整）。看结果里的「取源」列，需要完整稿就勾「忽略字幕强制转写」。</p></div><h2>相关</h2><ul><li>4. 写作工作台</li><li>5. 新建笔记</li></ul><p class="nav"><a href="12-commit.html">← 12. 提交本工具集</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="14-spec-sync.html">14. 项目规范副本一致性 →</a></p></body></html>
+python tools/video2text/video2text.py --export-collection 合集ID --export-to out.zip</pre><h2>文件都在哪</h2><table width="100%"><tr><th width="28%">内容</th><th width="72%">位置</th></tr><tr><td>模型 / cookie / 浏览器档案 / 转写产物</td><td>便携：<code>tools/video2text/_data/</code>；安装：<code>%LOCALAPPDATA%\LaTeX-Toolbox\video2text\_data\</code></td></tr><tr><td>工具配置</td><td>同目录的 <code>video2text.conf</code></td></tr><tr><td>模型体积</td><td>medium 约 1.5 GB；换成 large 会更大</td></tr></table><div class="warn">whisper 模型与浏览器档案加起来可能有几个 GB。换机器时不要连 <code>_data</code> 一起拷进版本库 —— 它已经在 <code>.gitignore</code> 里。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：提示「未登录」或转写报 403</p><p class="a">A：cookie 过期了。要用扫码登录：工具菜单里有登录入口，会拉起 Edge。登录后 cookie 落在 <code>_data/cookies</code>。</p><p class="q">Q：「本地模型：无」是怎么回事？</p><p class="a">A：模型文件不在 <code>_data/models</code> 下。要么先跑一次让它下载，要么在「本地模型目录」里指到已有模型。</p><p class="q">Q：转写很慢</p><p class="a">A：CPU 上 medium 大约是音长的 1–2 倍。想快就把模型换成 small，或勾「关闭静音过滤」以外的东西别乱动。</p><p class="q">Q：中途断了，要重来吗？</p><p class="a">A：不用。默认断点续做，重跑同一条命令会跳过已完成的集。</p><p class="q">Q：导出的 ZIP 里文件名是乱的</p><p class="a">A：先用「同步标题文件夹」把集标题对齐，再导出。</p><p class="q">Q：为什么有些集只有几行字？</p><p class="a">A：那集只拿到了字幕（可能不完整）。看结果里的「取源」列，需要完整稿就勾「忽略字幕强制转写」。</p></div><h2>相关</h2><ul><li>4. 写作工作台</li><li>5. 新建笔记</li></ul><p class="nav"><a href="12-commit.html">← 12. 提交本工具集</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="14-spec-sync.html">14. 项目规范副本一致性 →</a></p></body></html>

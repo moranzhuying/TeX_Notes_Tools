@@ -2,33 +2,33 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><title>14. 项目规范副本一致性 — LaTeX 工具箱</title><style>
 :root { color-scheme: light; }
 body {
-  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  margin: 0; padding: 24px 30px 64px; background: #ffffff; color: #24292f;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 14px; line-height: 1.78;
+  font-size: 14.5px; line-height: 1.85;
 }
-h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
-h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
-     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
-h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+h1 { font-size: 23px; margin: 2px 0 8px; color: #0f172a; }
+h2 { font-size: 15.5px; margin: 30px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14.5px; margin: 20px 0 4px; color: #0f172a; }
 p { margin: 8px 0; }
-.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.lead { font-size: 14.5px; color: #3d4653; margin: 4px 0 12px; }
 .crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
 .crumb a { color: #0067c0; text-decoration: none; }
 table.kv { margin: 12px 0 16px; }
-table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+table.kv th { background: #f6f8fa; font-weight: 600; color: #5c6470; }
 .meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
         border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
 code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
        background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
 pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
       background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
-      padding: 10px 12px; color: #24292f; }
+      padding: 10px 14px; color: #24292f; border-left: 3px solid #d0d7de; }
 ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
 li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
 th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
-     border: 1px solid #e1e4e8; padding: 7px 10px; }
-td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+     border: 1px solid #e1e4e8; padding: 8px 12px; }
+td { border: 1px solid #e1e4e8; padding: 8px 12px; vertical-align: top; }
 .warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
         padding: 10px 12px; margin: 12px 0; }
 .danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
@@ -38,10 +38,10 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
-.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+img { border: 1px solid #e1e4e8; margin: 14px 0 6px; }
+.cap { font-size: 12.5px; color: #6b7280; margin: 0 0 22px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
 .nav a { color: #0067c0; text-decoration: none; }
-</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 信息安全与提交</p><h1>14. 项目规范副本一致性</h1><p class="lead">比对工作区根的 <code>项目规范.md</code> 与各仓库里的副本是否逐字节一致，并把原件同步过去。</p><table class="kv"><tr><th>面板入口</th><td>信息安全与提交 → 卡片「项目规范副本一致性」→ 选模式 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/spec_sync/spec_sync.py</code></td></tr></table><img src="img/tool-14.png" width="560" height="350" alt="界面"><p class="cap">三档模式：只检查 / 直接同步 / 防呆同步。</p><h2>什么时候用</h2><ul><li>改完项目规范，要把它同步到 10 个仓库里。</li><li>不确定哪个仓库的副本还是旧的。</li><li>想确认副本没被别人单独改过（防呆同步会先比对再写）。</li></ul><h2>怎么做</h2><ol><li>先选「只检查」，执行，看哪些副本不一致。</li><li>确认原件是最新的，再选「防呆同步」执行。</li><li>方向恒为 原件 → 副本，不会反向覆盖。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>模式</td><td>只检查 / 直接同步 / 防呆同步（先比对再写，推荐）。</td></tr></table><h2>命令行用法</h2><pre>python tools/spec_sync/spec_sync.py --check
-python tools/spec_sync/spec_sync.py --sync --safe</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>原件</td><td>工作区根的 <code>项目规范.md</code></td></tr><tr><td>副本</td><td>各仓库里的同名文件（配对关系由工具内置）</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：某个仓库的副本被改过，同步会覆盖吗？</p><p class="a">A：防呆同步会先报差异再写；直接同步则无条件覆盖。所以默认先用「只检查」。</p><p class="q">Q：能不能反向同步（副本 → 原件）？</p><p class="a">A：不能，这是刻意的设计：原件是唯一真源，反向会引入多源。</p><p class="q">Q：提示某个仓库找不到副本</p><p class="a">A：该仓库没装过规范文件。要装的话，工具会新建一份。</p></div><h2>相关</h2><ul><li>9. 仓库体检</li></ul><p class="nav"><a href="13-video2text.html">← 13. 视频转文字</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="15-pdf-upright.html">15. PDF 转正 →</a></p></body></html>
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 信息安全与提交</p><h1>14. 项目规范副本一致性</h1><p class="lead">比对工作区根的 <code>项目规范.md</code> 与各仓库里的副本是否逐字节一致，并把原件同步过去。</p><table class="kv"><tr><th width="90">面板入口</th><td>信息安全与提交 → 卡片「项目规范副本一致性」→ 选模式 → 执行</td></tr><tr><th width="90">命令行</th><td><code>python tools/spec_sync/spec_sync.py</code></td></tr></table><p align="center"><a href="img/light/tool-14.png"><img src="img/light/tool-14.png" width="1000" height="679" alt="界面"></a></p><p class="cap" align="center">三档模式：只检查 / 直接同步 / 防呆同步。（点击图片用看图器放大）</p><h2>什么时候用</h2><ul><li>改完项目规范，要把它同步到 10 个仓库里。</li><li>不确定哪个仓库的副本还是旧的。</li><li>想确认副本没被别人单独改过（防呆同步会先比对再写）。</li></ul><h2>怎么做</h2><ol><li>先选「只检查」，执行，看哪些副本不一致。</li><li>确认原件是最新的，再选「防呆同步」执行。</li><li>方向恒为 原件 → 副本，不会反向覆盖。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th width="28%">项</th><th width="72%">说明</th></tr><tr><td>模式</td><td>只检查 / 直接同步 / 防呆同步（先比对再写，推荐）。</td></tr></table><h2>命令行用法</h2><pre>python tools/spec_sync/spec_sync.py --check
+python tools/spec_sync/spec_sync.py --sync --safe</pre><h2>文件都在哪</h2><table width="100%"><tr><th width="28%">内容</th><th width="72%">位置</th></tr><tr><td>原件</td><td>工作区根的 <code>项目规范.md</code></td></tr><tr><td>副本</td><td>各仓库里的同名文件（配对关系由工具内置）</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：某个仓库的副本被改过，同步会覆盖吗？</p><p class="a">A：防呆同步会先报差异再写；直接同步则无条件覆盖。所以默认先用「只检查」。</p><p class="q">Q：能不能反向同步（副本 → 原件）？</p><p class="a">A：不能，这是刻意的设计：原件是唯一真源，反向会引入多源。</p><p class="q">Q：提示某个仓库找不到副本</p><p class="a">A：该仓库没装过规范文件。要装的话，工具会新建一份。</p></div><h2>相关</h2><ul><li>9. 仓库体检</li></ul><p class="nav"><a href="13-video2text.html">← 13. 视频转文字</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="15-pdf-upright.html">15. PDF 转正 →</a></p></body></html>
