@@ -7,6 +7,7 @@ panel_core.py — 面板的共用逻辑（工具清单、启动、停止、状�
 避免同一套启动规则写两遍。菜单本身来自 `launcher.py` 的 `MENU`，只有一处定义。
 """
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -49,6 +50,16 @@ HELP_SLUGS = {
     "9": "09-repo-check", "10": "10-sensitive", "11": "11-sync-paths", "12": "12-commit",
     "13": "13-video2text", "14": "14-spec-sync", "15": "15-pdf-upright",
     "16": "16-watch-notes",
+}
+
+#: 分组 → 板块帮助页（`resources/help/group-<slug>.html`）
+GROUP_SLUGS = {
+    "核心工具": "group-core",
+    "创建与维护": "group-maintain",
+    "信息安全与提交": "group-commit",
+    "素材与转写": "group-media",
+    "PDF 处理": "group-pdf",
+    "运行监测": "group-watch",
 }
 
 #: 每个工具的一句话说明（卡片上显示；MENU 里的标题偏长，需要更短的补充）
@@ -151,13 +162,26 @@ def tool_by_id(key):
     return next((m for m in MENU if m[0] == key), None)
 
 
+_NOTE_RE = re.compile(r"[（(][^（()）]*[）)]")
+
+
+def plain_title(title):
+    """去掉标题末尾的括号注释。
+
+    `launcher.MENU` 里的标题带「（环境检测 / 账户 / SSH）」这类补充，命令行菜单
+    用得上；卡片上再带一遍就太挤了 —— 卡片下面本来就有一句话说明。
+    """
+    return _NOTE_RE.sub("", title).strip() or title
+
+
 def describe_tools():
     """给界面用的工具清单（不含运行状态）。"""
     tools = []
     for no, title, rel, mode, grp in MENU:
         tools.append({
             "id": no,
-            "title": title,
+            "title": plain_title(title),
+            "full_title": title,
             "script": rel,
             "mode": mode,
             "group": grp,

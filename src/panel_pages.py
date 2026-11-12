@@ -216,8 +216,34 @@ class HelpPage(QtWidgets.QWidget):
     靠 `setSearchPaths` 解析，打包后从 `_MEIPASS/help` 读。
     """
 
+    #: 文档是浅色写死的，深色主题下按这张表换色（源色 → 目标色）。
+    #: 只在「深色」时做字符串替换 —— 重新生成一份深色文档没必要，
+    #: 而且 QTextBrowser 不认 CSS 变量，没有更干净的办法。
+    DARK_SWAP = {
+        "#ffffff": "#1f1f1f",   # 纸底
+        "#24292f": "#e6e6e6",   # 正文
+        "#0f172a": "#ffffff",   # 标题
+        "#3d4653": "#c5c5c5",   # 副文
+        "#6b7280": "#9a9a9a",   # 弱化
+        "#5c6470": "#a0a0a0",   # 表头文字
+        "#0067c0": "#60cdff",   # 链接
+        "#f6f8fa": "#262626",   # 浅底块
+        "#f2f4f7": "#303030",   # 表头 / 行内代码底
+        "#8a2b06": "#e8b48c",   # 行内代码字
+        "#e6e8eb": "#3a3a3a",   # 分隔线
+        "#e1e4e8": "#3a3a3a",   # 表格边框
+        "#fff8e6": "#3a3220",   # 提示底
+        "#f0d29a": "#7a6640",   # 提示边
+        "#fdecea": "#3a1e1c",   # 危险底
+        "#f3b6b0": "#7a3b36",   # 危险边
+        "#eef7f0": "#1e2e22",   # 建议底
+        "#b7dcc1": "#3e6b49",   # 建议边
+        "#c42b1c": "#ff99a4",   # 错误文字
+    }
+
     def __init__(self, tokens=None, parent=None):
         super().__init__(parent)
+        self._dark = False
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 4, 6, 4)
         outer.setSpacing(0)
@@ -241,8 +267,18 @@ class HelpPage(QtWidgets.QWidget):
                 f'<p style="color:#c42b1c">帮助文档缺失：{path}<br>{exc}</p>')
             return
         self._name = name
+        if self._dark:
+            for src, dst in self.DARK_SWAP.items():
+                text = text.replace(src, dst)
         self.doc.setHtml(text)
         self.doc.moveCursor(QtGui.QTextCursor.Start)
+
+    def set_dark(self, dark):
+        """主题切换时重算文档配色。"""
+        if dark == self._dark:
+            return
+        self._dark = dark
+        self.reload()
 
     def _go(self, url):
         name = url.fileName() or "index.html"

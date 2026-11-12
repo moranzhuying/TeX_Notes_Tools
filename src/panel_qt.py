@@ -434,6 +434,13 @@ QPushButton#Secondary {{
 }}
 QPushButton#Secondary:hover {{ background: {subtle_hover}; border-color: {stroke_strong}; }}
 
+QPushButton#IconBtn {{
+    background: {subtle}; color: {fg2};
+    border: 1px solid {stroke}; border-radius: 15px;
+    font-size: 15px; font-weight: 600;
+}}
+QPushButton#IconBtn:hover {{ background: {subtle_hover}; color: {fg}; border-color: {stroke_strong}; }}
+
 QPushButton#Danger {{
     background: transparent; color: {bad};
     border: 1px solid {bad}; border-radius: 4px;
@@ -527,11 +534,11 @@ QLabel#PathText {{
     font-family: "Cascadia Mono", Consolas, monospace;
 }}
 QTextBrowser#HelpDoc {{
-    /* 帮助文档是白底 HTML（浅色截图配套），深色主题下按「一张纸」显示 */
-    background: #ffffff;
+    /* 文档正文的颜色由 HTML 自带（会随主题重算），这里只管容器 */
+    background: {card};
     border: 1px solid {stroke}; border-radius: 8px;
     padding: 14px 16px;
-    color: #24292f;
+    color: {fg2};
     font-size: 13px;
     selection-background-color: {accent};
     selection-color: {accent_fg};
@@ -711,10 +718,9 @@ class CardGrid(QtWidgets.QWidget):
 
 
 class Sidebar(QtWidgets.QWidget):
-    """左侧导航：品牌区 + 分组按钮 + 底部帮助/设置/主题切换。"""
+    """左侧导航：品牌区 + 分组按钮 + 底部帮助/设置。"""
 
     group_selected = QtCore.Signal(str)
-    theme_toggled = QtCore.Signal()
     special_selected = QtCore.Signal(str)
 
     def __init__(self, groups, icon=None, parent=None):
@@ -789,11 +795,7 @@ class Sidebar(QtWidgets.QWidget):
             lay.addWidget(btn)
             self.special_buttons[key] = btn
 
-        self.theme_btn = QtWidgets.QPushButton("深色主题")
-        self.theme_btn.setObjectName("NavBtn")
-        self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.theme_btn.clicked.connect(self.theme_toggled.emit)
-        lay.addWidget(self.theme_btn)
+        # 主题切换只放在设置页 —— 侧栏底部只留「帮助 / 设置」两个入口。
 
     def select(self, group):
         """选中某个分组按钮。
@@ -822,8 +824,6 @@ class Sidebar(QtWidgets.QWidget):
         for other in self.buttons.values():
             other.setChecked(False)
 
-    def set_theme_label(self, dark):
-        self.theme_btn.setText("深色主题" if dark else "浅色主题")
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -864,7 +864,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.setWindowIcon(self.icon)
         self.sidebar = Sidebar(self.groups, self.icon)
         self.sidebar.group_selected.connect(self.show_group)
-        self.sidebar.theme_toggled.connect(self.toggle_theme)
         self.sidebar.special_selected.connect(self.show_special)
         shell.addWidget(self.sidebar)
 
@@ -924,6 +923,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.search.setFixedWidth(260)
         self.search.textChanged.connect(self.apply_filter)
         bar.addWidget(self.search, 0, QtCore.Qt.AlignVCenter)
+
+        # 右上角常驻一个「?」：按当前页面给对应帮助（工具页 → 该工具，
+        # 分组页 → 本板块全部工具）。工具页里另有就近的「查看帮助」。
+        self.context_help = QtWidgets.QPushButton("?")
+        self.context_help.setObjectName("IconBtn")
+        self.context_help.setFixedSize(30, 30)
+        self.context_help.setCursor(QtCore.Qt.PointingHandCursor)
+        self.context_help.setToolTip("查看当前页面相关帮助（F1）")
+        self.context_help.clicked.connect(self.open_context_help)
+        bar.addWidget(self.context_help, 0, QtCore.Qt.AlignVCenter)
         return bar
 
     def _build_pages(self):
@@ -982,10 +991,9 @@ class MainWindow(QtWidgets.QMainWindow):
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.setStyleSheet(build_qss(tokens, self._font_scale))
-        self.sidebar.set_theme_label(self._dark)
-        # 帮助文档是白底 HTML，样式与主题无关；这里只让它重绘
+        # 帮助文档是磁盘 HTML，颜色按当前主题重算一遍
         if hasattr(self, "help_page"):
-            self.help_page.reload()
+            self.help_page.set_dark(dark)
         palette = self.palette()
         palette.setColor(QtGui.QPalette.Window, QtGui.QColor(tokens["bg"]))
         palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor(tokens["fg"]))
@@ -1065,6 +1073,7 @@ class MainWindow(QtWidgets.QMainWindow):
         panel.status_changed.connect(
             lambda text, cid=key: self.cards[cid].set_status(text))
 
+        self._current_tool = tool
         self.stack.setCurrentWidget(self.detail_host)
         self.page_title.setText(tool["title"])
         # 工具页不放副标题：横线上面那行小字多余，留白反而更清爽
@@ -1075,6 +1084,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sidebar.select(group)
 
     def close_panel(self):
+        self._current_tool = None
         self._clear_detail()
         group = getattr(self, "_current_group", self.groups[0])
         self.stack.setCurrentWidget(self.pages[group])
@@ -1107,16 +1117,35 @@ class MainWindow(QtWidgets.QMainWindow):
         slug = tool.get("help")
         if not slug:
             return
-        self.show_special("帮助")
+        self.show_special("帮助", title="帮助：" + tool["title"])
         self.help_page.show_doc(slug + ".html")
 
-    def show_special(self, key):
+    def show_group_help(self, group):
+        """板块级帮助：这个分组下所有工具的清单与入口。"""
+        slug = core.GROUP_SLUGS.get(group)
+        if not slug:
+            return
+        self.show_special("帮助", title="帮助：" + group)
+        self.help_page.show_doc(slug + ".html")
+
+    def open_context_help(self):
+        """右上角「?」：按当前页面决定给哪份帮助。"""
+        current = self.stack.currentWidget()
+        tool = getattr(self, "_current_tool", None)
+        if current is self.detail_host and tool is not None:
+            self.show_tool_help(tool)
+        elif current in self.pages.values():
+            self.show_group_help(getattr(self, "_current_group", self.groups[0]))
+        else:
+            self.show_special("帮助")
+
+    def show_special(self, key, title=None):
         """切到帮助页或设置页。"""
         if self.search.text().strip():
             self.search.clear()
         if key == "帮助":
             self.stack.setCurrentWidget(self.help_page)
-            self.page_title.setText("使用帮助")
+            self.page_title.setText(title or "使用帮助")
             self.page_desc.setText("")
             self.sidebar.select_special("帮助")
         else:

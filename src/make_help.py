@@ -82,7 +82,7 @@ td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
 .qa { margin: 10px 0 0; }
 .qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
 .qa .a { margin: 0 0 4px; color: #3d4653; }
-.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+img { border: 1px solid #e1e4e8; margin: 10px 0 4px; }
 .cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
 .nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
        font-size: 13px; color: #6b7280; }
@@ -211,6 +211,35 @@ def index_page(docs):
         '<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
         f"<title>使用帮助 — LaTeX 工具箱</title><style>{CSS}</style></head>"
         "<body>" + "".join(parts) + "</body></html>\n"
+    )
+
+
+#: 板块页：与 `panel_core.GROUP_SLUGS` 一一对应
+GROUPS = [
+    ("核心工具", "group-core", "日常最常用的四件事：Git 环境、仓库管理、符号库、写作工作台"),
+    ("创建与维护", "group-maintain", "建新笔记、导出大纲、单本笔记的提交与骨架、清理编译产物"),
+    ("信息安全与提交", "group-commit", "仓库体检、本机信息扫描、路径检查、规范同步、提交"),
+    ("素材与转写", "group-media", "视频转文字：字幕优先，无字幕走本地 whisper"),
+    ("PDF 处理", "group-pdf", "横躺的课件 PDF 就地转正"),
+    ("运行监测", "group-watch", "监测笔记目录，有改动自动提交推送并裁剪历史"),
+]
+
+
+def group_page(name, desc, docs):
+    """板块页：这个分组下所有工具的一句话与入口。"""
+    rows = [[f'<a href="{d["slug"]}.html">{e(d["title"])}</a>', e(d["lead"])] for d in docs]
+    body = [
+        '<p class="crumb"><a href="index.html">帮助目录</a> · 板块</p>',
+        f"<h1>{e(name)}</h1>",
+        f'<p class="lead">{e(desc)}</p>',
+        "<h2>这个板块里的工具</h2>",
+        table(["工具", "一句话"], rows),
+        '<p class="nav"><a href="index.html">← 帮助目录</a></p>',
+    ]
+    return (
+        '<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
+        f"<title>{e(name)} — LaTeX 工具箱</title><style>{CSS}</style></head>"
+        "<body>" + "".join(body) + "</body></html>\n"
     )
 
 
@@ -1023,7 +1052,17 @@ def main():
         (OUT / f"{d['slug']}.html").write_text(page(d, prev, nxt), encoding="utf-8", newline="")
 
     (OUT / "index.html").write_text(index_page(docs), encoding="utf-8", newline="")
-    print(f"生成 {len(docs)} 篇工具文档 + 1 篇总览，输出到 {OUT}")
+
+    made = 0
+    for name, slug, desc in GROUPS:
+        members = [d for d in docs if d["group"] == name]
+        if not members:
+            continue
+        (OUT / f"{slug}.html").write_text(
+            group_page(name, desc, members), encoding="utf-8", newline="")
+        made += 1
+
+    print(f"生成 {len(docs)} 篇工具文档 + {made} 篇板块 + 1 篇总览，输出到 {OUT}")
     return 0
 
 
