@@ -13,11 +13,109 @@ panel_actions.py — 工具的可视化表单（真正 GUI 化的那一层）
 字段类型：text / int / path / file / choice / check
 字段可带 show_if=(字段名, 取值)，不满足时整行隐藏、且不参与拼参数。
 """
+import re
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 import panel_core as core
+
+def _clean_output(text):
+    """去掉命令行回显、压缩空行，让结果区只剩信息本身。"""
+    lines = []
+    for line in text.splitlines():
+        s = line.rstrip()
+        stripped = s.strip()
+        if stripped.startswith(("python ", "python3 ", "用法：", "Usage:")):
+            continue
+        lines.append(s)
+    out, blank = [], 0
+    for s in lines:
+        if not s.strip():
+            blank += 1
+            if blank > 1:
+                continue
+        else:
+            blank = 0
+        out.append(s)
+    return "\n".join(out).strip()
+
+
+def _parse_status_rows(text):
+    """把 manager --status 的输出拆成表行。"""
+    rows = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("【") or s.startswith("文件") or set(s) <= set("- "):
+            continue
+        parts = s.split(None, 4)
+        if len(parts) >= 4:
+            rows.append(parts)
+    return rows
+
+
+def _status_summary(rows):
+    dirty = sum(1 for r in rows if len(r) > 2 and r[2] not in ("0", "?"))
+    if dirty:
+        return "{} 个仓库，{} 个有未提交改动".format(len(rows), dirty)
+    return "{} 个仓库，全部干净".format(len(rows))
+
+
+def _parse_repo_rows(text):
+    """把 repo_check 的巡检结果拆成表行。"""
+    rows = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("["):
+            continue
+        m = re.match(r"\[(.+?)\]\s+(\S+)\s+(.+)", s)
+        if m:
+            rows.append([m.group(1), m.group(2), m.group(3)])
+    return rows
+
+
+def _repo_summary(rows):
+    bad = [r for r in rows if "✓" not in r[2]]
+    if bad:
+        return "{} 个仓库，{} 个有问题".format(len(rows), len(bad))
+    return "{} 个仓库，全部通过".format(len(rows))
+
+
+def _parse_clean_rows(text):
+    """把 clean_aux 的清单拆成表行（目录行 + 下一行详情）。"""
+    rows = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        s = line.strip()
+        m = re.match(r"^\d+\.\s+(.+)$", s)
+        if not m:
+            continue
+        path = m.group(1)
+        detail = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        # 详情行形如「5 个文件  256 KB   .aux, .gz, .log」
+        # 大小占几个 token 不定（256 KB / 1.2 MB），类型段从第一个以 . 开头的 token 起
+        tokens = detail.split()
+        count = " ".join(tokens[:2])
+        size_parts, kinds = [], ""
+        for tok in tokens[2:]:
+            if kinds or tok.startswith("."):
+                kinds = (kinds + " " + tok).strip()
+            else:
+                size_parts.append(tok)
+        rows.append([path, count, " ".join(size_parts), kinds])
+    return rows
+
+
+def _clean_summary(rows):
+    total = 0
+    for row in rows:
+        digits = re.match(r"^(\d+)", row[1]) if len(row) > 1 else None
+        if digits:
+            total += int(digits.group(1))
+    if not rows:
+        return "没有需要清理的编译产物"
+    return "{} 个目录，共 {} 个文件".format(len(rows), total)
+
 
 # ---------------------------------------------------------------- 参数拼装
 
@@ -480,6 +578,12 @@ SPECS = {
              "show_if": ("op", "设置笔记根目录")},
         ],
         "build": _build_manager,
+        "result": {
+            "kind": "table",
+            "columns": ["文件夹", "分支", "改动", "领先/落后", "远程"],
+            "parse": _parse_status_rows,
+            "summary": _status_summary,
+        },
     },
     "7": {
         "title": "单本笔记工具",
@@ -511,6 +615,12 @@ SPECS = {
              "danger": True},
         ],
         "build": _build_clean_aux,
+        "result": {
+            "kind": "table",
+            "columns": ["目录", "文件数", "大小", "类型"],
+            "parse": _parse_clean_rows,
+            "summary": _clean_summary,
+        },
     },
     "9": {
         "title": "仓库体检",
@@ -521,6 +631,12 @@ SPECS = {
              "default": "整个工作区"},
         ],
         "build": _build_repo_check,
+        "result": {
+            "kind": "table",
+            "columns": ["区域", "仓库", "结果"],
+            "parse": _parse_repo_rows,
+            "summary": _repo_summary,
+        },
     },
     "10": {
         "title": "本机信息扫描",
@@ -597,7 +713,9 @@ def has_form(tool_id):
 
 
 class FormPanel(QtWidgets.QWidget):
-    """一张表单 + 执行按钮 + 输出区。"""
+    """一张表单 + 执行按钮 + 结果卡片。"""
+
+    status_changed = QtCore.Signal(str)
 
     def __init__(self, tool_id, tool, parent=None):
         super().__init__(parent)
@@ -607,6 +725,7 @@ class FormPanel(QtWidgets.QWidget):
         self.widgets = {}
         self.rows = {}
         self.proc = None
+        self._buffer = ""
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -660,13 +779,95 @@ class FormPanel(QtWidgets.QWidget):
         actions.addWidget(self.stop_btn)
         lay.addLayout(actions)
 
-        self.out = QtWidgets.QPlainTextEdit()
-        self.out.setObjectName("FormOutput")
-        self.out.setReadOnly(True)
-        self.out.setPlaceholderText("执行后输出显示在这里")
-        lay.addWidget(self.out, 1)
+        lay.addWidget(self._build_result_box(), 1)
 
         self._sync_visibility()
+
+    # ---------- 结果区 ----------
+
+    def _build_result_box(self):
+        """结果区是一张卡片：标题 + 摘要 + 复制按钮 + 表格或文本。
+
+        不做成终端的样子：结果要像界面里的信息，而不是命令行的回显。
+        """
+        box = QtWidgets.QFrame()
+        box.setObjectName("Card")
+        lay = QtWidgets.QVBoxLayout(box)
+        lay.setContentsMargins(14, 11, 14, 12)
+        lay.setSpacing(7)
+
+        head = QtWidgets.QHBoxLayout()
+        head.setSpacing(8)
+        self.result_title = QtWidgets.QLabel("执行结果")
+        self.result_title.setObjectName("CardTitle")
+        head.addWidget(self.result_title)
+        self.result_summary = QtWidgets.QLabel("")
+        self.result_summary.setObjectName("CardDesc")
+        head.addWidget(self.result_summary, 1)
+        copy_btn = QtWidgets.QPushButton("复制")
+        copy_btn.setObjectName("Secondary")
+        copy_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        copy_btn.clicked.connect(self._copy_result)
+        head.addWidget(copy_btn)
+        lay.addLayout(head)
+
+        self.result = self.spec.get("result") or {}
+        self.table = None
+        self.out = None
+        if self.result.get("kind") == "table":
+            self.table = QtWidgets.QTableWidget()
+            self.table.setObjectName("ResultTable")
+            columns = self.result.get("columns", [])
+            self.table.setColumnCount(len(columns))
+            self.table.setHorizontalHeaderLabels(columns)
+            self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+            self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            self.table.verticalHeader().setVisible(False)
+            self.table.setAlternatingRowColors(True)
+            header = self.table.horizontalHeader()
+            # 首列按内容拉伸（仓库名长短不一），其余按内容宽度
+            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+            if columns:
+                header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            lay.addWidget(self.table)
+        else:
+            self.out = QtWidgets.QPlainTextEdit()
+            self.out.setObjectName("FormOutput")
+            self.out.setReadOnly(True)
+            self.out.setPlaceholderText("执行后结果显示在这里")
+            lay.addWidget(self.out)
+        return box
+
+    def _show_result(self, text):
+        """把子进程输出转成界面上的结果。"""
+        cleaned = _clean_output(text)
+        if self.table is not None:
+            rows = self.result.get("parse", lambda _t: [])(cleaned)
+            self.table.setRowCount(len(rows))
+            for r, row in enumerate(rows):
+                for c, val in enumerate(row):
+                    if c < self.table.columnCount():
+                        self.table.setItem(
+                            r, c, QtWidgets.QTableWidgetItem(str(val)))
+            summary = self.result.get("summary")
+            self.result_summary.setText(summary(rows) if summary else "")
+        else:
+            self.out.setPlainText(cleaned)
+            lines = cleaned.splitlines()
+            self.result_summary.setText("{} 行".format(len(lines)) if lines else "无输出")
+
+    def _copy_result(self):
+        if self.table is not None:
+            rows = []
+            for r in range(self.table.rowCount()):
+                rows.append("\t".join(
+                    self.table.item(r, c).text() if self.table.item(r, c) else ""
+                    for c in range(self.table.columnCount())))
+            text = "\n".join(rows)
+        else:
+            text = self.out.toPlainText() if self.out is not None else ""
+        QtWidgets.QApplication.clipboard().setText(text)
+        self.result_summary.setText("已复制到剪贴板")
 
     # ---------- 控件 ----------
 
@@ -780,10 +981,12 @@ class FormPanel(QtWidgets.QWidget):
 
         args = self.spec["build"](values)
         program, argv = core.spawn_command(script, args)
-        self.out.clear()
+        self._buffer = ""
+        self._show_result("")
         self.hint.setText("运行中…")
         self.run_btn.setEnabled(False)
         self.stop_btn.show()
+        self.status_changed.emit("执行中…")
 
         proc = QtCore.QProcess(self)
         proc.setProgram(program)
@@ -801,13 +1004,13 @@ class FormPanel(QtWidgets.QWidget):
             return
         data = bytes(self.proc.readAllStandardOutput())
         text = data.decode("utf-8", "replace")
-        self.out.moveCursor(QtGui.QTextCursor.End)
-        self.out.insertPlainText(text)
-        self.out.moveCursor(QtGui.QTextCursor.End)
+        self._buffer += text
+        self._show_result(self._buffer)
 
     def _finished(self, code, _status):
         self._read_output()
-        self.hint.setText("完成，退出码 {}".format(code))
+        self.hint.setText("完成" if code == 0 else "完成，但有错误（退出码 {}）".format(code))
+        self.status_changed.emit("已完成" if code == 0 else "已完成（有错误）")
         self._cleanup()
 
     def _failed(self, _err):
@@ -826,123 +1029,12 @@ class FormPanel(QtWidgets.QWidget):
         if self.proc is not None:
             self.proc.kill()
             self.hint.setText("已中止")
+            self.status_changed.emit("已中止")
             self._cleanup()
 
 
-class TerminalPanel(QtWidgets.QWidget):
-    """内嵌终端：把交互式工具直接开在面板里。
-
-    没有表单规格的工具（纯 `input()` 循环）用这个兜底 —— 输出留在面板下方，
-    输入从输入行送进子进程的 stdin。不再弹外部控制台窗口。
-    """
-
-    def __init__(self, tool, parent=None):
-        super().__init__(parent)
-        self.tool = tool
-        self.proc = None
-
-        lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        head = QtWidgets.QHBoxLayout()
-        desc = QtWidgets.QLabel("交互式运行：输出显示在这里，输入回车送进工具。")
-        desc.setObjectName("PageDesc")
-        head.addWidget(desc, 1)
-        self.stop_btn = QtWidgets.QPushButton("中止")
-        self.stop_btn.setObjectName("Danger")
-        self.stop_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.stop_btn.clicked.connect(self.abort)
-        self.stop_btn.hide()
-        head.addWidget(self.stop_btn)
-        self.restart_btn = QtWidgets.QPushButton("启动")
-        self.restart_btn.setObjectName("Primary")
-        self.restart_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.restart_btn.clicked.connect(self.start)
-        head.addWidget(self.restart_btn)
-        lay.addLayout(head)
-
-        self.out = QtWidgets.QPlainTextEdit()
-        self.out.setObjectName("FormOutput")
-        self.out.setReadOnly(True)
-        self.out.setPlaceholderText("点「启动」开始")
-        lay.addWidget(self.out, 1)
-
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(6)
-        self.input = QtWidgets.QLineEdit()
-        self.input.setObjectName("Args")
-        self.input.setPlaceholderText("输入内容后回车发送（工具在等输入时可用）")
-        self.input.returnPressed.connect(self._send)
-        row.addWidget(self.input, 1)
-        send = QtWidgets.QPushButton("发送")
-        send.setObjectName("Secondary")
-        send.setCursor(QtCore.Qt.PointingHandCursor)
-        send.clicked.connect(self._send)
-        row.addWidget(send)
-        lay.addLayout(row)
-
-    def start(self):
-        if self.proc is not None:
-            return
-        script = core.TOOLS_ROOT / self.spec.get("script", self.tool["script"])
-        if not script.is_file():
-            self.out.setPlainText("找不到脚本：{}".format(self.tool["script"]))
-            return
-        program, argv = core.spawn_command(script, [])
-        self.out.clear()
-        env = QtCore.QProcessEnvironment.systemEnvironment()
-        # 工具往 stdout 写 UTF-8，stdin 也要 UTF-8，否则中文输入会乱码
-        env.insert("PYTHONIOENCODING", "utf-8")
-        proc = QtCore.QProcess(self)
-        proc.setProcessEnvironment(env)
-        proc.setProgram(program)
-        proc.setArguments(argv)
-        proc.setWorkingDirectory(str(script.parent))
-        proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
-        proc.readyReadStandardOutput.connect(self._read_output)
-        proc.finished.connect(self._finished)
-        self.proc = proc
-        proc.start()
-        self.stop_btn.show()
-        self.restart_btn.setEnabled(False)
-        self.input.setFocus()
-
-    def _read_output(self):
-        if self.proc is None:
-            return
-        data = bytes(self.proc.readAllStandardOutput())
-        text = data.decode("utf-8", "replace")
-        self.out.moveCursor(QtGui.QTextCursor.End)
-        self.out.insertPlainText(text)
-        self.out.moveCursor(QtGui.QTextCursor.End)
-
-    def _send(self):
-        if self.proc is None:
-            return
-        text = self.input.text()
-        self.input.clear()
-        self.proc.write((text + "\n").encode("utf-8"))
-
-    def _finished(self, code, _status):
-        self._read_output()
-        self.out.appendPlainText("\n[进程已退出，退出码 {}]".format(code))
-        self.stop_btn.hide()
-        self.restart_btn.setEnabled(True)
-        self.restart_btn.setText("重新启动")
-        if self.proc is not None:
-            self.proc.deleteLater()
-            self.proc = None
-
-    def abort(self):
-        if self.proc is not None:
-            self.proc.kill()
-            self.proc.waitForFinished(1500)
-            self._finished(self.proc.exitCode() if self.proc else 1, None)
-
-
 def build(tool_id, tool):
-    """给某个工具造面板：有表单规格给表单，否则给内嵌终端。"""
-    if has_form(tool_id):
-        return FormPanel(tool_id, tool)
-    return TerminalPanel(tool)
+    """给某个工具造面板。全部工具都有表单规格。"""
+    if not has_form(tool_id):
+        return None
+    return FormPanel(tool_id, tool)

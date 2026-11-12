@@ -239,6 +239,7 @@ TOKENS = {
         "nav_sel": "rgba(255,255,255,0.09)",
         "ok": "#6CCB5F", "warn": "#FCE100", "bad": "#FF99A4",
         "field": "#1F1F1F", "icon_bg": "rgba(96,205,255,0.14)",
+        "row_alt": "#23272D",
     },
     "light": {
         "bg": "#F3F3F3", "layer": "#EAEAEA", "card": "#FFFFFF",
@@ -249,6 +250,7 @@ TOKENS = {
         "nav_sel": "rgba(0,0,0,0.06)",
         "ok": "#0F7B0F", "warn": "#9D5D00", "bad": "#C42B1C",
         "field": "#FFFFFF", "icon_bg": "rgba(0,103,192,0.10)",
+        "row_alt": "#F5F6F8",
     },
 }
 
@@ -366,6 +368,25 @@ QLineEdit#Args {{
 }}
 QLineEdit#Args:focus {{ border-color: {accent}; }}
 
+/* ---------- 结果表格 ---------- */
+QTableWidget#ResultTable {{
+    background: {card};
+    alternate-background-color: {row_alt};
+    gridline-color: {stroke};
+    color: {fg};
+    font-size: 12px;
+    selection-background-color: {accent};
+    selection-color: {accent_fg};
+}}
+QTableWidget#ResultTable::item {{ padding: 5px 8px; border: none; }}
+QTableWidget#ResultTable::item:selected {{ background: {accent}; color: {accent_fg}; }}
+QHeaderView::section {{
+    background: {subtle}; color: {fg2};
+    padding: 6px 8px; border: none;
+    font-size: 11px; font-weight: 600;
+}}
+QTableCornerButton::section {{ background: {subtle}; border: none; }}
+
 /* ---------- 表单 ---------- */
 QLabel#FieldLabel {{ font-size: 12px; color: {fg2}; }}
 QPlainTextEdit#FormOutput {{
@@ -431,9 +452,6 @@ def system_is_dark():
 class ToolCard(QtWidgets.QFrame):
     """一张工具卡片：图标 + 标题 + 说明 + 状态 + 操作。"""
 
-    run_requested = QtCore.Signal(str, str)
-    stop_requested = QtCore.Signal(str)
-    output_requested = QtCore.Signal(str)
     panel_requested = QtCore.Signal(str)
 
     def __init__(self, tool, parent=None):
@@ -477,48 +495,19 @@ class ToolCard(QtWidgets.QFrame):
         desc.setWordWrap(True)
         col.addWidget(desc)
 
-        self.args = None
-        if tool["oneoff"]:
-            self.args = QtWidgets.QLineEdit(tool["defaultArgs"])
-            self.args.setObjectName("Args")
-            self.args.setPlaceholderText("追加参数（可空）")
-            col.addWidget(self.args)
-
         col.addSpacing(2)
 
         foot = QtWidgets.QHBoxLayout()
         foot.setSpacing(6)
-        self.status = QtWidgets.QLabel("未启动")
+        self.status = QtWidgets.QLabel("")
         self.status.setObjectName("CardStatus")
         foot.addWidget(self.status, 1)
 
-        self.out_btn = QtWidgets.QPushButton("输出")
-        self.out_btn.setObjectName("Ghost")
-        self.out_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.out_btn.clicked.connect(lambda: self.output_requested.emit(tool["id"]))
-        self.out_btn.hide()
-        foot.addWidget(self.out_btn)
-
-        self.stop_btn = QtWidgets.QPushButton("停止")
-        self.stop_btn.setObjectName("Danger")
-        self.stop_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.stop_btn.clicked.connect(lambda: self.stop_requested.emit(tool["id"]))
-        self.stop_btn.hide()
-        foot.addWidget(self.stop_btn)
-
         self.has_form = actions.has_form(tool["id"])
-        self.run_btn = QtWidgets.QPushButton("启动")
-        self.run_btn.setObjectName("Secondary" if self.has_form else "Primary")
-        self.run_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.run_btn.setEnabled(tool["exists"])
-        self.run_btn.clicked.connect(self._on_run)
-        foot.addWidget(self.run_btn)
-
-        self.panel_btn = QtWidgets.QPushButton("打开" if self.has_form else "终端")
+        self.panel_btn = QtWidgets.QPushButton("打开")
         self.panel_btn.setObjectName("Primary")
         self.panel_btn.setCursor(QtCore.Qt.PointingHandCursor)
         self.panel_btn.setEnabled(tool["exists"])
-        self.panel_btn.setVisible(self.has_form)
         self.panel_btn.clicked.connect(
             lambda _c=False: self.panel_requested.emit(tool["id"]))
         foot.addWidget(self.panel_btn)
@@ -529,48 +518,13 @@ class ToolCard(QtWidgets.QFrame):
         if not tool["exists"]:
             self.status.setText("脚本缺失")
 
-    def _on_run(self):
-        extra = self.args.text() if self.args is not None else ""
-        self.run_requested.emit(self.tool["id"], extra)
-
-    def apply(self, run):
-        """按运行快照刷新外观。"""
-        for prop in ("running", "done", "failed"):
-            self.setProperty(prop, "false")
-            self.status.setProperty(prop, "false")
-
-        if run and run["alive"]:
-            self.setProperty("running", "true")
-            self.status.setProperty("running", "true")
-            where = "控制台运行中" if run["mode"] == "console" else "运行中"
-            self.status.setText("● {} · {}".format(where, rel_time(run["started"])))
-            self.run_btn.setText("运行中")
-            self.run_btn.setEnabled(False)
-            self.panel_btn.setEnabled(False)
-            self.stop_btn.show()
-            self.out_btn.setVisible(bool(run["hasOutput"]))
-        elif run:
-            rc = run["returncode"]
-            ok = (rc == 0)
-            self.setProperty("done" if ok else "failed", "true")
-            self.status.setProperty("done" if ok else "failed", "true")
-            self.status.setText("● 已结束 · 退出码 {}".format("?" if rc is None else rc))
-            self.run_btn.setText("重开" if self.has_form else "重新运行")
-            self.run_btn.setEnabled(self.tool["exists"])
-            self.panel_btn.setEnabled(self.tool["exists"])
-            self.stop_btn.hide()
-            self.out_btn.setVisible(bool(run["hasOutput"]))
-        else:
-            self.status.setText("● 未启动" if self.tool["exists"] else "脚本缺失")
-            self.run_btn.setText("控制台" if self.has_form else "启动")
-            self.run_btn.setEnabled(self.tool["exists"])
-            self.panel_btn.setEnabled(self.tool["exists"])
-            self.stop_btn.hide()
-            self.out_btn.hide()
-
-        for w in (self, self.status):
-            w.style().unpolish(w)
-            w.style().polish(w)
+    def set_status(self, text):
+        """表单页执行时把状态同步到卡片。"""
+        self.status.setText(text)
+        running = "运行" in text or "执行" in text
+        self.setProperty("running", "true" if running else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class CardGrid(QtWidgets.QWidget):
@@ -703,8 +657,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for tool in self.tools:
             if tool["group"] not in self.groups:
                 self.groups.append(tool["group"])
-        self.output_key = None
-        self._out_lines = -1
         self._dark = system_is_dark()
 
         root = QtWidgets.QWidget()
@@ -734,10 +686,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.detail_lay.setSpacing(8)
         self.stack.addWidget(self.detail_host)
 
-        self.output_box = self._build_output()
-        self.output_box.hide()
-        right_lay.addWidget(self.output_box, 0)
-
         bottom = QtWidgets.QHBoxLayout()
         bottom.setSpacing(8)
         self.status_text = QtWidgets.QLabel(
@@ -754,11 +702,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_pages()
         self.show_group(self.groups[0])
         self.apply_theme()
-
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.refresh_states)
-        self.timer.start(1500)
-        self.refresh_states()
 
     # ---------- 构建 ----------
 
@@ -810,9 +753,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 if tool["group"] != group:
                     continue
                 card = ToolCard(tool)
-                card.run_requested.connect(self.on_run)
-                card.stop_requested.connect(self.on_stop)
-                card.output_requested.connect(self.on_output)
                 card.panel_requested.connect(self.open_panel)
                 self.cards[tool["id"]] = card
                 cards.append(card)
@@ -820,43 +760,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.group_cards[group] = cards
             self.pages[group] = page
             self.stack.addWidget(page)
-
-    def _build_output(self):
-        box = QtWidgets.QFrame()
-        box.setObjectName("OutputBox")
-        lay = QtWidgets.QVBoxLayout(box)
-        lay.setContentsMargins(14, 10, 14, 10)
-        lay.setSpacing(6)
-
-        bar = QtWidgets.QHBoxLayout()
-        bar.setSpacing(8)
-        self.out_title = QtWidgets.QLabel("输出")
-        self.out_title.setObjectName("CardTitle")
-        bar.addWidget(self.out_title)
-        self.out_meta = QtWidgets.QLabel("")
-        self.out_meta.setObjectName("CardScript")
-        bar.addWidget(self.out_meta)
-        bar.addStretch(1)
-        refresh = QtWidgets.QPushButton("刷新")
-        refresh.setObjectName("Secondary")
-        refresh.setCursor(QtCore.Qt.PointingHandCursor)
-        refresh.clicked.connect(self.reload_output)
-        bar.addWidget(refresh)
-        close = QtWidgets.QPushButton("关闭")
-        close.setObjectName("Ghost")
-        close.setCursor(QtCore.Qt.PointingHandCursor)
-        close.clicked.connect(lambda: box.hide())
-        bar.addWidget(close)
-        lay.addLayout(bar)
-
-        self.out_view = QtWidgets.QPlainTextEdit()
-        self.out_view.setObjectName("Output")
-        self.out_view.setReadOnly(True)
-        self.out_view.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
-        self.out_view.setMinimumHeight(170)
-        self.out_view.setMaximumHeight(300)
-        lay.addWidget(self.out_view)
-        return box
 
     # ---------- 主题 ----------
 
@@ -914,6 +817,8 @@ class MainWindow(QtWidgets.QMainWindow):
         row.addStretch(1)
         self.detail_lay.addLayout(row)
         self.detail_lay.addWidget(panel, 1)
+        panel.status_changed.connect(
+            lambda text, cid=key: self.cards[cid].set_status(text))
 
         self.stack.setCurrentWidget(self.detail_host)
         self.page_title.setText(tool["title"])
@@ -940,55 +845,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
         self.sidebar.select(group)
-
-    def on_run(self, key, extra):
-        try:
-            core.launch(key, extra)
-        except core.PanelError as exc:
-            self.toast(str(exc), bad=True)
-            return
-        tool = next((t for t in self.tools if t["id"] == key), None)
-        if tool and tool["oneoff"]:
-            self.toast("已开始运行：" + tool["title"])
-        elif tool:
-            self.toast("已打开控制台窗口：" + tool["title"])
-        self.refresh_states()
-
-    def on_stop(self, key):
-        try:
-            msg = core.stop(key)
-        except core.PanelError as exc:
-            self.toast(str(exc), bad=True)
-            return
-        self.toast(msg)
-        self.refresh_states()
-
-    def on_output(self, key):
-        tool = next((t for t in self.tools if t["id"] == key), None)
-        self.output_key = key
-        self._out_lines = -1
-        self.out_title.setText(tool["title"] if tool else "输出")
-        self.output_box.show()
-        self.reload_output()
-
-    def reload_output(self):
-        if not self.output_key:
-            return
-        lines = core.output_of(self.output_key)
-        self._out_lines = len(lines)
-        self.out_view.setPlainText("\n".join(lines) if lines else "（还没有输出）")
-        self.out_meta.setText("{} 行".format(len(lines)))
-        bar = self.out_view.verticalScrollBar()
-        bar.setValue(bar.maximum())
-
-    def refresh_states(self):
-        for key, card in self.cards.items():
-            card.apply(core.run_state(key))
-        if self.output_key and self.output_box.isVisible():
-            run = core.run_state(self.output_key)
-            # 行数变化就刷新：进程跑完时最后一批输出也要落进面板
-            if run and run["lines"] != self._out_lines:
-                self.reload_output()
 
     def apply_filter(self, text):
         if text.strip() and self.stack.currentWidget() is self.detail_host:
@@ -1038,10 +894,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.search.selectAll()
             return
         if event.key() == QtCore.Qt.Key_Escape:
-            if self.output_box.isVisible():
-                self.output_box.hide()
-            elif self.search.text():
+            if self.search.text():
                 self.search.clear()
+            elif self.stack.currentWidget() is self.detail_host:
+                self.close_panel()
             return
         super().keyPressEvent(event)
 
