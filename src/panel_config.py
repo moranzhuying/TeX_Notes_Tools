@@ -20,7 +20,7 @@ CONFIG_PATH = app_paths.settings_file("_panel_config.json")
 DEFAULTS = {
     # 外观
     "theme": "auto",              # auto / dark / light
-    "font_scale": 1.0,            # 界面字号缩放（0.85 ~ 1.3）
+    "font_scale": 0.0,            # 界面字号：0 = 跟随画面（按屏幕密度自动），或 0.85 ~ 1.5
     # 行为
     "confirm_danger": True,       # 破坏性操作执行前弹确认
     "remember_columns": True,     # 记住表格列宽

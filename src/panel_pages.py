@@ -13,6 +13,12 @@ from pathlib import Path
 import panel_config as cfg
 
 
+def _px(n):
+    """按界面倍率换算尺寸（panel_qt.px 的同名薄封装，避免循环导入）。"""
+    import panel_qt
+    return panel_qt.px(n)
+
+
 class SettingsPage(QtWidgets.QWidget):
     """全局设置页。"""
 
@@ -50,18 +56,20 @@ class SettingsPage(QtWidgets.QWidget):
         # 字号
         size_box = self._card()
         self.size_combo = QtWidgets.QComboBox()
-        self.size_combo.addItem("较小", 0.9)
+        self.size_combo.addItem("跟随画面（推荐）", 0.0)
+        self.size_combo.addItem("很小", 0.85)
+        self.size_combo.addItem("较小", 0.925)
         self.size_combo.addItem("标准", 1.0)
         self.size_combo.addItem("较大", 1.15)
         self.size_combo.addItem("很大", 1.3)
-        scale = float(self.config.get("font_scale", 1.0))
-        idx = max(0, self.size_combo.findData(scale))
-        if idx < 0:
-            idx = 1
-        self.size_combo.setCurrentIndex(idx)
+        self.size_combo.addItem("特大", 1.5)
+        scale = float(self.config.get("font_scale", 0.0) or 0.0)
+        idx = self.size_combo.findData(scale)
+        self.size_combo.setCurrentIndex(max(0, idx))
         self.size_combo.currentIndexChanged.connect(self._on_size)
-        self._row(size_box, "界面字号", self.size_combo,
-                  "放大整个界面的文字与控件")
+        self.size_row = self._row(size_box, "界面字号", self.size_combo, " ")
+        self.size_hint = self.size_row.hint
+        self._update_size_hint()
         lay.addWidget(theme_box)
         lay.addWidget(size_box)
 
@@ -132,7 +140,7 @@ class SettingsPage(QtWidgets.QWidget):
         row.setSpacing(12)
         lab = QtWidgets.QLabel(label)
         lab.setObjectName("FieldLabel")
-        lab.setFixedWidth(120)
+        lab.setFixedWidth(_px(120))
         lab.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         row.addWidget(lab, 0)
         row.addWidget(widget, 1)
@@ -149,27 +157,29 @@ class SettingsPage(QtWidgets.QWidget):
         top.setSpacing(12)
         lab = QtWidgets.QLabel(label)
         lab.setObjectName("FieldLabel")
-        lab.setFixedWidth(120)
+        lab.setFixedWidth(_px(120))
         lab.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         top.addWidget(lab, 0)
         if isinstance(widget, QtWidgets.QComboBox):
-            widget.setFixedWidth(200)
+            widget.setFixedWidth(_px(200))
             top.addWidget(widget, 0)
         elif isinstance(widget, QtWidgets.QCheckBox):
             # 复选框自带文字，固定宽度让各行的勾选框上下对齐
-            widget.setFixedWidth(260)
+            widget.setFixedWidth(_px(260))
             top.addWidget(widget, 0)
         else:
             top.addWidget(widget, 1)
         top.addStretch(1)
         lay.addLayout(top)
-        if hint:
-            note = QtWidgets.QLabel(hint)
-            note.setObjectName("StatusText")
-            note.setWordWrap(True)
-            # 说明文字缩进到控件起点，跟控件左对齐
-            note.setContentsMargins(132, 0, 0, 0)
-            lay.addWidget(note)
+        note = QtWidgets.QLabel(hint)
+        note.setObjectName("StatusText")
+        note.setWordWrap(True)
+        # 说明文字缩进到控件起点，跟控件左对齐
+        note.setContentsMargins(_px(132), 0, 0, 0)
+        note.setVisible(bool(hint))
+        lay.addWidget(note)
+        # 挂到 wrap 上：调用方要改说明文字时不必去摸布局树
+        wrap.hint = note
         box.layout().addWidget(wrap)
         return wrap
 
@@ -188,6 +198,30 @@ class SettingsPage(QtWidgets.QWidget):
         value = float(self.size_combo.currentData())
         self._save(font_scale=value)
         self.main.apply_font_scale(value)
+        self._update_size_hint()
+
+    def _update_size_hint(self):
+        """把「这一档实际是多少」写清楚 —— 屏幕上到底多大，用户看得到才敢选。"""
+        import panel_qt
+
+        screen = QtWidgets.QApplication.primaryScreen()
+        dpi = screen.physicalDotsPerInch() if screen is not None else 96.0
+        ratio = screen.devicePixelRatio() if screen is not None else 1.0
+        base = panel_qt.dpi_scale()
+        sys_text = panel_qt.text_scale()
+        total = panel_qt.ui_scale()
+        picked = float(self.size_combo.currentData())
+
+        parts = ["显示缩放 {}%".format(round(ratio * 100))]
+        parts.append("屏幕 {:.0f} DPI".format(dpi))
+        if abs(sys_text - 1.0) > 0.01:
+            parts.append("系统文本 {}%".format(round(sys_text * 100)))
+        if picked <= 0:
+            parts.append("自动按屏幕定档 ×{:.2f}".format(base))
+        text = ("实际倍率 ×{:.2f}（正文约 {:.0f} 物理像素）　·　{}"
+                .format(total, 12.0 * total * ratio, " · ".join(parts)))
+        self.size_hint.setText(text)
+        self.size_hint.setVisible(True)
 
     def _on_confirm(self, checked):
         self._save(confirm_danger=bool(checked))
@@ -198,6 +232,7 @@ class SettingsPage(QtWidgets.QWidget):
     def _on_reset(self):
         self.config = dict(cfg.DEFAULTS)
         cfg.save(self.config)
+        self._update_size_hint()
         self.main.apply_theme(preference=self.config["theme"])
         self.main.apply_font_scale(float(self.config["font_scale"]))
         self.theme_combo.setCurrentIndex(
@@ -245,6 +280,7 @@ class HelpPage(QtWidgets.QWidget):
     def __init__(self, tokens=None, parent=None):
         super().__init__(parent)
         self._dark = False
+        self._ui_scale = 1.0
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 4, 6, 4)
         outer.setSpacing(0)
@@ -268,6 +304,8 @@ class HelpPage(QtWidgets.QWidget):
                 f'<p style="color:#c42b1c">帮助文档缺失：{path}<br>{exc}</p>')
             return
         self._name = name
+        if abs(self._ui_scale - 1.0) > 0.01:
+            text = self._scale_text(text, self._ui_scale)
         text = self._fit_images(text)
         if self._dark:
             # 配图也换深色那一套 —— 只改文字颜色不改图，暗色下会很刺眼
@@ -276,6 +314,24 @@ class HelpPage(QtWidgets.QWidget):
                 text = text.replace(src, dst)
         self.doc.setHtml(text)
         self.doc.moveCursor(QtGui.QTextCursor.Start)
+
+    def _scale_text(self, text, scale):
+        """文档字号跟着界面倍率走。
+
+        只改 font-size —— 图片宽高是按视口算的，行距是倍数也会自动跟上；
+        padding 不动，改了反而会让内容与边框脱开。
+        """
+        def repl(m):
+            return "font-size: {:.1f}px".format(float(m.group(1)) * scale)
+
+        return re.sub(r"font-size:\s*([\d.]+)px", repl, text)
+
+    def set_ui_scale(self, scale):
+        """界面倍率变了，重算文档字号。"""
+        if abs(scale - self._ui_scale) < 0.01:
+            return
+        self._ui_scale = scale
+        self.reload()
 
     def _fit_images(self, text):
         """按当前视口宽度等比缩放图片。

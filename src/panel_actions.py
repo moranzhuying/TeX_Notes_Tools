@@ -22,6 +22,12 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import panel_core as core
 
+
+def _px(n):
+    """按界面倍率换算尺寸。函数内 import —— panel_qt 反过来 import 本模块。"""
+    import panel_qt
+    return panel_qt.px(n)
+
 def _clean_output(text):
     """去掉命令行回显、压缩空行，让结果区只剩信息本身。"""
     lines = []
@@ -1102,17 +1108,17 @@ class FormPanel(QtWidgets.QWidget):
             form_box.setObjectName("Card")
             form = QtWidgets.QGridLayout(form_box)
             form.setContentsMargins(18, 16, 18, 16)
-            form.setHorizontalSpacing(12)
-            form.setVerticalSpacing(10)
+            form.setHorizontalSpacing(_px(12))
+            form.setVerticalSpacing(_px(10))
         row = 0
         for field in (self.spec["fields"] if form is not None else []):
             container = QtWidgets.QWidget()
             box = QtWidgets.QHBoxLayout(container)
             box.setContentsMargins(0, 0, 0, 0)
-            box.setSpacing(12)
+            box.setSpacing(_px(12))
             label = QtWidgets.QLabel(field["label"])
             label.setObjectName("FieldLabel")
-            label.setFixedWidth(168)
+            label.setFixedWidth(_px(168))
             label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
             box.addWidget(label, 0)
             widget = self._make_widget(field)

@@ -18,6 +18,7 @@ panel_qt.py — 工具集图形面板（Qt 桌面窗口，Fluent / WinUI 风格�
 依赖 PySide6（装在 .workbuddy 的 venv 里，不进系统 Python）。
 """
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -291,6 +292,81 @@ import panel_actions as actions  # noqa: E402
 import panel_config as config  # noqa: E402
 import panel_pages as pages  # noqa: E402
 
+#: 界面总缩放（系统文本大小 × 用户档位）。所有写死的尺寸都经 px() 换算，
+#: 控件构造时读一次即可 —— 改档位会重建 QSS 并重设固定尺寸。
+_UI_SCALE = 1.0
+
+
+def text_scale():
+    """Windows「辅助功能 → 文本大小」的倍率。
+
+    Qt 只跟随显示缩放（devicePixelRatio），**不理会**这个独立设置：
+    用户把文本调到 125%，Qt 应用一律不变。这是 DPI 适配里唯一真正缺的一环，
+    读的是 HKCU\\Software\\Microsoft\\Accessibility 的 TextScaleFactor（100 = 100%）。
+    """
+    if os.name != "nt":
+        return 1.0
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Accessibility") as key:
+            value = winreg.QueryValueEx(key, "TextScaleFactor")[0]
+    except (OSError, ValueError):
+        return 1.0
+    try:
+        factor = float(value) / 100.0
+    except (TypeError, ValueError):
+        return 1.0
+    return min(2.0, max(0.8, factor))
+
+
+def dpi_scale():
+    """按屏幕物理像素密度给出的建议字号倍率。
+
+    Qt 已经把逻辑 px 按 devicePixelRatio 放大到物理 px，所以「物理尺寸」是
+    恒定的。但同样 19px 的字，在 20 吋 2880 宽的屏上比在 24 吋 1920 宽的屏上
+    看着小一圈 —— 屏大了、视距没变。所以按物理 DPI 给一点补偿：
+    普通屏 1.0，高密度屏略放大，克制地分三档。
+    """
+    app = QtWidgets.QApplication.instance()
+    screen = app.primaryScreen() if app is not None else None
+    if screen is None:
+        return 1.0
+    dpi = screen.physicalDotsPerInch()
+    if dpi <= 0:
+        return 1.0
+    if dpi >= 180:          # 4K / 高分屏
+        return 1.18
+    if dpi >= 130:          # 2K 及典型的 150% 缩放屏
+        return 1.10
+    return 1.0
+
+
+def ui_scale():
+    """当前生效的界面倍率，供其它模块算固定尺寸。"""
+    return _UI_SCALE
+
+
+def px(value):
+    """把设计稿里的逻辑像素换算成当前倍率下的逻辑像素。"""
+    return max(1, int(round(value * _UI_SCALE)))
+
+
+def scale_px(text, scale):
+    """把一段样式表里的 px 数值统一乘倍率。
+
+    1px、2px 不动 —— 那是边框与分隔线，放大后线条变粗会显得笨重，
+    而且 1px 逻辑在高 DPI 下本来就会被渲染成 1~2 物理像素。
+    """
+    def repl(m):
+        value = int(m.group(1))
+        if value <= 2:
+            return m.group(0)
+        return "{}px".format(max(1, int(round(value * scale))))
+
+    return re.sub(r"(\d+)px", repl, text)
+
+
 CARD_MIN_WIDTH = 360
 CARD_MAX_WIDTH = 660
 GAP = 12
@@ -338,10 +414,11 @@ TOKENS = {
 
 
 def build_qss(t, scale=1.0):
-    """生成样式表。scale 是字号缩放系数（0.85 ~ 1.3）。
+    """生成样式表。scale 是界面倍率（系统文本大小 × 用户档位）。
 
-    QSS 里的字号都写死成 px，缩放时统一乘一遍 —— 用正则改写，
-    比给每个字号都留占位符省事，也不会漏。
+    尺寸全写成 px，缩放时统一乘一遍 —— 不只字号，padding / margin /
+    border-radius / min-height 都得跟着走。只放字号的话，字一大就把
+    容器挤满，行距、内边距、按钮高度都还是按小字量的，看着很憋。
     """
     qss = """
 QMainWindow, QWidget#Root {{ background: {bg}; }}
@@ -561,13 +638,10 @@ QComboBox QAbstractItemView {{
 }}
 QCheckBox {{ font-size: 12px; color: {fg}; spacing: 8px; }}
 """.format(**t)
+    # 兜底夹一遍：传 0（「跟随画面」的存储值）会让所有尺寸乘成 1px，字直接看不见
+    scale = min(2.0, max(0.8, float(scale or 1.0)))
     if abs(scale - 1.0) > 0.001:
-        import re as _re
-        qss = _re.sub(
-            r"font-size:\s*(\d+)px",
-            lambda m: "font-size: {}px".format(
-                max(9, int(round(int(m.group(1)) * scale)))),
-            qss)
+        qss = scale_px(qss, scale)
     return qss
 
 
@@ -603,25 +677,17 @@ class ToolCard(QtWidgets.QFrame):
         super().__init__(parent)
         self.tool = tool
         self.setObjectName("Card")
-        self.setMinimumWidth(CARD_MIN_WIDTH)
-        self.setMaximumWidth(CARD_MAX_WIDTH)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
                            QtWidgets.QSizePolicy.Preferred)
         self.setProperty("missing", "true" if not tool["exists"] else "false")
 
         row = QtWidgets.QHBoxLayout(self)
-        row.setContentsMargins(14, 13, 14, 12)
-        row.setSpacing(12)
+        self._row = row
 
         icon = QtWidgets.QLabel(ICONS.get(tool["id"], "•"))
         icon.setObjectName("CardIcon")
-        icon.setFixedSize(40, 40)
         icon.setAlignment(QtCore.Qt.AlignCenter)
-        # 显式指定 emoji 字体：QSS 里的 font-family 会被 QLabel 的字体覆盖，
-        # 不显式设的话会落到默认的西文字体，彩色 emoji 就变 monochrome 了。
-        emoji_font = QtGui.QFont("Segoe UI Emoji", 17)
-        emoji_font.setFamilies(["Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI"])
-        icon.setFont(emoji_font)
+        self._icon = icon
         row.addWidget(icon, 0, QtCore.Qt.AlignTop)
 
         col = QtWidgets.QVBoxLayout()
@@ -668,6 +734,26 @@ class ToolCard(QtWidgets.QFrame):
         if not tool["exists"]:
             self.status.setText("脚本缺失")
 
+        self.resize_parts()
+
+    def resize_parts(self):
+        """按当前倍率重设写死的尺寸。
+
+        QSS 管不到 setFixedSize / setContentsMargins；不改这里的话，
+        字号放大后图标和边距还是原尺寸，卡片会显得挤。
+        """
+        self.setMinimumWidth(px(CARD_MIN_WIDTH))
+        self.setMaximumWidth(px(CARD_MAX_WIDTH))
+        self._row.setContentsMargins(px(14), px(13), px(14), px(12))
+        self._row.setSpacing(px(12))
+        self._icon.setFixedSize(px(40), px(40))
+        # 显式指定 emoji 字体：QSS 里的 font-family 会被 QLabel 的字体覆盖，
+        # 不显式设的话会落到默认的西文字体，彩色 emoji 就变 monochrome 了。
+        emoji_font = QtGui.QFont("Segoe UI Emoji")
+        emoji_font.setFamilies(["Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI"])
+        emoji_font.setPixelSize(px(17))
+        self._icon.setFont(emoji_font)
+
     def set_status(self, text):
         """表单页执行时把状态同步到卡片。"""
         self.status.setText(text)
@@ -686,9 +772,15 @@ class CardGrid(QtWidgets.QWidget):
                            QtWidgets.QSizePolicy.Preferred)
         self.grid = QtWidgets.QGridLayout(self)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setSpacing(GAP)
+        self.grid.setSpacing(px(GAP))
         self.cards = []
         self._cols = 0
+
+    def refresh_spacing(self):
+        """倍率变了：间距与换列阈值都要跟着走，否则卡片间距还是老样子。"""
+        self.grid.setSpacing(px(GAP))
+        self._cols = 0
+        self._relayout()
 
     def set_cards(self, cards):
         self.cards = list(cards)
@@ -703,7 +795,9 @@ class CardGrid(QtWidgets.QWidget):
         width = self.width()
         if width < 80 or not self.cards:
             return
-        cols = max(1, (width + GAP) // (CARD_MIN_WIDTH + GAP))
+        gap = px(GAP)
+        min_width = px(CARD_MIN_WIDTH)
+        cols = max(1, (width + gap) // (min_width + gap))
         if cols == self._cols:
             return
         self._cols = cols
@@ -726,22 +820,26 @@ class Sidebar(QtWidgets.QWidget):
     def __init__(self, groups, icon=None, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
-        self.setFixedWidth(214)
+        self.setFixedWidth(px(214))
+        self._icon = icon
 
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(0, 16, 0, 12)
+        self._lay = lay
+        lay.setContentsMargins(0, px(16), 0, px(12))
         lay.setSpacing(0)
 
         brand_row = QtWidgets.QHBoxLayout()
-        brand_row.setContentsMargins(16, 0, 16, 0)
-        brand_row.setSpacing(10)
+        self._brand_row = brand_row
+        brand_row.setContentsMargins(px(16), 0, px(16), 0)
+        brand_row.setSpacing(px(10))
         logo = QtWidgets.QLabel()
+        self._logo = logo
         if icon is not None and not icon.isNull():
-            logo.setPixmap(icon.pixmap(QtCore.QSize(30, 30)))
+            logo.setPixmap(icon.pixmap(QtCore.QSize(px(30), px(30))))
         else:
             logo.setText("🧰")
             logo.setAlignment(QtCore.Qt.AlignCenter)
-        logo.setFixedSize(34, 34)
+        logo.setFixedSize(px(34), px(34))
         brand_row.addWidget(logo, 0)
         texts = QtWidgets.QVBoxLayout()
         texts.setSpacing(0)
@@ -797,6 +895,16 @@ class Sidebar(QtWidgets.QWidget):
 
         # 主题切换只放在设置页 —— 侧栏底部只留「帮助 / 设置」两个入口。
 
+    def resize_parts(self):
+        """倍率变了：侧栏宽、品牌区留白、Logo 尺寸一起改。"""
+        self.setFixedWidth(px(214))
+        self._lay.setContentsMargins(0, px(16), 0, px(12))
+        self._brand_row.setContentsMargins(px(16), 0, px(16), 0)
+        self._brand_row.setSpacing(px(10))
+        self._logo.setFixedSize(px(34), px(34))
+        if self._icon is not None and not self._icon.isNull():
+            self._logo.setPixmap(self._icon.pixmap(QtCore.QSize(px(30), px(30))))
+
     def select(self, group):
         """选中某个分组按钮。
 
@@ -839,18 +947,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("LaTeX 工具箱")
-        self.resize(1200, 780)
         self.tools = core.describe_tools()
         self.cards = {}
         self.groups = []
         for tool in self.tools:
             if tool["group"] not in self.groups:
                 self.groups.append(tool["group"])
-        # 配置：主题偏好与字号缩放
+        # 配置：主题偏好与字号缩放。0 表示「跟随画面」——按屏幕物理密度自动定档，
+        # 高 DPI 屏开箱就是合适大小，普通屏仍是原样。
         self._config = config.load()
         self._theme_pref = self._config.get("theme", "auto")
-        self._font_scale = float(self._config.get("font_scale", 1.0))
+        self._font_scale = float(self._config.get("font_scale", 0.0) or 0.0)
         self._dark = system_is_dark()
+        self._apply_scale_value()
 
         root = QtWidgets.QWidget()
         root.setObjectName("Root")
@@ -899,8 +1008,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_group(self.groups[0])
         self.apply_theme()
         self.apply_font_scale(self._font_scale)
+        self._fit_window()
 
     # ---------- 构建 ----------
+
+    def _apply_scale_value(self):
+        """算出界面倍率。0 = 跟随画面，其余为用户手选档位。"""
+        global _UI_SCALE
+        base = self._font_scale if self._font_scale > 0 else dpi_scale()
+        _UI_SCALE = min(2.0, max(0.8, text_scale() * base))
+
+    def _fit_window(self):
+        """按可用屏幕定初始窗口大小。
+
+        写死 1200×780 在 150% 缩放的 1366×768 屏上（逻辑只有 911×512）
+        会直接超出屏幕，标题栏跑到屏幕外就拖不动了。取可用区域的六成，
+        再夹在设计范围内。
+        """
+        app = QtWidgets.QApplication.instance()
+        screen = app.primaryScreen() if app is not None else None
+        if screen is None:
+            self.resize(px(1200), px(780))
+            return
+        avail = screen.availableGeometry()
+        width = min(px(1200), int(avail.width() * 0.82))
+        height = min(px(780), int(avail.height() * 0.86))
+        self.resize(max(px(880), width), max(px(560), height))
+        # 居中，且保证不出屏
+        self.move(avail.left() + (avail.width() - self.width()) // 2,
+                  avail.top() + (avail.height() - self.height()) // 2)
+        self.setMaximumSize(avail.width(), avail.height())
 
     def _build_toolbar(self):
         bar = QtWidgets.QHBoxLayout()
@@ -920,7 +1057,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.search.setObjectName("Search")
         self.search.setPlaceholderText("搜索工具 · 按 / 聚焦")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(260)
+        self.search.setFixedWidth(px(260))
         self.search.textChanged.connect(self.apply_filter)
         bar.addWidget(self.search, 0, QtCore.Qt.AlignVCenter)
 
@@ -928,7 +1065,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # 分组页 → 本板块全部工具）。工具页里另有就近的「查看帮助」。
         self.context_help = QtWidgets.QPushButton("?")
         self.context_help.setObjectName("IconBtn")
-        self.context_help.setFixedSize(30, 30)
+        self.context_help.setFixedSize(px(30), px(30))
         self.context_help.setCursor(QtCore.Qt.PointingHandCursor)
         self.context_help.setToolTip("查看当前页面相关帮助（F1）")
         self.context_help.clicked.connect(self.open_context_help)
@@ -938,6 +1075,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_pages(self):
         self.pages = {}
         self.group_cards = {}
+        self.grids = {}
         for group in self.groups:
             page = QtWidgets.QWidget()
             lay = QtWidgets.QVBoxLayout(page)
@@ -950,6 +1088,7 @@ class MainWindow(QtWidgets.QMainWindow):
             inner_lay = QtWidgets.QVBoxLayout(inner)
             inner_lay.setContentsMargins(0, 0, 0, 8)
             grid = CardGrid()
+            self.grids[group] = grid
             inner_lay.addWidget(grid)
             inner_lay.addStretch(1)
             scroll.setWidget(inner)
@@ -990,7 +1129,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tokens = TOKENS["dark" if dark else "light"]
         app = QtWidgets.QApplication.instance()
         if app is not None:
-            app.setStyleSheet(build_qss(tokens, self._font_scale))
+            app.setStyleSheet(build_qss(tokens, _UI_SCALE))
         # 帮助文档是磁盘 HTML，颜色按当前主题重算一遍
         if hasattr(self, "help_page"):
             self.help_page.set_dark(dark)
@@ -1000,18 +1139,51 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setPalette(palette)
 
     def apply_font_scale(self, scale):
-        """改界面字号。缩放系数会写进 QSS 的字号声明。"""
-        scale = min(1.3, max(0.85, float(scale)))
-        self._font_scale = scale
+        """改界面字号。scale=0 表示跟随画面（按屏幕密度自动），>0 为用户档位。
+
+        倍率一路管到三处：QSS（字号与全部间距）、app 默认字体（菜单、
+        消息框这些不吃 QSS 的部分）、以及写死尺寸的控件（侧栏宽、卡片图标、
+        搜索框）。三处不一起动就会出现「字大了但框没大」的挤压。
+        """
+        scale = float(scale)
+        if scale > 0:
+            scale = min(1.6, max(0.8, scale))
+        self._font_scale = 0.0 if scale <= 0 else scale
+        self._apply_scale_value()
+
         app = QtWidgets.QApplication.instance()
+        tokens = TOKENS["dark" if self._dark else "light"]
         if app is not None:
-            tokens = TOKENS["dark" if self._dark else "light"]
-            app.setStyleSheet(build_qss(tokens, scale))
+            app.setStyleSheet(build_qss(tokens, _UI_SCALE))
         font = QtGui.QFont("Segoe UI Variable Text", 9)
         font.setFamilies(["Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI"])
-        font.setPointSizeF(max(7.0, 9.0 * scale))
+        font.setPointSizeF(max(7.0, 9.0 * _UI_SCALE))
         if app is not None:
             app.setFont(font)
+
+        self._resize_fixed_parts()
+        if hasattr(self, "help_page"):
+            self.help_page.set_ui_scale(_UI_SCALE)
+
+    def _resize_fixed_parts(self):
+        """重设写死尺寸的控件。QSS 管不到 setFixedSize / setContentsMargins。"""
+        self.sidebar.setFixedWidth(px(214))
+        self.search.setFixedWidth(px(260))
+        if hasattr(self, "context_help"):
+            self.context_help.setFixedSize(px(30), px(30))
+        self.sidebar.resize_parts()
+        for card in self.cards.values():
+            card.resize_parts()
+        for grid in getattr(self, "grids", {}).values():
+            grid.refresh_spacing()
+        # 正开着工具页就按新倍率重开一遍，别把用户晾在空页上
+        if hasattr(self, "detail_host"):
+            tool = getattr(self, "_current_tool", None)
+            on_detail = (tool is not None
+                         and self.stack.currentWidget() is self.detail_host)
+            self._clear_detail()
+            if on_detail:
+                self.open_panel(tool["id"])
 
     def toggle_theme(self):
         """主题按钮：在 深色/浅色 之间切，并把选择记住。"""
@@ -1052,13 +1224,13 @@ class MainWindow(QtWidgets.QMainWindow):
         back = QtWidgets.QPushButton("← 返回工具列表")
         back.setObjectName("Secondary")
         back.setCursor(QtCore.Qt.PointingHandCursor)
-        back.setMinimumWidth(132)
-        back.setMinimumHeight(32)
+        back.setMinimumWidth(px(132))
+        back.setMinimumHeight(px(32))
         back.clicked.connect(self.close_panel)
         help_btn = QtWidgets.QPushButton("? 查看帮助")
         help_btn.setObjectName("Secondary")
         help_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        help_btn.setMinimumHeight(32)
+        help_btn.setMinimumHeight(px(32))
         if not tool.get("help"):
             help_btn.setEnabled(False)
         help_btn.clicked.connect(lambda _=False, t=tool: self.show_tool_help(t))
@@ -1099,6 +1271,16 @@ class MainWindow(QtWidgets.QMainWindow):
         path = icon_path()
         if path is not None:
             QtCore.QTimer.singleShot(0, lambda: _apply_win32_icons(self, path))
+        # 多显示器 DPI 不同：拖到另一块屏要按新屏重算自动档
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, "_screen_hooked", False):
+            handle.screenChanged.connect(self._on_screen_changed)
+            self._screen_hooked = True
+
+    def _on_screen_changed(self, _screen):
+        if self._font_scale <= 0:
+            self.apply_font_scale(0.0)
+            self._fit_window()
 
     def show_group(self, group):
         if self.search.text().strip():
