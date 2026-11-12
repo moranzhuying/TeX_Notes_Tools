@@ -7,7 +7,7 @@
 
 ## 2026-11-12 更新概览
 
-对 Tools 下全部工具做一轮缺陷排查，修复数据安全、功能失效、编码容错三类问题。
+对 Tools 下全部工具做一轮缺陷排查，修复数据安全、功能失效、编码容错三类问题；另有一轮**打包 exe 专项**（只查打包后才出现的问题），见「第四轮」。
 
 ### 缺陷修复
 
@@ -138,6 +138,31 @@
 * 新增 `--keep`（默认 20，交互面板也会询问）；`--prune-interval` 语义改为「检查间隔」。
 * `git()` 增加 `extra_env`，用于在 `commit-tree` 时传回原作者/提交时间。
 
+### 第四轮：打包后的 exe
+
+这一轮查**打包成 exe 之后才出现**的问题：用 `--exec` / `--selftest` 在打包环境里逐个工具冒烟，源码直跑全部正常，所以此前几轮都没碰到。顺带把全库的静态检查旧账清掉。
+
+* **工具启动改用 venv 解释器（核心）**
+    * 原机制是 exe 拿自己当解释器（`--exec`）。打包解释器的 `sys.path` 里只有 `_MEIPASS` 三项，实测 `pymupdf` / `numpy` / `faster_whisper` / `playwright` **全部缺失** —— PDF 转正、视频转写一启动就 ImportError。
+    * 更隐蔽的一层：PyInstaller 把 `_MEIPASS` 塞进子进程 `PATH` 并设 `QT_PLUGIN_PATH` / `_PYI_*`。工具自身还有「缺依赖就换解释器重跑」的逻辑（`pdf_upright`、`video2text` 都有），换到 venv 的 python 后会加载**版本不符的 `python313.dll`**，进程链实测为 exe → exe → venv → venv 四层，40 秒零输出、纯挂死。
+    * 改为 `panel_core.tool_python()` 定位工具 venv 的解释器，`_spawn_prefix` / `spawn_command` 在 frozen 下优先用它，找不到才回退 `--exec`。上文 `build_exe` 条目里的 `--exec` 描述以本节为准。
+    * 新增 `panel_core.child_env()`：剥掉 `_MEIPASS` 的 `PATH` 项与 `QT_PLUGIN_PATH` / `_PYI_*`。`_MEIPASS` 常是 8.3 短名、`PATH` 里是长名，比较前要 `realpath` + `normcase` 归一再按前缀过滤，否则一条都匹配不上。
+    * `launch()` 与 `panel_actions` 的 `QProcess` 都换成这份环境（`setProcessEnvironment`）。
+    * 副作用是启动变快：onefile 每次运行解包 **93 MB**，原先**每点一次工具就解一次**，现在点工具不再解包。
+* **`panel_config` / `launcher`：配置写进解包临时目录**
+    * 两者都用 `__file__` 定位 `Tools/`。打包后 `__file__` 指向 `_MEIPASS`，配置被写进临时目录、进程退出即删 —— 表现为「设置每次重启都归零」，而 `panel_config` 的注释早就写着「打包后也在 exe 旁边」，实现没做。
+    * 改为 frozen 时用 `sys.executable` 的目录。
+* **`panel_qt`：崩溃日志同样落进 `_MEIPASS`**
+    * `_panel_error.log` 与 `_panel_config.json` 同因，崩溃痕迹随进程消失，等于没记。抽出 `error_log_path()`，frozen 下落 exe 旁边。
+    * `exec_tool` 在子工具崩溃后 `input("按回车关闭…")`，被面板捕获输出时没有终端，会一直挂着不返回。加 `isatty()` 守卫。
+    * `exec_tool` 开头清洗自身环境，使目标脚本再派生的解释器不再继承污染。
+* **`--selftest` 扩到九项**
+    * 原来只验证「工具根正确 + 能拉起工具 11」。新增：工具解释器来源、子进程环境是否仍含 `_MEIPASS`、`pymupdf` / `numpy` / `yt_dlp` / `faster_whisper` / `playwright` 缺哪几个。缺依赖只报告、不阻断，因为纯标准库的工具不受影响。
+* **静态检查旧账**
+    * 全量 `pyflakes` 清到零：`make_icon` 未用的 `io`、`panel_pages` 未用的 `QtGui`、`manager` 未用的 `re`、`outline_tool` 一处无占位符的 f-string。
+    * `build_exe` 的 `import PyInstaller  # noqa: F401` 骗不过 pyflakes（`noqa` 是 flake8 的写法），改 `importlib.util.find_spec`。
+    * `make_icon` 的 `app` 不能删也不能改成下划线（pyflakes 一样报），末尾 `_app.quit()` 收尾 —— QApplication 的 C++ 对象被回收会崩。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**
@@ -218,7 +243,7 @@
     * `pdf_upright` 的输入目录给默认值 `Exam`，不用每次手填。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
-    * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。
+    * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。**此机制同日已改为优先用工具 venv 的解释器**，见「第四轮：打包后的 exe」。
     * **GUI 子系统程序忽略 `CREATE_NEW_CONSOLE`**，故在 `--exec` 里主动 `AllocConsole()` 再绑 `CONOUT$` / `CONIN$`；不这么做交互工具的 `input()` 直接 EOF、窗口一闪而过。
     * `--selftest` 自检：打印 frozen 标记、工具根、工作区、缺失项，并用一次性命令走通「exe 起子进程 → 捕获输出」。
     * 打包前自动关闭同名旧进程（否则文件被占用，PyInstaller 报 PermissionError）。产物与 `_build/` 已加入 `.gitignore`。
