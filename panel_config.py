@@ -7,10 +7,15 @@ panel_config.py — 面板的持久化配置与内置帮助文本
 放这里而不是散在 UI 代码里，是为了让「设置页」和「帮助页」都只管展示。
 """
 import json
-import os
+import sys
 from pathlib import Path
 
-TOOLS_ROOT = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    # 打包后 __file__ 指向解包临时目录，配置写那儿等于每次启动都重来一遍。
+    # exe 约定放在 Tools/ 下，配置就落在它旁边。
+    TOOLS_ROOT = Path(sys.executable).resolve().parent
+else:
+    TOOLS_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = TOOLS_ROOT / "_panel_config.json"
 
 #: 默认配置。新增项时在这里加默认值即可，旧配置文件会自动补齐。

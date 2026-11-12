@@ -113,16 +113,51 @@ def _bind_console():
     _dbg("bind 之后: stdout={!r} stdin={!r}".format(sys.stdout, sys.stdin))
 
 
+def error_log_path():
+    """崩溃日志的落点。打包后 `__file__` 在临时解包目录，进程一退就被删，
+    写在那儿等于没写；所以一律落在 exe / 脚本旁边。"""
+    base = (Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else Path(__file__).resolve().parent)
+    return base / "_panel_error.log"
+
+
+def _pause(msg):
+    """崩溃后等一次回车。只在真的有终端时才停 —— 被面板捕获输出时停住
+    会让子进程永远不退出。"""
+    try:
+        if sys.stdin is not None and sys.stdin.isatty():
+            input(msg)
+    except (EOFError, OSError, ValueError):
+        pass
+
+
 def exec_tool(argv):
-    """以自身当解释器执行一个 .py —— 打包成 exe 后，工具子进程走这条路。
+    """以自身当解释器执行一个 .py —— 打包成 exe 且找不到 venv python 时走这里。
 
     工具脚本必须从磁盘上的真实 Tools 目录跑（它们要操作真实工作区），
     不能塞进 exe 的解包临时目录，所以这里是「解释器」而不是「导入器」。
+
+    注意这条路是兜底：exe 的解释器没有工具依赖（pymupdf / numpy /
+    faster-whisper 都在 venv 里），正常情况下 panel_core 直接用 venv 的
+    python 跑工具，不会走到这儿。
     """
     import runpy
     import traceback
 
     _bind_console()
+
+    # 先洗掉 PyInstaller 注入的环境：目标脚本可能再派生解释器（pdf_upright、
+    # video2text 都会），那些子进程若继承了 _MEIPASS 的 PATH，会去加载 exe
+    # 解包目录里的 python313.dll，然后静默挂死。
+    try:
+        import panel_core as _core
+        clean = _core.child_env()
+        os.environ.clear()
+        os.environ.update(clean)
+    except Exception:  # noqa: BLE001 —— 环境清理失败不该挡住工具
+        pass
+
     if not argv:
         print("用法：<exe> --exec <脚本.py> [-- 参数...]")
         return 2
@@ -145,16 +180,17 @@ def exec_tool(argv):
         return 0 if code is None else 1
     except BaseException:  # noqa: BLE001 —— 子工具崩了要留下栈，别静默退出
         traceback.print_exc()
-        try:
-            input("\n按回车关闭…")
-        except (EOFError, OSError):
-            pass
+        _pause("\n按回车关闭…")
         return 1
     return 0
 
 
+#: 工具依赖的第三方包。自检时用工具解释器逐个探，缺了就是「点了没反应」的根。
+TOOL_DEPS = ("pymupdf", "numpy", "yt_dlp", "faster_whisper", "playwright")
+
+
 def selftest():
-    """打包后自检：确认工具根定位正确、且 exe 能用 --exec 拉起子工具。"""
+    """打包后自检：工具根、工具解释器、依赖、子进程环境、能否拉起子工具。"""
     import time as _time
 
     _bind_console()
@@ -165,6 +201,27 @@ def selftest():
     print("frozen         :", getattr(sys, "frozen", False))
     print("工具根         :", panel_core.TOOLS_ROOT)
     print("工作区         :", panel_core.WORKSPACE)
+
+    py = panel_core.tool_python()
+    print("工具解释器     :", py or "（未找到 venv —— 回退 exe --exec，依赖会缺）")
+
+    env = panel_core.child_env()
+    mei = _normcase(getattr(sys, "_MEIPASS", ""))
+    dirty = [p for p in env.get("PATH", "").split(os.pathsep)
+             if p and mei and _normcase(p).startswith(mei)]
+    print("子进程环境     :", "干净" if not dirty else "仍含 _MEIPASS：{}".format(dirty))
+    if "QT_PLUGIN_PATH" in env:
+        print("                 QT_PLUGIN_PATH 未清除")
+
+    if py:
+        probe = ("import importlib.util as u, sys;"
+                 "missing=[n for n in %r if u.find_spec(n) is None];"
+                 "print(','.join(missing) if missing else '无')" % (list(TOOL_DEPS),))
+        r = subprocess.run([str(py), "-c", probe], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace",
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        print("缺依赖         :", (r.stdout or "").strip() or r.stderr.strip()[:200])
+
     tools = panel_core.describe_tools()
     missing = [t["id"] for t in tools if not t["exists"]]
     print("工具数         :", len(tools), "缺失:", missing or "无")
@@ -187,6 +244,14 @@ def selftest():
         return 1
     print("自检通过")
     return 0
+
+
+def _normcase(p):
+    """大小写 + 8.3 短名归一，供前缀比较（PATH 里长名短名混用）。"""
+    try:
+        return os.path.normcase(os.path.realpath(str(p)))
+    except (OSError, ValueError):
+        return os.path.normcase(os.path.abspath(str(p)))
 
 
 if __name__ == "__main__" and len(sys.argv) > 1:
@@ -1183,7 +1248,7 @@ def _excepthook(exc_type, exc, tb):
     """
     import traceback
     text = "".join(traceback.format_exception(exc_type, exc, tb))
-    log = Path(__file__).with_name("_panel_error.log")
+    log = error_log_path()
     try:
         with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
             fh.write(text + "\n")
@@ -1222,10 +1287,10 @@ if __name__ == "__main__":
         sys.exit(main())
     except SystemExit:
         raise
-    except BaseException as exc:  # noqa: BLE001 —— 兜底只为留下痕迹
+    except BaseException:  # noqa: BLE001 —— 兜底只为留下痕迹
         import traceback
         text = traceback.format_exc()
-        log = Path(__file__).with_name("_panel_error.log")
+        log = error_log_path()
         try:
             with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
                 fh.write(text + "\n")

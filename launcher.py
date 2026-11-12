@@ -40,7 +40,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-TOOLS_ROOT = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    # 打包进 exe 时 __file__ 在解包临时目录；工具脚本始终在 exe 旁边。
+    TOOLS_ROOT = Path(sys.executable).resolve().parent
+else:
+    TOOLS_ROOT = Path(__file__).resolve().parent
 WORKSPACE = TOOLS_ROOT.parent
 
 # (序号, 标题, 相对脚本路径, 运行方式, 分组)

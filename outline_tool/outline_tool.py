@@ -364,7 +364,7 @@ def save(path, text, prefix=""):
 
 def read_skeleton():
     """读一段缩进清单（目录名 | 中译名）。"""
-    print(f"  每行 `目录名 | 中译名`（中译可省），用**缩进**表示层级；")
+    print("  每行 `目录名 | 中译名`（中译可省），用**缩进**表示层级；")
     print("  单独一行 `END` 结束，直接回车＝放弃。示例：")
     print("      Modules_over_Rings | 环上的模")
     print("        Basic_definitions | 基本定义")

@@ -1450,6 +1450,13 @@ class FormPanel(QtWidgets.QWidget):
         proc.setProgram(program)
         proc.setArguments(argv)
         proc.setWorkingDirectory(str(script.parent))
+        # QProcess 默认继承本进程环境；本进程是打包的 exe，环境里带着
+        # PyInstaller 的 _MEIPASS / QT_PLUGIN_PATH —— 会让子解释器加载到
+        # 版本不对的 DLL。换成清洗过的环境。
+        qenv = QtCore.QProcessEnvironment()
+        for key, value in core.child_env().items():
+            qenv.insert(key, value)
+        proc.setProcessEnvironment(qenv)
         proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
         _hide_console(proc)
         proc.readyReadStandardOutput.connect(self._read_output)

@@ -10,7 +10,6 @@ make_icon.py — 生成 exe 用的 tools.ico
 
 产物：Tools/tools.ico。改样式后重跑一次即可。
 """
-import io
 import struct
 import sys
 from pathlib import Path
@@ -94,7 +93,8 @@ def build_ico(path):
 
 
 def main():
-    app = QtWidgets.QApplication(sys.argv)
+    # 必须有 Python 侧的引用：QApplication 的 C++ 对象一旦被回收，Qt 就崩
+    _app = QtWidgets.QApplication(sys.argv)
     total = build_ico(OUT)
     # 回读确认能被 Qt 正常解析
     icon = QtGui.QIcon(str(OUT))
@@ -103,7 +103,9 @@ def main():
     print("Qt 回读到的尺寸：{}".format([s.width() for s in sizes]))
     if not sizes:
         print("✗ 生成的 ico 无法被 Qt 识别")
+        _app.quit()
         return 1
+    _app.quit()
     return 0
 
 

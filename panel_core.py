@@ -75,6 +75,61 @@ def python_exe():
 PYTHON = python_exe()
 
 
+def _normpath(p):
+    """统一大小写与 8.3 短名，供路径前缀比较。
+
+    PyInstaller 往 PATH 里写的是长名（`%USERPROFILE%\\AppData\\...`），
+    而 `_MEIPASS` 常是短名（`%USERPROFILE%` 折成 8.3 形式），
+    直接 startswith 会比不中。
+    """
+    try:
+        return os.path.normcase(os.path.realpath(str(p)))
+    except (OSError, ValueError):
+        return os.path.normcase(os.path.abspath(str(p)))
+
+
+def tool_python():
+    """装了工具依赖的那个解释器（用户主目录的 venv default）。
+
+    exe 自带的解释器只有标准库和 PySide6；pymupdf / numpy / faster-whisper
+    都在 venv 里。打包后必须用 venv 的 python 跑工具，否则这些工具一启动
+    就 ImportError —— 或者更糟：被 PyInstaller 的 python DLL 混着加载而挂死。
+    """
+    override = os.environ.get("PANEL_PYTHON")
+    if override and Path(override).is_file():
+        return Path(override)
+    base = Path.home() / ".workbuddy" / "binaries" / "python" / "envs" / "default"
+    for rel in (("Scripts", "python.exe"), ("bin", "python")):
+        cand = base.joinpath(*rel)
+        if cand.is_file():
+            return cand
+    return None
+
+
+def child_env():
+    """给子进程一份干净环境：剥掉 PyInstaller 为打包解释器注入的东西。
+
+    exe 会把 `_MEIPASS` 塞进 PATH 最前面，并设 `QT_PLUGIN_PATH` / `_PYI_*`。
+    子进程若是**另一个**解释器（venv 的 python），这些项会让它加载 exe 解包
+    目录里的 python313.dll 与 Qt 插件 —— 版本对不上就静默挂死，症状是「点了
+    没反应」。清掉之后子进程只用自己的环境。
+    """
+    env = dict(os.environ)
+    for key in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+                "_PYI_APPLICATION_HOME_DIR", "_PYI_ARCHIVE_FILE",
+                "_PYI_PARENT_PROCESS_LEVEL", "_PYI_SPLASH_IPC",
+                "_PYI_ONEFILE_PARENT"):
+        env.pop(key, None)
+
+    mei = getattr(sys, "_MEIPASS", "")
+    if mei:
+        target = _normpath(mei)
+        kept = [p for p in env.get("PATH", "").split(os.pathsep)
+                if p and not _normpath(p).startswith(target)]
+        env["PATH"] = os.pathsep.join(kept)
+    return env
+
+
 def tool_by_id(key):
     return next((m for m in MENU if m[0] == key), None)
 
@@ -116,12 +171,17 @@ def _pump(rec, proc):
 def spawn_command(script, args=()):
     """返回 (program, argv)：执行某个 .py 的命令行。
 
-    打包成 exe 时没有外部 Python，让 exe 自己当解释器（`--exec` 模式）。
+    打包成 exe 后**优先用 venv 里的 python** 跑脚本：exe 的解释器没有工具依赖
+    （pymupdf、faster-whisper 等），拿它跑等于让工具一启动就 ImportError。
+    只有找不到 venv 时才退回「exe 自己当解释器」（`--exec`）。
     供启动器与「可视化表单」两条路径共用，避免各写一套。
     """
     script = Path(script)
     extra = [str(a) for a in args]
     if getattr(sys, "frozen", False):
+        py = tool_python()
+        if py is not None:
+            return str(py), [str(script)] + extra
         return sys.executable, ["--exec", str(script), "--"] + extra
     return PYTHON, [str(script)] + extra
 
@@ -129,6 +189,9 @@ def spawn_command(script, args=()):
 def _spawn_prefix(script):
     """「用什么命令执行这个 .py」的前缀（`--` 之后原样传给目标脚本）。"""
     if getattr(sys, "frozen", False):
+        py = tool_python()
+        if py is not None:
+            return [str(py), str(script)]
         return [sys.executable, "--exec", str(script), "--"]
     return [PYTHON, str(script)]
 
@@ -151,6 +214,7 @@ def launch(key, extra=""):
             raise PanelError("该工具是交互面板，不接受追加参数")
         tool_args += launcher.split_args(extra)
     args = _spawn_prefix(script) + tool_args
+    env = child_env()
 
     if mode.startswith("参数:"):
         proc = subprocess.Popen(
@@ -158,7 +222,7 @@ def launch(key, extra=""):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, text=True,
             encoding="utf-8", errors="replace",
-            creationflags=_NO_WINDOW)
+            creationflags=_NO_WINDOW, env=env)
         rec = {"proc": proc, "mode": "capture", "started": time.time(),
                "output": deque(maxlen=MAX_LINES), "returncode": None}
         threading.Thread(target=_pump, args=(rec, proc), daemon=True).start()
@@ -175,7 +239,7 @@ def launch(key, extra=""):
             flags = 0
         proc = subprocess.Popen(
             args, cwd=str(script.parent),
-            creationflags=flags)
+            creationflags=flags, env=env)
         rec = {"proc": proc, "mode": "console", "started": time.time(),
                "output": deque(maxlen=MAX_LINES), "returncode": None}
 

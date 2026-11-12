@@ -30,7 +30,9 @@ def main():
     args = ap.parse_args()
 
     try:
-        import PyInstaller  # noqa: F401
+        import importlib.util
+        if importlib.util.find_spec("PyInstaller") is None:
+            raise ImportError
     except ImportError:
         print("缺少 PyInstaller。装到工具环境：\n"
               "  <venv>/Scripts/python.exe -m pip install pyinstaller "

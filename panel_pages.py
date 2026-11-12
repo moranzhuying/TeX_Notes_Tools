@@ -4,7 +4,7 @@
 拆成独立文件是为了让 panel_qt.py 不至于膨胀到两千行 —— 这两块是纯展示逻辑，
 和主窗口的卡片流、主题切换互不相干。
 """
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 import panel_config as cfg
 
