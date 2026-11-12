@@ -527,10 +527,11 @@ QLabel#PathText {{
     font-family: "Cascadia Mono", Consolas, monospace;
 }}
 QTextBrowser#HelpDoc {{
-    background: {card};
+    /* 帮助文档是白底 HTML（浅色截图配套），深色主题下按「一张纸」显示 */
+    background: #ffffff;
     border: 1px solid {stroke}; border-radius: 8px;
     padding: 14px 16px;
-    color: {fg2};
+    color: #24292f;
     font-size: 13px;
     selection-background-color: {accent};
     selection-color: {accent_fg};
@@ -982,11 +983,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if app is not None:
             app.setStyleSheet(build_qss(tokens, self._font_scale))
         self.sidebar.set_theme_label(self._dark)
-        # 帮助页是 HTML，样式得跟着主题重算
+        # 帮助文档是白底 HTML，样式与主题无关；这里只让它重绘
         if hasattr(self, "help_page"):
-            doc = self.help_page.findChild(QtWidgets.QTextBrowser)
-            if doc is not None:
-                doc.setHtml(pages.HelpPage._html(tokens))
+            self.help_page.reload()
         palette = self.palette()
         palette.setColor(QtGui.QPalette.Window, QtGui.QColor(tokens["bg"]))
         palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor(tokens["fg"]))
@@ -1048,10 +1047,19 @@ class MainWindow(QtWidgets.QMainWindow):
         back.setMinimumWidth(132)
         back.setMinimumHeight(32)
         back.clicked.connect(self.close_panel)
+        help_btn = QtWidgets.QPushButton("? 查看帮助")
+        help_btn.setObjectName("Secondary")
+        help_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        help_btn.setMinimumHeight(32)
+        if not tool.get("help"):
+            help_btn.setEnabled(False)
+        help_btn.clicked.connect(lambda _=False, t=tool: self.show_tool_help(t))
+
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(back)
         row.addStretch(1)
+        row.addWidget(help_btn)
         self.detail_lay.addLayout(row)
         self.detail_lay.addWidget(panel, 1)
         panel.status_changed.connect(
@@ -1093,6 +1101,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
         self.sidebar.select(group)
+
+    def show_tool_help(self, tool):
+        """跳到帮助页并直接打开这个工具那篇。"""
+        slug = tool.get("help")
+        if not slug:
+            return
+        self.show_special("帮助")
+        self.help_page.show_doc(slug + ".html")
 
     def show_special(self, key):
         """切到帮助页或设置页。"""

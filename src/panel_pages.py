@@ -4,7 +4,10 @@
 拆成独立文件是为了让 panel_qt.py 不至于膨胀到两千行 —— 这两块是纯展示逻辑，
 和主窗口的卡片流、主题切换互不相干。
 """
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
+
+import sys
+from pathlib import Path
 
 import panel_config as cfg
 
@@ -206,78 +209,56 @@ class SettingsPage(QtWidgets.QWidget):
 
 
 class HelpPage(QtWidgets.QWidget):
-    """内置帮助页：用法说明 + 工具清单。"""
+    """帮助页：直接渲染 resources/help/ 下的文档，站内链接在页面内跳转。
+
+    文档是磁盘上的 HTML（由 `src/make_help.py` 生成），不进 Python 字符串 ——
+    一篇工具文档两三千字，塞进代码里既难改也难读。图片用相对路径 `img/xx.png`，
+    靠 `setSearchPaths` 解析，打包后从 `_MEIPASS/help` 读。
+    """
 
     def __init__(self, tokens=None, parent=None):
         super().__init__(parent)
-        self.tokens = tokens or {}
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 4, 6, 4)
+        outer.setSpacing(0)
 
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        inner = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(inner)
-        lay.setContentsMargins(0, 0, 8, 12)
-        lay.setSpacing(12)
+        self.doc = QtWidgets.QTextBrowser()
+        self.doc.setObjectName("HelpDoc")
+        self.doc.setOpenLinks(False)        # 站内链接自己处理，否则会当文件打开
+        self.doc.setOpenExternalLinks(True)
+        self.doc.anchorClicked.connect(self._go)
+        self.doc.setSearchPaths([str(help_dir())])
+        outer.addWidget(self.doc, 1)
+        self.show_doc("index.html")
 
-        # 用 QTextBrowser 显示帮助。
-        # 走 HTML 而不是 Markdown：Qt 的 Markdown 解析器只支持标题/粗体/代码块，
-        # 表格和列表的样式几乎不可调，中文长文排出来很粗糙。
-        doc = QtWidgets.QTextBrowser()
-        doc.setObjectName("HelpDoc")
-        doc.setOpenExternalLinks(True)
-        doc.setHtml(self._html(self.tokens))
-        doc.setMinimumHeight(400)
-        lay.addWidget(doc, 1)
+    def show_doc(self, name):
+        """加载 help 目录下的一篇文档；失败时给一句人话。"""
+        path = help_dir() / name
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            self.doc.setHtml(
+                f'<p style="color:#c42b1c">帮助文档缺失：{path}<br>{exc}</p>')
+            return
+        self._name = name
+        self.doc.setHtml(text)
+        self.doc.moveCursor(QtGui.QTextCursor.Start)
 
-        # 工具清单表
-        table = QtWidgets.QTableWidget()
-        table.setObjectName("ResultTable")
-        rows = cfg.tool_help_rows()
-        table.setRowCount(len(rows))
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["分组", "工具", "用途"])
-        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        table.verticalHeader().setVisible(False)
-        table.setAlternatingRowColors(True)
-        header = table.horizontalHeader()
-        header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
-        for r, (group, title, desc) in enumerate(rows):
-            for c, value in enumerate((group, title, desc)):
-                table.setItem(r, c, QtWidgets.QTableWidgetItem(str(value)))
-        lay.addWidget(table)
+    def _go(self, url):
+        name = url.fileName() or "index.html"
+        if (help_dir() / name).is_file():
+            self.show_doc(name)
+        else:
+            QtGui.QDesktopServices.openUrl(url)
 
-        scroll.setWidget(inner)
-        outer.addWidget(scroll)
+    def reload(self):
+        """主题切换时不用重算（文档固定浅色），但保持接口一致。"""
+        self.show_doc(getattr(self, "_name", "index.html"))
 
-    @staticmethod
-    def _html(tokens=None):
-        """拼出完整的帮助页 HTML（含内联样式，QTextBrowser 不吃外部 CSS）。"""
-        t = tokens or {}
-        style = """
-        <style>
-          body { color: %(fg2)s; font-size: 13px; line-height: 170%%; }
-          h1 { color: %(fg)s; font-size: 19px; margin: 0 0 14px 0; }
-          h2 { color: %(fg)s; font-size: 14px; margin: 22px 0 8px 0;
-               padding-bottom: 5px; border-bottom: 1px solid %(stroke)s; }
-          b { color: %(fg)s; }
-          ul { margin: 4px 0 10px 0; }
-          li { margin-bottom: 6px; }
-          code { color: %(fg)s; background: %(subtle)s;
-                 padding: 1px 5px; border-radius: 3px;
-                 font-family: "Cascadia Mono", Consolas, monospace; }
-          table.keys { border-collapse: collapse; margin: 6px 0 12px 0; }
-          table.keys td { padding: 4px 14px 4px 0; vertical-align: top; }
-          table.keys td:first-child { white-space: nowrap; }
-        </style>
-        """ % t
-        return ("<html><head>" + style + "</head><body>"
-                + cfg.HELP_HTML
-                + "<h2>工具一览</h2><p>" + cfg.HELP_TOOLS_LEAD + "</p>"
-                + "</body></html>")
+
+def help_dir():
+    """帮助文档目录：打包后在解包目录的 `help/`，源码运行时在 `resources/help/`。"""
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        return base / "help"
+    return Path(__file__).resolve().parent.parent / "resources" / "help"

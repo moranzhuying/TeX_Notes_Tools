@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>3. 符号库管理 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 核心工具</p><h1>3. 符号库管理</h1><p class="lead">在模板与各笔记之间搬运符号定义、刷新 TeXStudio 补全、删除或新增记号。默认只预览，不写文件。</p><table class="kv"><tr><th>面板入口</th><td>核心工具 → 卡片「符号库管理」→ 选操作 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/symbols/symbols.py</code></td></tr></table><img src="img/tool-03.png" width="560" height="350" alt="界面"><p class="cap">操作下拉决定这一趟做什么；「真正写入」不勾就只出清单。</p><h2>什么时候用</h2><ul><li>在某一本书里新加了 <code>\newcommand</code>，想合并回模板，让以后新建的笔记都能用。</li><li>模板新增了符号，要同步分发到已有各本笔记的 <code>structure.sty</code>。</li><li>TeXStudio 里新符号显示为「未知命令」，需要刷新 <code>custom.cwl</code>。</li><li>某个记号名想改或想删，又不想在 10 个文件里手工找。</li></ul><h2>怎么做</h2><ol><li>选操作（回填 / 分发 / 刷新补全 / 删除 / 提取 / 引入新记号 / 全套），执行。</li><li>先看清单：它列出哪个文件、哪一行、会怎么改。这一步不写任何文件。</li><li>确认无误后勾「真正写入」，再执行一次。</li><li>刷新补全后重开 TeXStudio，或在 TeXStudio 里「重新载入补全」。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>操作</td><td>七选一。切换后才会出现对应的输入项。</td></tr><tr><td>要删除的符号名</td><td>多个用空格分隔，不带反斜杠。</td></tr><tr><td>命令名 / 定义 / 注释</td><td>「引入新记号」用。命令名只允许字母；定义里 <code>%</code> 必须转义成 <code>\%</code>。</td></tr><tr><td>覆盖同名已有定义</td><td>默认关闭。开启后同名定义的旧内容会被替换。</td></tr><tr><td>真正写入</td><td>不勾只预览。这一项是所有写操作的统一开关。</td></tr></table><h2>命令行用法</h2><pre>python tools/symbols/symbols.py --merge --write         # 回填
+python tools/symbols/symbols.py --distribute --write    # 分发
+python tools/symbols/symbols.py --cwl --write           # 刷新补全
+python tools/symbols/symbols.py --drop Foo Bar --write
+python tools/symbols/symbols.py --add-name orb --add-def "\operatorname{Orb}" --write</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>笔记根目录、模板路径、cwl 路径</td><td><code>symbols.conf</code>（便携：<code>tools/symbols/</code>）</td></tr><tr><td>提取档案</td><td><code>symbols_extract.json</code>（同一目录）</td></tr><tr><td>目录结构快照</td><td><code>notes_tree.json</code>（同一目录）</td></tr><tr><td>TeXStudio 补全</td><td><code>%APPDATA%\texstudio\completion\user\custom.cwl</code></td></tr></table><div class="warn">回填会修改模板的 <code>structure.sty</code>。模板是唯一真源，工具会在写之前留一份可回滚的备份；但备份不是版本控制，改坏了请用 <code>git diff</code> 检查再决定。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：只预览时显示「将新增 3 个符号」，勾了写入却没生效？</p><p class="a">A：检查是否选对了操作。回填是「笔记 → 模板」，分发是「模板 → 笔记」，方向反了就看不到变化。</p><p class="q">Q：提示「跨行定义无法解析」</p><p class="a">A：<code>\newcommand{\x}[2]{%</code> 这种换行续写的写法，旧版本只认首行。现在整段解析，若仍报错，多半是续行里有未转义的 <code>%</code> 或括号不配对。</p><p class="q">Q：分发后编译报 undefined control sequence</p><p class="a">A：说明笔记的 <code>structure.sty</code> 里没有这个宏。常见原因是分发时该书的文件被 TeX 占用（编译中），写入失败但没报出来。关掉编辑器再分发一次。</p><p class="q">Q：TeXStudio 里还是提示未知命令</p><p class="a">A：补全文件路径可能不是这个 TeXStudio 用的那份。看工具输出里显示的 cwl 路径，与 TeXStudio 的「配置 → 补全 → 用户补全文件」是否一致；另外 cwl 是启动时读的，必须重启。</p><p class="q">Q：删除符号会不会把模块 II–V 的同名宏一起删掉？</p><p class="a">A：不会，只在 <code>[模块 VI]</code>（自定义符号段）里匹配。</p></div><h2>相关</h2><ul><li>6. 大纲工具</li><li>7. 单本笔记工具</li></ul><p class="nav"><a href="02-manager.html">← 2. 笔记工作区管理</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="04-progress.html">4. 写作工作台 →</a></p></body></html>

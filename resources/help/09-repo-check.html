@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>9. 仓库体检 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 信息安全与提交</p><h1>9. 仓库体检</h1><p class="lead">一次看完：规范副本是否一致、有没有误跟踪编译产物、哪些仓库还有未提交改动。</p><table class="kv"><tr><th>面板入口</th><td>信息安全与提交 → 卡片「仓库体检」→ 选区域 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/repo_check/repo_check.py</code></td></tr></table><img src="img/tool-09.png" width="560" height="350" alt="界面"><p class="cap">每个仓库一行，「结果」列写明通过还是具体问题。</p><h2>什么时候用</h2><ul><li>提交前想确认没把 aux/log 之类的东西跟踪进去。</li><li>怀疑某个仓库的 <code>项目规范.md</code> 与原件不一致。</li><li>接手别人的工作区，想快速摸清哪些仓库是干净的。</li></ul><h2>怎么做</h2><ol><li>选检查区域（整个工作区最快也最全）。</li><li>执行，逐行看「结果」列。</li><li>有问题的那几行会写明是「规范副本不一致」「误跟踪编译产物」还是「有未提交改动」。</li><li>要修就先按提示改；规范副本问题可以直接用工具 14 同步。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>检查区域</td><td>整个工作区 / LaTeX_Notes / Template / Tools。</td></tr></table><h2>命令行用法</h2><pre>python tools/repo_check/repo_check.py --area all</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>读的东西</td><td>各仓库的 <code>git status</code>、<code>git ls-files</code> 与规范副本</td></tr><tr><td>不写任何文件</td><td>纯只读检查</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：提示「误跟踪编译产物」怎么办？</p><p class="a">A：用 <code>git rm --cached</code> 把它们移出版本控制，并确认 <code>.gitignore</code> 覆盖了这些扩展名。工具只报警，不会自己改索引。</p><p class="q">Q：「规范副本不一致」是指哪份文件？</p><p class="a">A：<code>项目规范.md</code>。原件在工作区根，副本在若干仓库里。用工具 14 同步，方向恒为原件 → 副本。</p><p class="q">Q：中文文件名的仓库被跳过了？</p><p class="a">A：旧版本有 <code>core.quotepath</code> 的坑，已修。若仍跳过，检查仓库是否是合法 git 仓库。</p><p class="q">Q：为什么 Tools 自己也列出来了？</p><p class="a">A：它就是一个仓库。检查它没问题；但注意它的规范副本也可能不一致。</p></div><h2>相关</h2><ul><li>14. 项目规范副本一致性</li><li>8. 清理编译产物</li><li>10. 本机信息扫描</li></ul><p class="nav"><a href="08-clean-aux.html">← 8. 清理编译产物</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="10-sensitive.html">10. 本机信息扫描 →</a></p></body></html>

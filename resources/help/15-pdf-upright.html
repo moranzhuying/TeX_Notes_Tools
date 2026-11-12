@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>15. PDF 转正 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · PDF 处理</p><h1>15. PDF 转正</h1><p class="lead">把「横版课件被打印成 A4 纵向、内容转了 90°」的 PDF 裁白边、转成 16:9，不重新编码。</p><table class="kv"><tr><th>面板入口</th><td>PDF 处理 → 卡片「PDF 转正」→ 选文件或目录 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/pdf_upright/pdf_upright.py</code></td></tr></table><img src="img/tool-15.png" width="560" height="350" alt="界面"><p class="cap">输入默认指向工作区的 Exam 目录；「预演」默认勾着。</p><h2>什么时候用</h2><ul><li>课件在阅读器里要横着看，或者转正后留大片白边。</li><li>打印出来是竖版、内容侧躺。</li><li>批量处理一整门课的 PDF。</li></ul><h2>怎么做</h2><ol><li>选 PDF 文件或目录（目录会展开，默认含子目录）。</li><li>保持「预演」勾选，执行，看每份的页数与判定结论。</li><li>确认后取消「预演」再执行。默认就地覆盖，原件备份到系统临时目录。</li><li>转出来是倒立的，勾「逆时针转正」再来一次。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>PDF 文件或目录</td><td>两者都接受。</td></tr><tr><td>含子目录</td><td>默认开。</td></tr><tr><td>另存目录</td><td>留空则就地覆盖原文件；`-o` 指向源目录会被拒绝（语义是「原件不动」）。</td></tr><tr><td>逆时针转正</td><td>默认顺时针 90°；转出来倒立就换这个。</td></tr><tr><td>预演（不真的转）</td><td>默认开。只报告每份的判断，不写文件。</td></tr></table><h2>命令行用法</h2><pre>python tools/pdf_upright/pdf_upright.py 某课件.pdf
+python tools/pdf_upright/pdf_upright.py Exam -r
+python tools/pdf_upright/pdf_upright.py Exam -r -o D:/输出目录</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>原件备份</td><td>系统临时目录（覆盖前自动备份）</td></tr><tr><td>依赖</td><td><code>pymupdf</code>；缺了会自动找装了它的解释器重跑</td></tr></table><div class="warn">默认是**就地覆盖**。虽然会先备份到临时目录，但临时目录会被系统清理 —— 重要的原件先自己留一份。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：提示「当前 Python 里没有 PyMuPDF」</p><p class="a">A：本机工具 venv 里装了它，正常不会出现。若真出现，说明面板找错了解释器：在设置页确认「工具解释器」，或用环境变量 <code>PDF_UPRIGHT_PYTHON</code> 指一个装了 pymupdf 的 python。</p><p class="q">Q：有些页没转，有些转了</p><p class="a">A：判定依据是「整页贴图占页面面积 40% 以上」，扫描件与纯文字页处理方式不同。看预演里的「结论」列。</p><p class="q">Q：转完反而变成倒的</p><p class="a">A：源文件原本是逆时针躺的。勾「逆时针转正」重跑。注意这时原件已被覆盖过，建议从备份恢复再转。</p><p class="q">Q：画质会下降吗？</p><p class="a">A：不会。只改页面框与旋转标记，不重新编码图像。</p><p class="q">Q：能处理整本扫描书吗？</p><p class="a">A：能，但它只做「转正 + 裁白边」，不做 OCR 与纠偏。扫描书更需要 OCR，那是另一条线。</p></div><h2>相关</h2><ul><li>13. 视频转文字</li></ul><p class="nav"><a href="14-spec-sync.html">← 14. 项目规范副本一致性</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="16-watch-notes.html">16. 笔记目录监测 →</a></p></body></html>

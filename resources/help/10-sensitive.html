@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>10. 本机信息扫描 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 信息安全与提交</p><h1>10. 本机信息扫描</h1><p class="lead">提交前最后一道关：扫一遍暂存内容里有没有本机路径、用户名、密钥、专有词。</p><table class="kv"><tr><th>面板入口</th><td>信息安全与提交 → 卡片「本机信息扫描」→ 执行（默认只扫已跟踪文件）</td></tr><tr><th>命令行</th><td><code>python tools/check_sensitive/check_sensitive.py</code></td></tr></table><img src="img/tool-10.png" width="560" height="350" alt="界面"><p class="cap">只有一个勾选项；不勾就扫暂存区，勾了就扫全部已跟踪文件。</p><h2>什么时候用</h2><ul><li>准备把笔记仓库推到公开 GitHub 之前。</li><li>写脚本时手滑写了绝对路径，想全库查一遍。</li><li>想知道 <code>.sensitive-words.txt</code> 里的词有没有漏进某个文件。</li></ul><h2>怎么做</h2><ol><li>勾「只扫已跟踪文件」适合全量体检；不勾则只扫暂存区（提交那一刻的检查就是它）。</li><li>执行。有命中会列出文件、类别、内容片段。</li><li>按提示改写：本机路径换成 <code>%USERPROFILE%</code> 之类，密钥删掉，配置文件进 <code>.gitignore</code>。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>只扫已跟踪文件</td><td>勾上扫全部已跟踪文件（慢一些但更全）；不勾只扫 <code>git diff --cached</code>。</td></tr></table><h2>命令行用法</h2><pre>python tools/check_sensitive/check_sensitive.py --tracked
+python tools/check_sensitive/check_sensitive.py --dir 某目录</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>词表</td><td><code>tools/check_sensitive/_sensitive-words.txt</code>（可用 <code>.sensitive-words.txt</code> 逐级追加）</td></tr><tr><td>钩子模板</td><td><code>tools/check_sensitive/pre-commit</code></td></tr><tr><td>钩子安装位置</td><td>各仓库的 <code>.git/hooks/pre-commit</code></td></tr></table><div class="warn">扫描输出里会带命中的原文片段。若要贴给别人看，先把路径与用户名打码。</div><h2>常见问题</h2><div class="qa"><p class="q">Q：钩子明明装了，提交却没被拦？</p><p class="a">A：钩子是靠相对路径找脚本的。工具集目录挪过位置（例如从 <code>Tools/&lt;工具&gt;/</code> 改成 <code>Tools/tools/&lt;工具&gt;/</code>），旧钩子就找不到脚本、直接放行。重新装一次钩子即可。</p><p class="q">Q：中文文件名被跳过</p><p class="a">A：旧版本没关 <code>core.quotepath</code>，中文名被转义成八进制，拼出的路径不存在。已修；若仍出现，确认钩子与脚本是新版本。</p><p class="q">Q：误报了某个 URL</p><p class="a">A：<code>https://example.com/home/...</code> 这类曾因子串匹配被误判。规则已加左边界；仍误报就把具体串加到白名单或改词表。</p><p class="q">Q：我能自己加要拦的词吗？</p><p class="a">A：可以。在仓库根或任意上级目录放 <code>.sensitive-words.txt</code>，一行一个词，脚本会逐级合并。</p><p class="q">Q：<code>git commit --no-verify</code> 会跳过吗？</p><p class="a">A：会。这是有意的逃生口，只在你确认是误报时用。</p></div><h2>相关</h2><ul><li>9. 仓库体检</li><li>12. 提交本工具集</li></ul><p class="nav"><a href="09-repo-check.html">← 9. 仓库体检</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="11-sync-paths.html">11. 配置路径检查与修复 →</a></p></body></html>

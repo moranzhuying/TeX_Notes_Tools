@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>1. 设置 git 基本信息 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 核心工具</p><h1>1. 设置 git 基本信息</h1><p class="lead">检测 git / ssh 环境、配置提交身份、配好 GitHub 的 SSH 通道。三件事都只在换机器或首次配置时做一次。</p><table class="kv"><tr><th>面板入口</th><td>核心工具 → 卡片「设置 git 基本信息」→ 选操作 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/git_setup/git_setup.py</code></td></tr></table><img src="img/tool-01.png" width="560" height="350" alt="界面"><p class="cap">操作下拉切换三件事；结果以「项目 / 值」两列表格出来。</p><h2>什么时候用</h2><ul><li>刚装好 git，不确定 ssh 能不能连上 GitHub。</li><li>换了电脑或重装系统，需要重新配置 <code>user.name</code> / <code>user.email</code>。</li><li>仓库能 clone 但 push 报 <code>Permission denied (publickey)</code>。</li><li>网络封了 22 端口，需要把 SSH 改走 <code>ssh.github.com:443</code>。</li></ul><h2>怎么做</h2><ol><li>选「检测环境」，执行。看输出里的 git 版本、用户名、邮箱、密钥是否存在、能否连通。</li><li>缺账户就选「配置 Git 账户」，填用户名与邮箱，执行。留空表示不改动。</li><li>缺密钥就选「配置 SSH」，勾上「没有密钥时生成 ed25519」，执行。</li><li>把结果里显示的公钥整段复制，粘到 GitHub → Settings → SSH and GPG keys → New SSH key。</li><li>仍然连不上时，勾「写 ssh config 的 443 端口」再执行一次，然后点「测试连通性」。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>操作</td><td>检测环境 / 配置 Git 账户 / 配置 SSH。切换后下面的字段跟着变。</td></tr><tr><td>用户名 / 邮箱</td><td>写进 <code>git config --global</code>；留空则保持原值不动。</td></tr><tr><td>没有密钥时生成 ed25519</td><td>只在 <code>~/.ssh</code> 里没有密钥时才生成，不会覆盖已有的。</td></tr><tr><td>写 ssh config 的 443 端口</td><td>把 <code>github.com</code> 指到 <code>ssh.github.com:443</code>，绕开 22 端口被封。</td></tr><tr><td>测试连通性</td><td>跑一次 <code>ssh -T git@github.com</code>，成功时会显示 <code>Hi 用户名!</code>。</td></tr></table><h2>命令行用法</h2><pre>python tools/git_setup/git_setup.py --check
+python tools/git_setup/git_setup.py --account --name 你的名字 --email you@example.com
+python tools/git_setup/git_setup.py --ssh --gen-key --write-443 --test</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>账户名与邮箱</td><td><code>~/.gitconfig</code>（全局）</td></tr><tr><td>密钥</td><td><code>~/.ssh/id_ed25519</code> 与 <code>.pub</code></td></tr><tr><td>SSH 配置</td><td><code>~/.ssh/config</code>（只动 <code>Host github.com</code> 那一段）</td></tr><tr><td>远程账户名（供建仓库用）</td><td><code>tools/manager/manager.conf</code> 或应用数据目录</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：检测显示「ssh 未安装」怎么办？</p><p class="a">A：Windows 10 以上自带 OpenSSH，先在「设置 → 系统 → 可选功能」里确认 OpenSSH 客户端已装；装了仍找不到，说明 PATH 里没有，重装一次该可选功能即可。</p><p class="q">Q：push 报 Permission denied (publickey)</p><p class="a">A：三种可能：① 公钥没粘到 GitHub；② 粘错了账号；③ ssh-agent 没加载密钥。先点「检测环境」看密钥路径，再用「配置 SSH → 测试连通性」确认。</p><p class="q">Q：为什么要把 SSH 改成 443 端口？</p><p class="a">A：国内不少网络屏蔽 22 端口，症状是 <code>ssh -T</code> 一直卡住然后超时。443 是 HTTPS 的端口，通常不被拦；GitHub 在 <code>ssh.github.com:443</code> 上提供同一套 SSH 服务。</p><p class="q">Q：配置账户会不会覆盖我已经设好的值？</p><p class="a">A：留空就不动。填写才写 <code>git config --global</code>。</p><p class="q">Q：公司电脑不让改 ~/.ssh，还能用吗？</p><p class="a">A：可以改用 HTTPS 远程，但本工具集的建仓库与提交都假设 SSH。这种情况建议单独配一个仓库级 remote。</p></div><h2>相关</h2><ul><li>2. 笔记工作区管理（看仓库状态、远程是否配对）</li><li>12. 提交本工具集</li></ul><p class="nav"><a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="02-manager.html">2. 笔记工作区管理 →</a></p></body></html>

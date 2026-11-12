@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>2. 笔记工作区管理 — LaTeX 工具箱</title><style>
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 26px 34px 56px; background: #ffffff; color: #24292f;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 14px; line-height: 1.78;
+}
+h1 { font-size: 21px; margin: 2px 0 6px; color: #0f172a; }
+h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px;
+     border-bottom: 1px solid #e6e8eb; color: #0f172a; }
+h3 { font-size: 14px; margin: 18px 0 4px; color: #0f172a; }
+p { margin: 8px 0; }
+.lead { font-size: 14px; color: #3d4653; margin: 4px 0 10px; }
+.crumb { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+.crumb a { color: #0067c0; text-decoration: none; }
+table.kv { margin: 12px 0 16px; }
+table.kv th { width: 92px; background: #f6f8fa; font-weight: 600; color: #5c6470; }
+.meta { font-size: 12.5px; color: #5c6470; background: #f6f8fa;
+        border: 1px solid #e6e8eb; border-radius: 6px; padding: 9px 12px; margin: 12px 0 16px; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+       background: #f2f4f7; border-radius: 3px; padding: 1px 4px; color: #8a2b06; }
+pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+      background: #f6f8fa; border: 1px solid #e6e8eb; border-radius: 6px;
+      padding: 10px 12px; color: #24292f; }
+ul, ol { margin: 8px 0 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 13px; }
+th { background: #f2f4f7; text-align: left; font-weight: 600; color: #0f172a;
+     border: 1px solid #e1e4e8; padding: 7px 10px; }
+td { border: 1px solid #e1e4e8; padding: 7px 10px; vertical-align: top; }
+.warn { background: #fff8e6; border: 1px solid #f0d29a; border-radius: 6px;
+        padding: 10px 12px; margin: 12px 0; }
+.danger { background: #fdecea; border: 1px solid #f3b6b0; border-radius: 6px;
+          padding: 10px 12px; margin: 12px 0; }
+.tip { background: #eef7f0; border: 1px solid #b7dcc1; border-radius: 6px;
+       padding: 10px 12px; margin: 12px 0; }
+.qa { margin: 10px 0 0; }
+.qa .q { font-weight: 600; color: #0f172a; margin: 14px 0 2px; }
+.qa .a { margin: 0 0 4px; color: #3d4653; }
+.shot { border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0 4px; }
+.cap { font-size: 12px; color: #6b7280; margin: 2px 0 16px; }
+.nav { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e6e8eb;
+       font-size: 13px; color: #6b7280; }
+.nav a { color: #0067c0; text-decoration: none; }
+</style></head><body><p class="crumb"><a href="index.html">帮助目录</a> · 核心工具</p><h1>2. 笔记工作区管理</h1><p class="lead">一眼看完所有笔记仓库的状态，批量提交推送，或把还没入库的文件夹建成仓库。</p><table class="kv"><tr><th>面板入口</th><td>核心工具 → 卡片「笔记工作区管理」→ 选操作 → 执行</td></tr><tr><th>命令行</th><td><code>python tools/manager/manager.py</code></td></tr></table><img src="img/tool-02.png" width="560" height="350" alt="界面"><p class="cap">「显示各仓库状态」出的是五行表格：文件夹 / 分支 / 改动 / 领先落后 / 远程。</p><h2>什么时候用</h2><ul><li>想确认哪几本书有未提交改动、哪些还没推到远程。</li><li>一轮写作结束，要把多本笔记一起提交推送。</li><li>从模板新拷贝了一个目录，还没 <code>git init</code>，想一次性建好仓库与远程。</li><li>笔记根目录换了位置，需要重新登记。</li></ul><h2>怎么做</h2><ol><li>选「显示各仓库状态」，执行。表格里「改动」是未提交文件数，「领先/落后」是本地与远程的差。</li><li>要提交推送就选「批量提交并推送」，填一句提交说明（留空用默认），执行。</li><li>只补推送（本地已提交、远程还没收到）选「只推送、不提交」。</li><li>新建仓库选「为未入库的文件夹建仓库」，填编号（留空＝全选）与远程账户名，执行。</li></ol><h2>界面上每项的意思</h2><table width="100%"><tr><th>项</th><th>说明</th></tr><tr><td>操作</td><td>五种：看状态、批量提交并推送、只推送、建仓库、设根目录。</td></tr><tr><td>提交说明</td><td>写进 commit message；留空时用默认文案。</td></tr><tr><td>要建仓库的编号</td><td>表格里的序号，逗号分隔；留空表示全部。</td></tr><tr><td>远程账户名</td><td>GitHub 用户名，用来拼 <code>git@github.com:用户名/仓库名.git</code>。</td></tr><tr><td>笔记根目录</td><td>只在「设置笔记根目录」时出现；改完会写进 <code>manager.conf</code>。</td></tr></table><h2>命令行用法</h2><pre>python tools/manager/manager.py --status
+python tools/manager/manager.py --commit-all --msg "本轮修改"
+python tools/manager/manager.py --commit-all --push-only
+python tools/manager/manager.py --create-repo --selection 3,5 --account 你的GitHub名</pre><h2>文件都在哪</h2><table width="100%"><tr><th>内容</th><th>位置</th></tr><tr><td>笔记根目录、远程账户</td><td><code>manager.conf</code>（便携：<code>tools/manager/</code>）</td></tr><tr><td>仓库状态</td><td>实时从 git 读，不落盘</td></tr></table><h2>常见问题</h2><div class="qa"><p class="q">Q：表格里「领先 3 / 落后 0」是什么意思？</p><p class="a">A：本地比远程多 3 个提交，远程没有新东西。落后大于 0 时说明别处推过东西，先拉再推，否则会被拒。</p><p class="q">Q：「同步正常」但工作区是干净的，为什么还要「只推送」？</p><p class="a">A：工作区干净不代表提交都推上去了。这条专门补推本地已有的提交。</p><p class="q">Q：远程显示 <code>?</code> 是怎么回事？</p><p class="a">A：没配 remote，或者 <code>git fetch</code> 拿不到对比数据。先确认远程地址存在且能连通。</p><p class="q">Q：建仓库时报「用户或仓库名不合法」</p><p class="a">A：GitHub 仓库名只允许字母数字与 <code>-_.</code>，且不能以点开头。中文目录名要先改名。</p><p class="q">Q：commit 被钩子拦下了</p><p class="a">A：那是提交前的本机信息扫描（工具 10）。按提示改掉命中的路径或密钥；确属误报可单次用 <code>git commit --no-verify</code>。</p></div><h2>相关</h2><ul><li>1. 设置 git 基本信息</li><li>9. 仓库体检</li><li>16. 笔记目录监测</li></ul><p class="nav"><a href="01-git-setup.html">← 1. 设置 git 基本信息</a> &nbsp;·&nbsp; <a href="index.html">帮助目录</a> &nbsp;·&nbsp; <a href="03-symbols.html">3. 符号库管理 →</a></p></body></html>

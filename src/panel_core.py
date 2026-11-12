@@ -42,6 +42,15 @@ import launcher  # noqa: E402  —— 复用 MENU / split_args
 MENU = launcher.MENU
 SUBMIT_NO = launcher.SUBMIT_NO
 
+#: 工具号 → 帮助文档文件名（`resources/help/<slug>.html`，由 src/make_help.py 生成）
+HELP_SLUGS = {
+    "1": "01-git-setup", "2": "02-manager", "3": "03-symbols", "4": "04-progress",
+    "5": "05-new-note", "6": "06-outline", "7": "07-note-tools", "8": "08-clean-aux",
+    "9": "09-repo-check", "10": "10-sensitive", "11": "11-sync-paths", "12": "12-commit",
+    "13": "13-video2text", "14": "14-spec-sync", "15": "15-pdf-upright",
+    "16": "16-watch-notes",
+}
+
 #: 每个工具的一句话说明（卡片上显示；MENU 里的标题偏长，需要更短的补充）
 DESCRIPTIONS = {
     "1": "检测 python / git / ssh 版本，配置账户与 443 端口",
@@ -154,6 +163,7 @@ def describe_tools():
             "group": grp,
             "desc": DESCRIPTIONS.get(no, ""),
             "submit": no == SUBMIT_NO,
+            "help": HELP_SLUGS.get(no, ""),
             "oneoff": mode.startswith("参数:"),
             "defaultArgs": mode.split(":", 1)[1] if mode.startswith("参数:") else "",
             "exists": (SCRIPTS_DIR / rel).is_file(),

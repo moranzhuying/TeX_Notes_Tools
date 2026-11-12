@@ -92,6 +92,8 @@ def main():
         "--icon", str(RES / "tools.ico"),
         # 运行时窗口图标要从包里读，所以要把 ico 也打进去
         "--add-data", "{};.".format(RES / "tools.ico"),
+        # 帮助文档随 exe 分发：断网也能看，且不依赖 src/
+        "--add-data", "{};help".format(RES / "help"),
         # 没用到的大件，明确排掉以免被间接拉进来
         "--exclude-module", "tkinter",
         "--exclude-module", "PySide6.QtWebEngineCore",
