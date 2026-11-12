@@ -52,3 +52,10 @@ watch_notes/_logs/
 
 # ===== panel_qt 崩溃日志（pythonw 无 stderr 时的落盘痕迹） =====
 _panel_error.log
+
+# ===== 打包产物（体积大，不入库） =====
+_build/
+*.exe
+LaTeX-Toolbox*/
+_dbg/
+panel_debug.log

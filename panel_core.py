@@ -13,7 +13,12 @@ import time
 from collections import deque
 from pathlib import Path
 
-TOOLS_ROOT = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    # 打包成 exe 后 __file__ 指向解包临时目录，工具脚本仍在 exe 旁边；
+    # exe 约定放在 Tools/ 下，所以取 exe 所在目录作为工具根。
+    TOOLS_ROOT = Path(sys.executable).resolve().parent
+else:
+    TOOLS_ROOT = Path(__file__).resolve().parent
 WORKSPACE = TOOLS_ROOT.parent
 MAX_LINES = 4000
 
@@ -102,6 +107,17 @@ def _pump(rec, proc):
         rec["returncode"] = proc.poll()
 
 
+def _spawn_prefix(script):
+    """「用什么命令执行这个 .py」的前缀。
+
+    打包成 exe 时没有外部 Python 可用，让 exe 自己充当解释器（`--exec` 模式）；
+    源码运行时用当前解释器。`--` 之后一律原样传给目标脚本。
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--exec", str(script), "--"]
+    return [PYTHON, str(script)]
+
+
 def launch(key, extra=""):
     """启动一个工具并登记运行记录。extra 是追加参数（仅一次性命令用得上）。"""
     item = tool_by_id(key)
@@ -112,13 +128,14 @@ def launch(key, extra=""):
     if not script.is_file():
         raise PanelError("找不到脚本：{}".format(rel))
 
-    args = [PYTHON, str(script)]
+    tool_args = []
     if mode.startswith(("参数:", "后台:")):
-        args += launcher.split_args(mode.split(":", 1)[1])
+        tool_args += launcher.split_args(mode.split(":", 1)[1])
     if extra and extra.strip():
         if not mode.startswith(("参数:", "后台:")):
             raise PanelError("该工具是交互面板，不接受追加参数")
-        args += launcher.split_args(extra)
+        tool_args += launcher.split_args(extra)
+    args = _spawn_prefix(script) + tool_args
 
     if mode.startswith("参数:"):
         proc = subprocess.Popen(

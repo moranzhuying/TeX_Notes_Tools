@@ -151,6 +151,12 @@
     * 依赖 PySide6-Essentials，装在工具专用 venv，不碰系统 Python；`run_panel.bat` 双击启动。
 * **`panel_core`：面板共用逻辑**
     * 工具清单、启动、停止、运行状态集中在这里，Qt 版与网页备用版都调用，避免两套启动规则漂移。清单仍来自 `launcher.MENU`，只有一处定义。
+* **`build_exe`：打包成 exe**
+    * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
+    * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。
+    * **GUI 子系统程序忽略 `CREATE_NEW_CONSOLE`**，故在 `--exec` 里主动 `AllocConsole()` 再绑 `CONOUT$` / `CONIN$`；不这么做交互工具的 `input()` 直接 EOF、窗口一闪而过。
+    * `--selftest` 自检：打印 frozen 标记、工具根、工作区、缺失项，并用一次性命令走通「exe 起子进程 → 捕获输出」。
+    * 打包前自动关闭同名旧进程（否则文件被占用，PyInstaller 报 PermissionError）。产物与 `_build/` 已加入 `.gitignore`。
 * **`panel_gui`：网页备用版**
     * Qt 不可用时的兜底：纯标准库、浏览器界面、零依赖。
     * 只绑 `127.0.0.1`；POST 校验内嵌随机令牌与 `Host` / `Origin`。

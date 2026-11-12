@@ -63,6 +63,30 @@ python Tools/panel_qt.py              # 直接开窗口
 - 搜索框按标题、说明、脚本路径过滤；按 `/` 聚焦，`Esc` 清空或关输出面板。
 - 窗口变宽时卡片列数自动重排；只搜到一两个结果时卡片不会被拉成横幅。
 
+### 打包成 exe
+
+```bash
+<venv>/Scripts/python.exe build_exe.py            # 单文件，约 37 MB
+<venv>/Scripts/python.exe build_exe.py --onedir   # 目录模式，启动更快
+```
+
+产物 `Tools/LaTeX-Toolbox.exe`，自带 Python 运行时与 PySide6，**目标机器不需要装任何环境**，双击即开。`run_panel.bat` 会优先启动它。
+
+两个约束，来自「工具必须操作真实工作区」这一点：
+
+- **exe 必须和工具脚本放在同一个目录**（默认就在 `Tools/`）。工具要读写 `LaTeX_Notes/`、`Template/`、`outputs/`，不能塞进 exe 的解包临时目录。
+- 因此 exe 只带**运行环境和界面**，不带工具源码；换机器时整个 `Tools/` 一起拷。
+
+实现上，exe 在需要跑工具时把自己当解释器：`LaTeX-Toolbox.exe --exec <脚本> -- [参数…]`。exe 是 GUI 子系统程序，`CREATE_NEW_CONSOLE` 对它无效，所以 `--exec` 里主动 `AllocConsole()` 再绑 `CONOUT$` / `CONIN$`，交互工具的 `input()` 才正常。
+
+自检（打包后排查用）：
+
+```bash
+LaTeX-Toolbox.exe --selftest
+```
+
+会打印 exe 路径、frozen 标记、工具根、工作区、工具数量与缺失项，并用一次性命令走一遍「exe 起子进程 → 捕获输出」的完整链路。
+
 **网页备用版** `panel_gui.py` 功能相同，纯标准库：`python Tools/panel_gui.py`，浏览器打开 `127.0.0.1:7658`。只在 Qt 装不上或坏掉时用；它同样只绑回环地址，POST 要内联随机令牌并校验 `Host` / `Origin`。
 
 ## progress/ — 写作工作台

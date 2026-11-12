@@ -45,6 +45,145 @@ def _venv_python():
     return None
 
 
+def _dbg(msg):
+    """PANEL_DEBUG=1 时把诊断写进文件（windowed 模式没有控制台可看）。"""
+    if not os.environ.get("PANEL_DEBUG"):
+        return
+    try:
+        log = Path(os.environ.get("PANEL_DEBUG_LOG", "panel_debug.log"))
+        with open(log, "a", encoding="utf-8", errors="replace", newline="") as fh:
+            fh.write("{}\n".format(msg))
+    except OSError:
+        pass
+
+
+def _bind_console():
+    """windowed exe 没有标准流，需要自己开一个控制台并接回 CONOUT$/CONIN$。
+
+    为什么不是靠 CREATE_NEW_CONSOLE：那个标志只对**控制台子系统**程序有效，
+    GUI 子系统（PyInstaller --windowed）会直接忽略它，进程仍然没有控制台，
+    CONOUT$ 打开报「句柄无效」，input() 立刻 EOF、窗口一闪而过。
+    所以这里自己 AllocConsole，再绑标准流。
+    """
+    if sys.stdout is not None and sys.stdin is not None:
+        _dbg("bind: 标准流已就绪（重定向场景），跳过")
+        return
+
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            if not kernel32.GetConsoleWindow():
+                if not kernel32.AllocConsole():
+                    _dbg("AllocConsole 返回失败")
+        except Exception as exc:  # noqa: BLE001 —— 开控制台失败不该拖垮工具
+            _dbg("AllocConsole 异常: {}".format(exc))
+
+    try:
+        if sys.stdout is None:
+            sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace",
+                              buffering=1)
+        if sys.stderr is None:
+            sys.stderr = sys.stdout
+        if sys.stdin is None:
+            sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+    except OSError as exc:
+        _dbg("绑定标准流失败: {}".format(exc))
+        if sys.stdout is None:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        if sys.stderr is None:
+            sys.stderr = sys.stdout
+    _dbg("bind 之后: stdout={!r} stdin={!r}".format(sys.stdout, sys.stdin))
+
+
+def exec_tool(argv):
+    """以自身当解释器执行一个 .py —— 打包成 exe 后，工具子进程走这条路。
+
+    工具脚本必须从磁盘上的真实 Tools 目录跑（它们要操作真实工作区），
+    不能塞进 exe 的解包临时目录，所以这里是「解释器」而不是「导入器」。
+    """
+    import runpy
+    import traceback
+
+    _bind_console()
+    if not argv:
+        print("用法：<exe> --exec <脚本.py> [-- 参数...]")
+        return 2
+    script = Path(argv[0]).resolve()
+    rest = argv[1:]
+    if rest and rest[0] == "--":
+        rest = rest[1:]
+    if not script.is_file():
+        print("找不到脚本：{}".format(script))
+        return 2
+
+    sys.argv = [str(script)] + rest
+    os.chdir(str(script.parent))
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exc:
+        code = exc.code
+        if isinstance(code, int):
+            return code
+        return 0 if code is None else 1
+    except BaseException:  # noqa: BLE001 —— 子工具崩了要留下栈，别静默退出
+        traceback.print_exc()
+        try:
+            input("\n按回车关闭…")
+        except (EOFError, OSError):
+            pass
+        return 1
+    return 0
+
+
+def selftest():
+    """打包后自检：确认工具根定位正确、且 exe 能用 --exec 拉起子工具。
+
+    打包成 exe 后最怕两件事 —— 工具根找成解包临时目录、子进程没有解释器。
+    这条命令把两件事都跑一遍，出问题能直接看到是哪一步断的。
+    """
+    import time as _time
+
+    _bind_console()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import panel_core
+
+    print("exe            :", sys.executable)
+    print("frozen         :", getattr(sys, "frozen", False))
+    print("工具根         :", panel_core.TOOLS_ROOT)
+    print("工作区         :", panel_core.WORKSPACE)
+    tools = panel_core.describe_tools()
+    missing = [t["id"] for t in tools if not t["exists"]]
+    print("工具数         :", len(tools), "缺失:", missing or "无")
+    if missing:
+        return 1
+
+    # 用一次性命令走一遍完整链路：exe --exec <脚本> → 捕获输出
+    rec = panel_core.launch("11")
+    print("子进程         :", rec["proc"].pid, rec["mode"])
+    for _ in range(120):
+        _time.sleep(0.5)
+        state = panel_core.run_state("11")
+        if state and not state["alive"]:
+            break
+    state = panel_core.run_state("11") or {}
+    lines = len(panel_core.output_of("11"))
+    print("退出码         :", state.get("returncode"))
+    print("输出行数       :", lines)
+    if state.get("returncode") != 0 or lines <= 0:
+        print("第一行         :", (panel_core.output_of("11") or ["(空)"])[0][:120])
+        return 1
+    print("自检通过")
+    return 0
+
+
+if __name__ == "__main__" and len(sys.argv) > 1:
+    if sys.argv[1] == "--exec":
+        sys.exit(exec_tool(sys.argv[2:]))
+    if sys.argv[1] == "--selftest":
+        sys.exit(selftest())
+
+
 try:
     from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError:  # pragma: no cover - 只在环境缺包时触发
