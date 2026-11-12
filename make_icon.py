@@ -45,33 +45,24 @@ def draw(size):
     p.setPen(QtGui.QPen(QtGui.QColor("#5B9BFF"), max(1.0, s * 0.014)))
     p.drawPath(path)
 
-    # 提手：宽而扁，才是工具箱的样子（窄高会读成挂锁）
-    pen = QtGui.QPen(QtGui.QColor("#F2F6FC"), max(1.0, s * 0.055),
-                     QtCore.Qt.SolidLine, QtCore.Qt.RoundCap)
-    p.setPen(pen)
-    p.setBrush(QtCore.Qt.NoBrush)
-    handle = QtGui.QPainterPath()
-    handle.moveTo(s * 0.36, s * 0.42)
-    handle.lineTo(s * 0.36, s * 0.36)
-    handle.arcTo(QtCore.QRectF(s * 0.36, s * 0.29, s * 0.28, s * 0.16), 180, -180)
-    handle.lineTo(s * 0.64, s * 0.42)
-    p.drawPath(handle)
-
-    # 箱体
+    # 齿轮：工具/设置的通用符号，小尺寸下不会和别的图形混淆。
+    # （原先画的工具箱，提手是拱形，小尺寸下总被读成挂锁。）
+    p.save()
     p.setPen(QtCore.Qt.NoPen)
     p.setBrush(QtGui.QColor("#F2F6FC"))
-    p.drawRoundedRect(QtCore.QRectF(s * 0.22, s * 0.42, s * 0.56, s * 0.34),
-                      s * 0.045, s * 0.045)
-
-    # 箱盖与箱身的分界
-    p.setPen(QtGui.QPen(QtGui.QColor("#31507F"), max(1.0, s * 0.022)))
-    p.drawLine(QtCore.QPointF(s * 0.22, s * 0.555), QtCore.QPointF(s * 0.78, s * 0.555))
-
-    # 搭扣
-    p.setPen(QtCore.Qt.NoPen)
+    p.translate(s * 0.5, s * 0.5)
+    for i in range(8):
+        p.save()
+        p.rotate(i * 45)
+        p.drawRoundedRect(
+            QtCore.QRectF(-s * 0.055, -s * 0.315, s * 0.11, s * 0.115),
+            s * 0.022, s * 0.022)
+        p.restore()
+    p.drawEllipse(QtCore.QRectF(-s * 0.225, -s * 0.225, s * 0.45, s * 0.45))
     p.setBrush(QtGui.QColor("#31507F"))
-    p.drawRoundedRect(QtCore.QRectF(s * 0.445, s * 0.505, s * 0.11, s * 0.10),
-                      s * 0.02, s * 0.02)
+    p.drawEllipse(QtCore.QRectF(-s * 0.085, -s * 0.085, s * 0.17, s * 0.17))
+    p.restore()
+
     p.end()
     return pm
 

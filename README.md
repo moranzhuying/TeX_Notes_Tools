@@ -106,7 +106,22 @@ python Tools/panel_qt.py              # 直接开窗口
 <venv>/Scripts/python.exe make_icon.py     # 改样式后重跑即可
 ```
 
-打包时通过 `--icon` 嵌进 exe（PE 资源里能看到 `RT_ICON` 与 `RT_GROUP_ICON`）。
+打包时 `--icon` 嵌进 exe（PE 资源里能看到 `RT_ICON` 与 `RT_GROUP_ICON`），同时 `--add-data` 把 ico 也打进包，运行时从解包目录读。
+
+窗口图标分两处来源，各走各的：
+
+- **标题栏**：`Qt` 的 `setWindowIcon` 只设窗口级图标（`WM_SETICON`），而 Qt 会吞掉外部发的 `WM_SETICON`，改不动。标题栏实际用的是**窗口类图标**（`GetClassLongPtr(GCLP_HICON)`），Qt 建类时放的是它自己的默认图标，所以运行时用 Win32 直接改类图标。
+- **任务栏**：用的是 exe 资源里的图标。**不要设 AppUserModelID** —— 一设，Windows 11 就改为取窗口级图标，而那个取不到，会显示系统默认图标（一张白纸）。
+
+**换了图标后任务栏/资源管理器仍显示旧的**：Windows 按路径缓存了 exe 图标，重启资源管理器不够，要清缓存：
+
+```bat
+del /f /q "%LOCALAPPDATA%\IconCache.db"
+del /f /q "%LOCALAPPDATA%\Microsoft\Windows\Explorer\iconcache_*.db"
+taskkill /f /im explorer.exe & start explorer.exe
+```
+
+（图标本身是齿轮而不是工具箱：拱形提手 + 中间搭扣在 16px 下会被读成挂锁，齿轮没有这个歧义。）
 
 两个约束，来自「工具必须操作真实工作区」这一点：
 

@@ -60,6 +60,8 @@ def main():
         "--hidden-import", "launcher",
         # 窗口与 exe 图标（make_icon.py 生成）
         "--icon", str(TOOLS / "tools.ico"),
+        # 运行时窗口图标要从包里读，所以要把 ico 也打进去
+        "--add-data", "{};.".format(TOOLS / "tools.ico"),
         # 没用到的大件，明确排掉以免被间接拉进来
         "--exclude-module", "tkinter",
         "--exclude-module", "PySide6.QtWebEngineCore",

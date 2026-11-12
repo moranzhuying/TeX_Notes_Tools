@@ -573,7 +573,7 @@ class Sidebar(QtWidgets.QWidget):
     group_selected = QtCore.Signal(str)
     theme_toggled = QtCore.Signal()
 
-    def __init__(self, groups, parent=None):
+    def __init__(self, groups, icon=None, parent=None):
         super().__init__(parent)
         self.setObjectName("Sidebar")
         self.setFixedWidth(214)
@@ -585,10 +585,13 @@ class Sidebar(QtWidgets.QWidget):
         brand_row = QtWidgets.QHBoxLayout()
         brand_row.setContentsMargins(16, 0, 16, 0)
         brand_row.setSpacing(10)
-        logo = QtWidgets.QLabel("🧰")
-        logo.setObjectName("CardIcon")
+        logo = QtWidgets.QLabel()
+        if icon is not None and not icon.isNull():
+            logo.setPixmap(icon.pixmap(QtCore.QSize(30, 30)))
+        else:
+            logo.setText("🧰")
+            logo.setAlignment(QtCore.Qt.AlignCenter)
         logo.setFixedSize(34, 34)
-        logo.setAlignment(QtCore.Qt.AlignCenter)
         brand_row.addWidget(logo, 0)
         texts = QtWidgets.QVBoxLayout()
         texts.setSpacing(0)
@@ -666,7 +669,10 @@ class MainWindow(QtWidgets.QMainWindow):
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
 
-        self.sidebar = Sidebar(self.groups)
+        self.icon = app_icon()
+        if not self.icon.isNull():
+            self.setWindowIcon(self.icon)
+        self.sidebar = Sidebar(self.groups, self.icon)
         self.sidebar.group_selected.connect(self.show_group)
         self.sidebar.theme_toggled.connect(self.toggle_theme)
         shell.addWidget(self.sidebar)
@@ -834,6 +840,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 窗口创建后才能取到 hwnd；再延一拍执行，确保盖在 Qt 自己设图标之后
+        path = icon_path()
+        if path is not None:
+            QtCore.QTimer.singleShot(0, lambda: _apply_win32_icons(self, path))
+
     def show_group(self, group):
         if self.search.text().strip():
             self.search.clear()
@@ -902,15 +915,93 @@ class MainWindow(QtWidgets.QMainWindow):
         super().keyPressEvent(event)
 
 
+def icon_path():
+    """图标文件路径。打包后在解包目录里，源码运行时在 Tools/ 下。"""
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    else:
+        base = Path(__file__).resolve().parent
+    for name in ("tools.ico", "tools.png"):
+        path = base / name
+        if path.is_file():
+            return path
+    return None
+
+
+def app_icon():
+    """应用图标。
+
+    打包时 `--icon` 只改 exe 自身的 PE 资源（资源管理器里看到的那个），
+    **标题栏与任务栏的图标来自 QWidget.windowIcon**，不设就是 Qt 的默认图标。
+    """
+    path = icon_path()
+    return QtGui.QIcon(str(path)) if path else QtGui.QIcon()
+
+
+def _apply_win32_icons(win, path):
+    """把窗口标题栏与任务栏的图标换成自己的。
+
+    两个坑：
+    1. **标题栏用的是窗口类的图标**（GetClassLongPtr(GCLP_HICON)），Qt 建类时
+       放的是它自己的默认图标，只调 setWindowIcon 换不掉 —— 得改类图标。
+    2. Qt 的 setWindowIcon 只设了 ICON_BIG，标题栏在 Vista+ 优先取 ICON_BIG2，
+       缺了就退回系统默认图标。三个尺寸都要补。
+    判据用 GetClassLongPtr 读：Qt 窗口上 WM_GETICON 读不回来，不代表没设上。
+    """
+    if sys.platform != "win32" or path is None:
+        return
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = int(win.winId())
+        IMAGE_ICON = 1
+        LR_LOADFROMFILE = 0x0010
+        WM_SETICON = 0x007F
+        GWL_HICON = -14
+        ICON_SMALL, ICON_BIG, ICON_BIG2 = 0x00, 0x01, 0x31
+
+        def load(size):
+            return user32.LoadImageW(None, str(path), IMAGE_ICON, size, size,
+                                     LR_LOADFROMFILE)
+
+        big = load(32)
+        small = load(16)
+        if big:
+            user32.SetClassLongPtrW(hwnd, GWL_HICON, big)      # 标题栏
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG2, big)
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, big)
+        if small:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small)
+    except Exception:
+        pass
+
+
+def _claim_taskbar_identity():
+    """设 AppUserModelID。
+
+    **故意不启用**：设了之后 Windows 11 任务栏改为取窗口级图标
+    （WM_GETICON），而 Qt 会吞掉外部发的 WM_SETICON，取不到就显示
+    Windows 的默认图标（一张白纸）。不设的话，任务栏直接用 exe 资源里
+    的图标 —— 那份是对的。标题栏另走「改窗口类图标」的路子。
+    """
+    return
+
+
 def main():
+    _claim_taskbar_identity()
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("LaTeX 工具箱")
     app.setStyle("Fusion")
     font = QtGui.QFont("Segoe UI Variable Text", 9)
     font.setFamilies(["Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI"])
     app.setFont(font)
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
 
     win = MainWindow()
+    if not icon.isNull():
+        win.setWindowIcon(icon)
     win.show()
     return app.exec()
 

@@ -178,6 +178,12 @@
     * 表格化的工具：`manager`（仓库/分支/改动/领先落后/远程）、`repo_check`（区域/仓库/结果）、`clean_aux`（目录/文件数/大小/类型）；spec 里用 `result` 声明列、解析函数与摘要函数，其余工具走文本模式。
     * 表单执行状态通过信号同步到卡片（执行中 / 已完成 / 已中止）。
     * 表格列宽：首列 Stretch（仓库名长短不一），其余 ResizeToContents；交替行底色要在 QSS 里显式给 `alternate-background-color`，否则会落到系统高亮蓝。
+* **窗口与任务栏图标真正生效**
+    * `--icon` 只改 exe 自身的 PE 资源，**标题栏图标另说**：Qt 会吞掉外部发的 `WM_SETICON`，改不动；标题栏实际用窗口类图标（`GetClassLongPtr(GCLP_HICON)`），Qt 建类时放的是它自己的默认图标 ⇒ 运行时用 Win32 `SetClassLongPtrW(hwnd, GWL_HICON, h)` 改类图标，并补 `ICON_BIG2`（Vista+ 标题栏优先取它）。
+    * **不设 AppUserModelID**：设了之后 Windows 11 任务栏改为取窗口级图标，而那个取不到，会显示系统默认图标（白纸）。不设就用 exe 资源里的图标，那份是对的。
+    * 运行时图标从包里读：`--add-data tools.ico;.` + `app_icon()` 按 `sys._MEIPASS` 定位。
+    * **图标缓存**：Windows 按路径缓存 exe 图标，换图标后任务栏/资源管理器仍是旧的，重启资源管理器不够，要删 `%LOCALAPPDATA%\IconCache.db` 与 `Microsoft\Windows\Explorer\iconcache_*.db` 再重启 Explorer。
+    * 图标造型由工具箱改成**齿轮**：拱形提手加中间搭扣在 16px 下会被读成挂锁，齿轮没有这个歧义。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。
