@@ -1514,6 +1514,15 @@ def action_add(ctx):
 
     comment = ask("注释", required=False)
 
+    if overwrite:
+        section, where = None, "原位置（覆盖已有定义）"
+    else:
+        section, where = choose_section(parse_sections(ctx["template"]))
+    _write_symbol(ctx, name, definition, comment, overwrite, section, where)
+
+
+def _write_symbol(ctx, name, definition, comment, overwrite, section, where):
+    """把一个记号写进模板并分发到各笔记。交互与命令行两条路共用。"""
     # 覆盖时沿用原定义的前缀（\newcommand / \renewcommand / 带 * 形式），
     # 否则把 \renewcommand 的符号重写成 \newcommand 会在每份 structure.sty 报 already defined
     pre = None
@@ -1532,11 +1541,6 @@ def action_add(ctx):
         line = f"\\newcommand{{\\{name}}}{{{definition}}}"
     if comment:
         line += f"    % {comment}"
-
-    if overwrite:
-        section, where = None, "原位置（覆盖已有定义）"
-    else:
-        section, where = choose_section(parse_sections(ctx["template"]))
 
     notes = find_notes(ctx["root"], ctx["template"])
     if not notes:
@@ -1559,6 +1563,34 @@ def action_add(ctx):
     print(f"  已同步到 {n} 个子文件夹的 structure.sty")
     refresh_cwl(ctx["template"], ctx["cwl"])
     print("  提示：重启 TeXStudio 后即可补全（编辑器只在启动时读取补全文件）。")
+
+
+def action_add_cli(ctx, name, definition, comment, overwrite):
+    """非交互地引入一个新记号（给图形面板用）。校验规则与交互版一致。"""
+    print("\n[6] 引入新的记号")
+    candidate = str(name or "").lstrip("\\").strip()
+    if not CMD_NAME_RE.match(candidate):
+        print(f"  ! 命令名只允许英文字母（与 LaTeX 规则一致）：{candidate}")
+        return 1
+    template_symbols = parse_symbols(ctx["template"])
+    exists = candidate in template_symbols
+    if exists and not overwrite:
+        print(f"  ! 命令 \\{candidate} 已存在：{template_symbols[candidate][0]}")
+        print("  ! 要覆盖请加 --add-overwrite，已跳过。")
+        return 1
+    definition = str(definition or "").strip()
+    if not definition:
+        print("  ! 定义不能为空。")
+        return 1
+    if definition.count("{") != definition.count("}"):
+        print("  ! 花括号不配对。")
+        return 1
+    if has_bare_percent(definition):
+        print("  ! 定义里有未转义的 %（会把后面整行吞成注释），如需百分号请写 \\%。")
+        return 1
+    _write_symbol(ctx, candidate, definition, str(comment or ""), exists,
+                  None, "末尾（未分段）")
+    return 0
 
 
 # ================================================================ 面板
@@ -1665,6 +1697,14 @@ def cli_run(args, ctx):
     do_d = args.distribute or args.all
     do_c = args.cwl or args.all
     do_x = bool(args.drop)
+    do_e = args.extract
+    do_a = bool(args.add_name)
+    # 提取只写工具自己的提取档案、引入记号是显式动作，两者都不受 --write 门控
+    if do_e:
+        action_extract(ctx)
+    if do_a:
+        return action_add_cli(ctx, args.add_name, args.add_def,
+                              args.add_comment, args.add_overwrite)
     if not (do_m or do_d or do_c or do_x):
         print("\n未指定动作；直接运行脚本可进入交互面板。")
         return 0
@@ -1727,6 +1767,13 @@ def main():
     parser.add_argument("--distribute", action="store_true", help="分发：模板 -> 各笔记")
     parser.add_argument("--drop", nargs="*", default=None, help="从模板删除指定符号")
     parser.add_argument("--all", action="store_true", help="回填 + 刷新补全 + 分发")
+    parser.add_argument("--extract", action="store_true",
+                        help="提取各笔记的新符号到提取档案")
+    parser.add_argument("--add-name", help="引入新记号：命令名（不含反斜杠）")
+    parser.add_argument("--add-def", help="引入新记号：定义")
+    parser.add_argument("--add-comment", help="引入新记号：注释")
+    parser.add_argument("--add-overwrite", action="store_true",
+                        help="引入新记号时覆盖已有同名定义")
     parser.add_argument("--write", action="store_true", help="真正写入（默认仅预览）")
     parser.add_argument("--root", default=None, help="笔记根目录")
     parser.add_argument("--template", default=None, help="符号来源 structure.sty")
@@ -1752,7 +1799,8 @@ def main():
 
     ctx = {"root": root, "template": template, "cwl": cwl, "cfg": cfg, "conf": conf}
 
-    has_action = args.cwl or args.merge or args.distribute or args.drop or args.all
+    has_action = (args.cwl or args.merge or args.distribute or args.drop or args.all
+                  or args.extract or args.add_name)
     if has_action:
         return cli_run(args, ctx)
     run_panel(ctx)

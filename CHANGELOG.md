@@ -163,6 +163,15 @@
     * `git_setup`：`--check`、`--account [--name] [--email]`、`--ssh [--gen-key] [--write-443] [--test]`。
     * `note_tools` 跑笔记目录下的脚本时，打包成 exe 后 `sys.executable` 是 exe 本身，改成 `exe --exec <脚本>`，否则子脚本跑不起来。
     * 至此 **16 个工具全部有可视化表单**。
+* **`tools.ico` 与 `make_icon.py`：exe 图标**
+    * 用 Qt 现画一个工具箱图标（深蓝圆角底 + 宽扁提手 + 箱体分割线与搭扣），导出 16/24/32/48/64/128/256 七档 PNG，按 ICO 格式拼成 `tools.ico`（19 KB）。
+    * ICO 允许直接内嵌 PNG；`QPixmap.save` 只认 `QIODevice`，Python 的 `BytesIO` 不行，用 `QBuffer`。
+    * 打包时 `--icon` 嵌进 exe，PE 资源里能看到 `RT_ICON` 7 条 + `RT_GROUP_ICON` 1 条。
+    * 画图标时 Qt6 的 `QRectF` 在 `QtCore` 里，不在 `QtGui`。
+* **`symbols` 补两个能力**
+    * `--extract`：把各笔记相对模板的新符号提取进提取档案（只写工具自己的档案，不动模板，因此不受 `--write` 门控）。
+    * `--add-name <名> --add-def <定义> [--add-comment] [--add-overwrite]`：非交互引入新记号，校验规则与交互版一致（只允许字母、括号配对、无裸 `%`、覆盖要显式声明）。
+    * 写入部分抽成 `_write_symbol()`，交互版与命令行版共用同一条写入路径，避免两套逻辑漂移。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。

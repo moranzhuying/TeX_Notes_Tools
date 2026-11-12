@@ -147,6 +147,16 @@ def _build_symbols(v):
         args = ["--drop"]
         if v["drop"]:
             args += [w for w in v["drop"].split() if w]
+    elif action == "提取到档案":
+        # 只写工具自己的提取档案，不动模板
+        return ["--extract"]
+    elif action == "引入新记号":
+        args = ["--add-name", v["add_name"], "--add-def", v["add_def"]]
+        if v["add_comment"]:
+            args += ["--add-comment", v["add_comment"]]
+        if v["add_overwrite"]:
+            args.append("--add-overwrite")
+        return args
     else:
         args = ["--all"]
     if v["write"]:
@@ -172,6 +182,16 @@ def _build_video2text(v):
         return ["--collections"]
     if op == "补做失败项":
         return ["--only-failed"]
+    if op == "锁状态诊断":
+        return ["--lock-status"]
+    if op == "导出合集 ZIP":
+        args = ["--export-collection", v["collection_id"]]
+        if v["export_to"]:
+            args += ["--export-to", v["export_to"]]
+        return args
+    if op == "同步标题文件夹":
+        return ["--sync-titles", v["collection_id"]]
+
     args = []
     if v["url"]:
         args.append(v["url"])
@@ -181,10 +201,30 @@ def _build_video2text(v):
         args += ["--lang", v["lang"]]
     if v["model"]:
         args += ["--model", v["model"]]
+    if v["model_dir"]:
+        args += ["--model-dir", v["model_dir"]]
+    if v["whisper_lang"]:
+        args += ["--whisper-language", v["whisper_lang"]]
+    if v["device"] != "默认":
+        args += ["--device", v["device"]]
+    if v["compute_type"]:
+        args += ["--compute-type", v["compute_type"]]
+    if v["outdir"]:
+        args += ["-o", v["outdir"]]
+    if v["cookies"]:
+        args += ["--cookies", v["cookies"]]
     if v["refresh"]:
         args.append("--refresh")
     if v["single"]:
         args.append("--single")
+    if v["all_parts"]:
+        args.append("--all-parts")
+    if v["force_whisper"]:
+        args.append("--force-whisper")
+    if v["keep_audio"]:
+        args.append("--keep-audio")
+    if v["no_vad"]:
+        args.append("--no-vad")
     if v["no_cookies"]:
         args.append("--no-cookies")
     if v["browser_cookies"]:
@@ -274,12 +314,22 @@ SPECS = {
         "fields": [
             {"key": "action", "label": "操作", "type": "choice",
              "choices": ["回填（笔记 → 模板）", "分发（模板 → 笔记）", "刷新补全",
-                         "删除符号", "全套（回填 + 补全 + 分发）"],
+                         "删除符号", "提取到档案", "引入新记号", "全套（回填 + 补全 + 分发）"],
              "default": "回填（笔记 → 模板）"},
             {"key": "drop", "label": "要删除的符号名", "type": "text",
              "placeholder": "多个用空格分隔", "show_if": ("action", "删除符号")},
+            {"key": "add_name", "label": "命令名", "type": "text",
+             "placeholder": "只允许字母，不含反斜杠", "show_if": ("action", "引入新记号")},
+            {"key": "add_def", "label": "定义", "type": "text",
+             "placeholder": "例如 \\operatorname{Orb}", "show_if": ("action", "引入新记号")},
+            {"key": "add_comment", "label": "注释", "type": "text",
+             "placeholder": "可空", "show_if": ("action", "引入新记号")},
+            {"key": "add_overwrite", "label": "覆盖同名已有定义", "type": "check",
+             "default": False, "danger": True, "show_if": ("action", "引入新记号")},
             {"key": "write", "label": "真正写入（默认仅预览）", "type": "check", "default": False,
-             "danger": True},
+             "danger": True,
+             "show_if": ("action", ["回填（笔记 → 模板）", "分发（模板 → 笔记）",
+                                    "刷新补全", "删除符号", "全套（回填 + 补全 + 分发）"])},
         ],
         "build": _build_symbols,
     },
@@ -305,7 +355,9 @@ SPECS = {
         "desc": "字幕优先，没有字幕时用本地 whisper 转写。",
         "fields": [
             {"key": "op", "label": "操作", "type": "choice",
-             "choices": ["转写视频", "列出合集", "补做失败项"], "default": "转写视频"},
+             "choices": ["转写视频", "列出合集", "补做失败项", "导出合集 ZIP",
+                         "同步标题文件夹", "锁状态诊断"],
+             "default": "转写视频"},
             {"key": "url", "label": "视频地址", "type": "text",
              "placeholder": "BV 号或视频链接", "show_if": ("op", "转写视频")},
             {"key": "mode", "label": "取源方式", "type": "choice",
@@ -315,7 +367,28 @@ SPECS = {
              "show_if": ("op", "转写视频")},
             {"key": "model", "label": "whisper 模型", "type": "text", "placeholder": "默认 medium",
              "show_if": ("op", "转写视频")},
+            {"key": "model_dir", "label": "本地模型目录", "type": "path",
+             "placeholder": "可空", "show_if": ("op", "转写视频")},
+            {"key": "whisper_lang", "label": "转写语言", "type": "text",
+             "placeholder": "如 zh", "show_if": ("op", "转写视频")},
+            {"key": "device", "label": "设备", "type": "choice",
+             "choices": ["默认", "cpu", "cuda"], "default": "默认",
+             "show_if": ("op", "转写视频")},
+            {"key": "compute_type", "label": "计算精度", "type": "text",
+             "placeholder": "cpu 用 int8", "show_if": ("op", "转写视频")},
+            {"key": "outdir", "label": "输出根目录", "type": "path",
+             "placeholder": "留空用脚本同级 _data", "show_if": ("op", "转写视频")},
+            {"key": "cookies", "label": "cookie 文件", "type": "file",
+             "placeholder": "Netscape 格式，可空", "show_if": ("op", "转写视频")},
             {"key": "single", "label": "只处理当前视频", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "all_parts", "label": "展开全部分 P", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "force_whisper", "label": "忽略字幕强制转写", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "keep_audio", "label": "保留音频", "type": "check", "default": False,
+             "show_if": ("op", "转写视频")},
+            {"key": "no_vad", "label": "关闭静音过滤", "type": "check", "default": False,
              "show_if": ("op", "转写视频")},
             {"key": "refresh", "label": "强制重做（含已成功的）", "type": "check", "default": False,
              "show_if": ("op", "转写视频")},
@@ -323,6 +396,11 @@ SPECS = {
              "default": False, "show_if": ("op", "转写视频")},
             {"key": "browser_cookies", "label": "借用浏览器登录态", "type": "check",
              "default": False, "show_if": ("op", "转写视频")},
+            {"key": "collection_id", "label": "合集 ID", "type": "text",
+             "placeholder": "见「列出合集」的输出",
+             "show_if": ("op", ["导出合集 ZIP", "同步标题文件夹"])},
+            {"key": "export_to", "label": "ZIP 保存路径", "type": "path",
+             "placeholder": "留空用默认名", "show_if": ("op", "导出合集 ZIP")},
         ],
         "build": _build_video2text,
     },

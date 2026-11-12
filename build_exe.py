@@ -58,6 +58,8 @@ def main():
         "--specpath", str(BUILD),
         # panel_core 里是「先改 sys.path 再 import」，静态分析看不到
         "--hidden-import", "launcher",
+        # 窗口与 exe 图标（make_icon.py 生成）
+        "--icon", str(TOOLS / "tools.ico"),
         # 没用到的大件，明确排掉以免被间接拉进来
         "--exclude-module", "tkinter",
         "--exclude-module", "PySide6.QtWebEngineCore",

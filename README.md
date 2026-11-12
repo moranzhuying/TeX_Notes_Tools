@@ -70,6 +70,9 @@ python Tools/panel_qt.py              # 直接开窗口
 | `manager` | `--status` / `--commit-all [--push-only] [--msg]` / `--create-repo [--selection] [--account]` / `--set-root <路径> [--account]` |
 | `note_tools` | `--note <名字>` / `--action commit\|exercise\|intro-summary` / `--scope both\|intro\|summary` / `--yes` |
 | `git_setup` | `--check` / `--account [--name] [--email]` / `--ssh [--gen-key] [--write-443] [--test]` |
+| `symbols` | `--extract`（提取到提取档案）/ `--add-name <名> --add-def <定义> [--add-comment <注释>] [--add-overwrite]` |
+
+`symbols` 的写入部分抽成了 `_write_symbol()`，交互版与命令行版共用同一条写入路径。
 
 表单引擎：字段类型 text / int / path / file / choice / check；`show_if` 支持字段联动（切换操作只显示相关字段，隐藏字段不进参数）；路径字段带「浏览…」；破坏性操作默认不勾选，先出预览再决定。
 
@@ -86,6 +89,14 @@ python Tools/panel_qt.py              # 直接开窗口
 ```
 
 产物 `Tools/LaTeX-Toolbox.exe`，自带 Python 运行时与 PySide6，**目标机器不需要装任何环境**，双击即开。`run_panel.bat` 会优先启动它。
+
+图标是 `Tools/tools.ico`（多尺寸，7 档），由 `make_icon.py` 用 Qt 现画现生成：
+
+```bash
+<venv>/Scripts/python.exe make_icon.py     # 改样式后重跑即可
+```
+
+打包时通过 `--icon` 嵌进 exe（PE 资源里能看到 `RT_ICON` 与 `RT_GROUP_ICON`）。
 
 两个约束，来自「工具必须操作真实工作区」这一点：
 
