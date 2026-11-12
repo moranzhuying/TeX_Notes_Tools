@@ -45,3 +45,7 @@ progress/tests/texstudio_*
 video2text/_data/
 # 本机配置（*.conf 已在上面统一排除，这里只作显式声明）
 video2text/video2text.conf
+
+# ===== watch_notes 运行时数据（状态 / 日志 / 实例锁） =====
+watch_notes/_state/
+watch_notes/_logs/

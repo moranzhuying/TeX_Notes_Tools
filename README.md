@@ -23,6 +23,7 @@
 | `video2text/video2text.py` | 视频 / 合集增量转文字：默认仅字幕，可选本地转写与分块恢复 | `video2text.md` |
 | `spec_sync/spec_sync.py` | 项目规范副本一致性：比对原件与副本，不一致时可用原件覆盖（**工作区专用，不随仓库分发**） | `spec_sync.md` |
 | `pdf_upright/pdf_upright.py` | PDF 转正：把「横躺」的课件 PDF 就地转正为 16:9，不重编码 | `pdf_upright.md` |
+| `watch_notes/watch_notes.py` | 笔记目录监测：定时提交推送 + 滚动删除最早一条 git 记录，状态可恢复 | `watch_notes.md` |
 | `show_memory/show_memory.py` | 查看工作记录（已从面板移除，需要时单独运行） | `show_memory.md` |
 | `tex2docx/preprocess.py` | LaTeX 转 Word 预处理：把定理环境 / 交叉引用 / 自定义宏改写成 Pandoc 能转换的形式（**非面板项**） | `preprocess.md` |
 
