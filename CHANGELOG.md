@@ -185,6 +185,7 @@
     * `panel_config.py` 源码运行时用 `parents[1]` 定位 `Tools/`，配置仍落在 exe 旁而不是 `src/` 里。
 * **忽略规则与钩子（不做就会出事的两处）**
     * `.gitignore` 里带目录前缀的规则全部加 `src/` —— `progress/workbench_local.json`、`video2text/_data/`、`watch_notes/_state/` 这类规则按仓库根匹配，不跟着目录走；漏改会让本机配置和 1.5 GB 模型进入版本控制。
+    * `sync_paths` 的忽略规则由单文件 `sync_paths.py` 改成整目录 `src/sync_paths/`：只忽略 `.py` 会漏掉同目录的 `.md`，一次 `git add -A` 就把它带进索引（本次结构调整时确实带进去过一次，已撤出）。
     * `.gitattributes` 的 `check_sensitive/pre-commit text eol=lf` 同样要加前缀，否则钩子被 CRLF 化、`sh` 报 `\r` 语法错。
     * `pre-commit` 模板的查找列表补 `Tools/src/*/check_sensitive.py`（保留旧的 `Tools/*/…` 兼容旧布局）。**已装钩子的 12 个仓库必须同步更新**：旧模板只认 `../../Tools/*/check_sensitive.py`，脚本沉到 `src/` 后一个都匹配不到，钩子会静默放行、防泄露形同虚设。已按「与旧模板逐字节相同才覆盖」的判据全量更新，并在 `LaTeX_Notes/Algebra` 实跑确认能定位到脚本。
 * **文档**
