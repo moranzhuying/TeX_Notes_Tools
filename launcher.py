@@ -31,6 +31,8 @@ Tools 下每个工具各占一个子目录，本脚本是它们的统一入口�
 
 用法：
     python launcher.py
+
+要图形界面就用同目录的 `panel_gui.py`（本地网页，卡片式面板，MENU 与本文件共用）。
 """
 import os
 import shlex

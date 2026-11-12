@@ -4,7 +4,8 @@
 
 | 脚本 | 用途 | 详细说明 |
 |---|---|---|
-| `launcher.py` | **总面板**：列出并调起下面各工具 | 见下 |
+| `launcher.py` | **命令行总面板**：列出并调起下面各工具 | 见下 |
+| `panel_gui.py` | **图形总面板**（本地网页）：卡片式列出全部工具，一键启动控制台，一次性命令的结果留在页面上 | 见下 |
 | `git_setup/git_setup.py` | Git 基本信息：环境检测 / 配置账户 / 配置 SSH | `git_setup.md` |
 | `manager/manager.py` | 笔记工作区管理：仓库状态 / 批量提交 / 建仓库 | `manager.md` |
 | `symbols/symbols.py` | 符号库管理：提取 / 回填 / 刷新补全 / 分发 / 删除 / 修改 | `symbols.md` |
@@ -27,7 +28,7 @@
 | `show_memory/show_memory.py` | 查看工作记录（已从面板移除，需要时单独运行） | `show_memory.md` |
 | `tex2docx/preprocess.py` | LaTeX 转 Word 预处理：把定理环境 / 交叉引用 / 自定义宏改写成 Pandoc 能转换的形式（**非面板项**） | `preprocess.md` |
 
-## launcher.py — 总面板
+## launcher.py — 命令行总面板
 
 运行 `python Tools/launcher.py` 进入总面板。菜单由 `launcher.py` 里的 `MENU` 表驱动，**一个面板选项对应一个同名目录**，新增工具就是新建目录并在表里加一行。
 
@@ -37,6 +38,25 @@
 - 子进程以参数列表启动，不经过 shell；「后台」模式用于服务类工具，启动后立即返回面板。
 
 每个工具也可以进自己的目录单独运行，配置与运行档案都放在它自己目录里。
+
+## panel_gui.py — 图形总面板
+
+```bash
+python Tools/panel_gui.py              # 打开面板（127.0.0.1:7658，自动开浏览器）
+python Tools/panel_gui.py --port 7660  # 换端口
+python Tools/panel_gui.py --no-browser # 只起服务
+```
+
+也双击 `Tools/run_panel.bat`。关掉页面不会停服务，结束要关掉那个控制台窗口或按 Ctrl+C。
+
+做的是**启动器**，不是把各工具重写一遍：`MENU` 直接 import `launcher.py` 的那一份，两处不各维护一套。
+
+- **交互面板类** → 弹独立控制台窗口，`input()` 正常，行为与命令行一致。
+- **一次性命令类**（`check_sensitive` / `sync_paths`）→ 捕获输出，结果留在页面的侧栏里，不会开了就关。
+- 搜索框按标题、说明、脚本路径过滤；按 `/` 聚焦，`Esc` 清空或关侧栏。
+- 运行中的卡片显示状态点与耗时，可点「停止」（`taskkill /T /F` 连子进程一起）。
+
+只绑 `127.0.0.1`。POST 需要页面内嵌的随机令牌，并校验 `Host` / `Origin`，别的网页无法代你启动进程。没有 `tkinter`（本机 Python 是精简发行版）时这也是唯一零依赖的图形方案。
 
 ## progress/ — 写作工作台
 
