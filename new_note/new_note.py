@@ -118,6 +118,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/new_note/
 TOOLS_DIR = TOOL_DIR.parent                       # <Tools>/
 WORKSPACE = TOOLS_DIR.parent
@@ -389,7 +393,8 @@ def resolve_levels_for_md(path, meta, tree, interact=True):
 def sh(cmd, cwd=None):
     try:
         r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW)
         return r.returncode == 0, (r.stdout or "").strip(), (r.stderr or "").strip()
     except FileNotFoundError:
         # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈

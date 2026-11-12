@@ -193,6 +193,22 @@
 * **全局异常兜底**
     * GUI 程序没有 stderr，未捕获的 Python 异常会被静默吞掉 —— 表现是「点了没反应、应用挂住」，极难查。`sys.excepthook` 落盘 `_panel_error.log` 并弹窗。
     * ⚠️ Qt 的信号槽回调里抛异常不会退出应用，事件循环照转，整个界面看着像卡死。写 Qt 代码时务必装这个钩子。
+* **彻底不弹命令行窗口**
+    * 工具内部调外部命令时全部加 `creationflags=CREATE_NO_WINDOW`（10 个脚本：git_setup / manager / new_note / note_tools / repo_check / check_sensitive / commit / video2text / pdf_upright / workbench_pdf）。**GUI 程序启动控制台子程序时，Windows 会新分配控制台并弹黑窗** —— 少这一层，exe 里跑工具就会闪黑框。
+    * `note_tools.run_in_note` 改为捕获子脚本输出再转回自己的 stdout，否则子脚本的打印在面板里看不到。
+    * 窗口级用 `QProcess`（Qt 默认已带 `CREATE_NO_WINDOW`）。⚠️ **PySide6 没暴露 `setCreateProcessArgumentsModifier`**，这条 API 走不通；实测管道模式下 Qt 自己处理好了，不必干预。
+* **表格列宽可拖动**
+    * `QHeaderView` 从 `ResizeToContents`/`Stretch` 改成 `Interactive` —— 前两者会锁死列宽，拖不动。
+    * 列宽初值按内容算（取该列最宽的一格 + 余量），并记进 `Tools/_panel_config.json`，下次打开恢复。
+* **新增设置页与帮助页**（`panel_config.py` + `panel_pages.py`）
+    * 设置页：主题（跟随系统/深色/浅色）、界面字号（四档，缩放 QSS 里的 px 字号）、破坏性操作二次确认、列宽记忆、恢复默认。
+    * 帮助页：完整用法说明 + 16 个工具的用途清单表。帮助正文用 **HTML 而非 Markdown** —— Qt 的 Markdown 解析器只支持标题/粗体/代码块，列表与表格的样式几乎不可调。
+    * 配置持久化在 `Tools/_panel_config.json`，删掉即回默认。
+* **界面细节**
+    * 返回按钮从一行小字改成正式按钮「← 返回工具列表」（Secondary 样式，最小 132×32）。
+    * 工具页去掉标题下方的副标题小字。
+    * 快捷键：`Ctrl+1`~`Ctrl+6` 跳组、`Ctrl+,` 打开设置。
+    * `pdf_upright` 的输入目录给默认值 `Exam`，不用每次手填。
 * **`build_exe`：打包成 exe**
     * `build_exe.py` 调 PyInstaller 产出 `Tools/LaTeX-Toolbox.exe`（单文件约 37 MB，`--onedir` 为目录模式），自带 Python 运行时与 PySide6，目标机器无需装环境。
     * exe 需要跑工具时把自己当解释器：`--exec <脚本> -- [参数]`，工具脚本仍从真实 `Tools/` 读取（它们要操作真实工作区，不能进解包临时目录）。

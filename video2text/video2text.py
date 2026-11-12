@@ -48,6 +48,10 @@ import unicodedata
 import urllib.request
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 # 支持直接运行及 importlib 探针加载同级模块。
 _MODULE_DIR = str(Path(__file__).resolve().parent)
 if _MODULE_DIR not in sys.path:
@@ -180,7 +184,7 @@ def relaunch_if_needed(cp: configparser.ConfigParser) -> int | None:
     print(f"  当前解释器无依赖，改用专用解释器重跑：{py}", flush=True)
     try:
         return subprocess.run([py, str(Path(__file__).resolve()), *sys.argv[1:]],
-                              env=env).returncode
+                              env=env, creationflags=NO_WINDOW).returncode
     except OSError as e:
         print(f"  ✗ 启动失败：{e}")
         return 1

@@ -21,6 +21,10 @@ import subprocess
 import sys
 import pathlib
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 # 内置模式：只放「任何机器上都算本机特征」的通用形态。
 # 具体到本机的词（用户名、目录名等）写进 .sensitive-words.txt，
 # 这样本文件自身不会变成新的泄露源。
@@ -39,7 +43,8 @@ MAX_UP = 4
 
 def sh(args):
     r = subprocess.run(["git"] + args, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+                       encoding="utf-8", errors="replace",
+                       creationflags=NO_WINDOW)
     return r.returncode == 0, r.stdout, r.stderr
 
 

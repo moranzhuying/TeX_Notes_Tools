@@ -13,7 +13,9 @@ panel_actions.py — 工具的可视化表单（真正 GUI 化的那一层）
 字段类型：text / int / path / file / choice / check
 字段可带 show_if=(字段名, 取值)，不满足时整行隐藏、且不参与拼参数。
 """
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -990,6 +992,7 @@ SPECS = {
         "desc": "把横躺的课件 PDF 转正为 16:9，不重编码。默认预演。",
         "fields": [
             {"key": "input", "label": "PDF 文件或目录", "type": "path", "required": True,
+             "default": str(core.WORKSPACE / "Exam"),
              "placeholder": "例如 D:/某处/课件.pdf"},
             {"key": "recursive", "label": "含子目录", "type": "check", "default": True},
             {"key": "outdir", "label": "另存目录", "type": "path",
@@ -1036,6 +1039,37 @@ def has_form(tool_id):
 # ---------------------------------------------------------------- 控件
 
 
+def _hide_console(proc):
+    """让 QProcess 启动的子进程**不弹控制台窗口**。
+
+    面板是 GUI 程序（windowed exe），它启动的 python.exe 是控制台程序。
+    Windows 看到父进程没有控制台，就会给子进程新分配一个并弹出来。
+
+    **PySide6 没有暴露 `setCreateProcessArgumentsModifier`**，所以 Qt 层的
+    定制走不通。但 Qt 自己的 QProcess 在 Windows 上默认就用 `CREATE_NO_WINDOW`
+    起子进程（管道模式尤其如此），所以这里实际上无需干预 —— 保留这个函数
+    是为了将来 PySide6 补上这个 API 时能直接生效，也为了把「不弹窗」这件事
+    写在明处，别让下一个人以为没人管。
+
+    真正会弹窗的是**工具内部**再开的孙进程（git / cmd / python），
+    那些在各自的工具脚本里用 `creationflags=CREATE_NO_WINDOW` 处理过了。
+    """
+    modifier = getattr(proc, "setCreateProcessArgumentsModifier", None)
+    if modifier is None:
+        # PySide6 没暴露这个 API：Qt 默认已用 CREATE_NO_WINDOW，无需干预
+        return
+    if os.name != "nt":
+        return
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if not flags:
+        return
+
+    def apply(args):
+        args["creationflags"] = args.get("creationflags", 0) | flags
+
+    modifier(apply)
+
+
 class FormPanel(QtWidgets.QWidget):
     """一张表单 + 执行按钮 + 结果卡片。"""
 
@@ -1050,6 +1084,7 @@ class FormPanel(QtWidgets.QWidget):
         self.rows = {}
         self.proc = None
         self._buffer = ""
+        self._saved_widths = None
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -1153,11 +1188,15 @@ class FormPanel(QtWidgets.QWidget):
             self.table.verticalHeader().setVisible(False)
             self.table.setAlternatingRowColors(True)
             header = self.table.horizontalHeader()
-            # 首列按内容拉伸（仓库名长短不一），其余按内容宽度
-            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-            stretch = self.result.get("stretch", 0)
-            if columns and 0 <= stretch < len(columns):
-                header.setSectionResizeMode(stretch, QtWidgets.QHeaderView.Stretch)
+            # Interactive：用户可以拖动列边界自由调列宽。
+            # ResizeToContents 会锁死列宽（拖不动），Stretch 同样不能手动调。
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+            header.setMinimumSectionSize(48)
+            # 记忆里存了列宽的列，用记录的宽度；没存的按内容给一个合适的初值。
+            # 全部是 Interactive，这样每一列都能拖。
+            self._saved_widths = self._load_column_widths()
+            header.sectionResized.connect(self._on_column_resized)
+            self._apply_column_widths()
             lay.addWidget(self.table)
         else:
             self.out = QtWidgets.QPlainTextEdit()
@@ -1178,6 +1217,7 @@ class FormPanel(QtWidgets.QWidget):
                     if c < self.table.columnCount():
                         self.table.setItem(
                             r, c, QtWidgets.QTableWidgetItem(str(val)))
+            self._apply_column_widths()
             summary = self.result.get("summary")
             if rows:
                 self.result_summary.setText(summary(rows) if summary else "")
@@ -1188,6 +1228,86 @@ class FormPanel(QtWidgets.QWidget):
             self.out.setPlainText(cleaned)
             lines = cleaned.splitlines()
             self.result_summary.setText("{} 行".format(len(lines)) if lines else "无输出")
+
+    # ---------- 列宽 ----------
+
+    def _load_column_widths(self):
+        """读回上次记住的列宽。"""
+        try:
+            import panel_config as _cfg
+            data = _cfg.load()
+            if not data.get("remember_columns", True):
+                return None
+            widths = (data.get("columns") or {}).get(self.tool_id)
+            if isinstance(widths, list) and len(widths) == self.table.columnCount():
+                return [int(w) for w in widths]
+        except Exception:  # noqa: BLE001 —— 读配置失败不该影响显示
+            pass
+        return None
+
+    def _apply_column_widths(self):
+        """给每列一个合适的初始宽度。
+
+        优先用用户记住的宽度；没有就按内容宽度算。所有列都是 Interactive，
+        用户随时能拖动边界调整。
+        """
+        if self.table is None:
+            return
+        header = self.table.horizontalHeader()
+        count = self.table.columnCount()
+        if count == 0:
+            return
+
+        metrics = self.table.fontMetrics()
+        widths = self._saved_widths or []
+        if len(widths) != count:
+            widths = [0] * count
+
+        for c in range(count):
+            remembered = widths[c]
+            if remembered > 0:
+                header.resizeSection(c, remembered)
+                continue
+            if self.table.rowCount() == 0:
+                # 还没数据，先按表头文字给个宽度，等有结果了再按内容细调
+                head = self.table.horizontalHeaderItem(c)
+                text = head.text() if head is not None else ""
+                header.resizeSection(
+                    c, min(520, max(72, metrics.horizontalAdvance(text) + 28)))
+                continue
+            # 按内容算：取该列最宽的一格，再留一点余量
+            longest = 0
+            for r in range(self.table.rowCount()):
+                item = self.table.item(r, c)
+                if item is None:
+                    continue
+                longest = max(longest, metrics.horizontalAdvance(item.text()))
+            head = self.table.horizontalHeaderItem(c)
+            if head is not None:
+                longest = max(longest, metrics.horizontalAdvance(head.text()))
+            header.resizeSection(c, min(520, max(72, longest + 28)))
+
+    def _on_column_resized(self, index, _old, new):
+        """用户拖动列边界后把宽度记下来。"""
+        if self.table is None or index < 0:
+            return
+        count = self.table.columnCount()
+        if index >= count or new <= 0:
+            return
+        try:
+            import panel_config as _cfg
+            data = _cfg.load()
+            if not data.get("remember_columns", True):
+                return
+            store = data.setdefault("columns", {})
+            widths = list(store.get(self.tool_id) or [])
+            if len(widths) != count:
+                widths = [0] * count
+            widths[index] = int(new)
+            store[self.tool_id] = widths
+            _cfg.save(data)
+        except Exception:  # noqa: BLE001 —— 存配置失败不影响使用
+            pass
 
     def _copy_result(self):
         if self.table is not None:
@@ -1307,6 +1427,11 @@ class FormPanel(QtWidgets.QWidget):
                 self.hint.setText("请填写：{}".format(field["label"]))
                 return
 
+        # 破坏性操作二次确认：勾了「真正写入」这类字段才问
+        if not self._confirm_dangerous(values):
+            self.hint.setText("已取消")
+            return
+
         script = core.TOOLS_ROOT / self.spec.get("script", self.tool["script"])
         if not script.is_file():
             self.hint.setText("找不到脚本：{}".format(self.tool["script"]))
@@ -1326,6 +1451,7 @@ class FormPanel(QtWidgets.QWidget):
         proc.setArguments(argv)
         proc.setWorkingDirectory(str(script.parent))
         proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+        _hide_console(proc)
         proc.readyReadStandardOutput.connect(self._read_output)
         proc.finished.connect(self._finished)
         proc.errorOccurred.connect(self._failed)
@@ -1334,6 +1460,37 @@ class FormPanel(QtWidgets.QWidget):
         # 关掉子进程的 stdin：GUI 里没有终端可输入，任何 input() 会立刻拿到 EOF
         # 并走各自的「取消」分支。少了这一步，需要确认的工具会一直挂着不返回。
         proc.closeWriteChannel()
+
+    def _confirm_dangerous(self, values):
+        """勾了危险选项时先问一句。用户返回 False 就取消。
+
+        危险字段都是「真正写入」「覆盖」「删除」这类，误点代价高。
+        设置里可以关掉这个确认。
+        """
+        danger_fields = [f for f in self.spec["fields"] if f.get("danger")]
+        if not danger_fields:
+            return True
+        triggered = [f for f in danger_fields
+                     if values.get(f["key"]) not in (None, "", False, 0)]
+        if not triggered:
+            return True
+        try:
+            import panel_config as _cfg
+            if not _cfg.load().get("confirm_danger", True):
+                return True
+        except Exception:  # noqa: BLE001 —— 读配置失败就当要确认
+            pass
+        labels = "、".join(f["label"] for f in triggered)
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setWindowTitle("确认操作")
+        box.setText("即将执行：{}".format(labels))
+        box.setInformativeText("这一操作会真正修改文件或提交到仓库。")
+        yes = box.addButton("执行", QtWidgets.QMessageBox.AcceptRole)
+        box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(yes)
+        box.exec()
+        return box.clickedButton() is yes
 
     def _read_output(self):
         if self.proc is None:

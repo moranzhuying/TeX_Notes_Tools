@@ -24,6 +24,10 @@ import sys
 import time
 from datetime import datetime
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 DEFAULT_MSG = "更新笔记"
 
 # 自动分类用的关键词（命中即归入「tex 配置调整」，否则归「正文内容调整」）
@@ -44,7 +48,8 @@ def git(args):
     """执行 git 命令，返回 (是否成功, 标准输出, 标准错误)。"""
     try:
         r = subprocess.run(["git"] + args, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW)
         return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
     except FileNotFoundError:
         # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈

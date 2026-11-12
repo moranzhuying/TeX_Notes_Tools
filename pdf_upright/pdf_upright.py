@@ -45,6 +45,10 @@ import tempfile
 import time
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 try:
     import pymupdf
 except ImportError:          # 缺依赖时在 main() 里换解释器或给出指引
@@ -65,7 +69,7 @@ def _has_pymupdf(exe):
     try:
         r = subprocess.run([exe, "-c", "import pymupdf"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=30)
+                           timeout=30, creationflags=NO_WINDOW)
         return r.returncode == 0
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
@@ -124,7 +128,8 @@ def _reexec_with_pymupdf():
             env = dict(os.environ)
             env["PDF_UPRIGHT_REEXEC"] = "1"
             try:
-                return subprocess.call([str(exe), *sys.argv], env=env)
+                return subprocess.call([str(exe), *sys.argv], env=env,
+                                        creationflags=NO_WINDOW)
             except OSError as e:
                 print(f"  ✗ 换解释器失败：{e}")
                 return None

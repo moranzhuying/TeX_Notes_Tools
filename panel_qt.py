@@ -215,6 +215,8 @@ except ImportError:  # pragma: no cover - 只在环境缺包时触发
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import panel_core as core  # noqa: E402
 import panel_actions as actions  # noqa: E402
+import panel_config as config  # noqa: E402
+import panel_pages as pages  # noqa: E402
 
 CARD_MIN_WIDTH = 360
 CARD_MAX_WIDTH = 660
@@ -255,8 +257,13 @@ TOKENS = {
 }
 
 
-def build_qss(t):
-    return """
+def build_qss(t, scale=1.0):
+    """生成样式表。scale 是字号缩放系数（0.85 ~ 1.3）。
+
+    QSS 里的字号都写死成 px，缩放时统一乘一遍 —— 用正则改写，
+    比给每个字号都留占位符省事，也不会漏。
+    """
+    qss = """
 QMainWindow, QWidget#Root {{ background: {bg}; }}
 QWidget {{ color: {fg}; }}
 
@@ -423,7 +430,51 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: tran
 /* ---------- 底部状态条 ---------- */
 QLabel#StatusText {{ font-size: 11px; color: {fg3}; }}
 QFrame#Divider {{ background: {stroke}; max-height: 1px; border: none; }}
+
+/* ---------- 设置页 / 帮助页 ---------- */
+QLabel#SectionTitle {{
+    font-size: 12px; font-weight: 600; color: {fg};
+    padding: 4px 2px 0px 2px;
+}}
+QLabel#PathText {{
+    font-size: 11px; color: {fg3};
+    font-family: "Cascadia Mono", Consolas, monospace;
+}}
+QTextBrowser#HelpDoc {{
+    background: {card};
+    border: 1px solid {stroke}; border-radius: 8px;
+    padding: 14px 16px;
+    color: {fg2};
+    font-size: 13px;
+    selection-background-color: {accent};
+    selection-color: {accent_fg};
+}}
+QComboBox {{
+    background: {field}; color: {fg};
+    border: 1px solid {stroke}; border-radius: 4px;
+    padding: 5px 10px; font-size: 12px;
+    min-height: 20px;
+}}
+QComboBox:hover {{ border-color: {stroke_strong}; }}
+QComboBox:focus {{ border-color: {accent}; }}
+QComboBox::drop-down {{ border: none; width: 20px; }}
+QComboBox QAbstractItemView {{
+    background: {card}; color: {fg};
+    border: 1px solid {stroke};
+    selection-background-color: {accent};
+    selection-color: {accent_fg};
+    font-size: 12px;
+}}
+QCheckBox {{ font-size: 12px; color: {fg}; spacing: 8px; }}
 """.format(**t)
+    if abs(scale - 1.0) > 0.001:
+        import re as _re
+        qss = _re.sub(
+            r"font-size:\s*(\d+)px",
+            lambda m: "font-size: {}px".format(
+                max(9, int(round(int(m.group(1)) * scale)))),
+            qss)
+    return qss
 
 
 def rel_time(ts):
@@ -568,10 +619,11 @@ class CardGrid(QtWidgets.QWidget):
 
 
 class Sidebar(QtWidgets.QWidget):
-    """左侧导航：品牌区 + 分组按钮 + 底部主题切换。"""
+    """左侧导航：品牌区 + 分组按钮 + 底部帮助/设置/主题切换。"""
 
     group_selected = QtCore.Signal(str)
     theme_toggled = QtCore.Signal()
+    special_selected = QtCore.Signal(str)
 
     def __init__(self, groups, icon=None, parent=None):
         super().__init__(parent)
@@ -625,6 +677,19 @@ class Sidebar(QtWidgets.QWidget):
         lay.addWidget(line)
         lay.addSpacing(6)
 
+        # 帮助与设置：和分组按钮同款，但不走 group_selected
+        self.special_buttons = {}
+        for key, text in (("帮助", "❓  使用帮助"), ("设置", "⚙️  设置")):
+            btn = QtWidgets.QPushButton(text)
+            btn.setObjectName("NavBtn")
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.clicked.connect(
+                lambda _c=False, k=key: self.special_selected.emit(k))
+            lay.addWidget(btn)
+            self.special_buttons[key] = btn
+
         self.theme_btn = QtWidgets.QPushButton("🌙  深色主题")
         self.theme_btn.setObjectName("NavBtn")
         self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
@@ -635,6 +700,15 @@ class Sidebar(QtWidgets.QWidget):
         btn = self.buttons.get(group)
         if btn is not None:
             btn.setChecked(True)
+            for other in self.special_buttons.values():
+                other.setChecked(False)
+
+    def select_special(self, key):
+        btn = self.special_buttons.get(key)
+        if btn is not None:
+            btn.setChecked(True)
+            for other in self.buttons.values():
+                other.setChecked(False)
 
     def set_theme_label(self, dark):
         self.theme_btn.setText("🌙  深色主题" if dark else "☀️  浅色主题")
@@ -660,6 +734,10 @@ class MainWindow(QtWidgets.QMainWindow):
         for tool in self.tools:
             if tool["group"] not in self.groups:
                 self.groups.append(tool["group"])
+        # 配置：主题偏好与字号缩放
+        self._config = config.load()
+        self._theme_pref = self._config.get("theme", "auto")
+        self._font_scale = float(self._config.get("font_scale", 1.0))
         self._dark = system_is_dark()
 
         root = QtWidgets.QWidget()
@@ -675,6 +753,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sidebar = Sidebar(self.groups, self.icon)
         self.sidebar.group_selected.connect(self.show_group)
         self.sidebar.theme_toggled.connect(self.toggle_theme)
+        self.sidebar.special_selected.connect(self.show_special)
         shell.addWidget(self.sidebar)
 
         right = QtWidgets.QWidget()
@@ -708,6 +787,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_pages()
         self.show_group(self.groups[0])
         self.apply_theme()
+        self.apply_font_scale(self._font_scale)
 
     # ---------- 构建 ----------
 
@@ -767,22 +847,60 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pages[group] = page
             self.stack.addWidget(page)
 
+        # 帮助页与设置页：不是分组，但同样占一个栈页
+        self.help_page = pages.HelpPage(TOKENS["dark" if self._dark else "light"])
+        self.stack.addWidget(self.help_page)
+        self.settings_page = pages.SettingsPage(self)
+        self.stack.addWidget(self.settings_page)
+
     # ---------- 主题 ----------
 
-    def apply_theme(self):
-        tokens = TOKENS["dark" if self._dark else "light"]
+    def apply_theme(self, preference=None):
+        """应用主题。preference 为 auto/dark/light；不给就用当前状态。"""
+        if preference is None:
+            preference = self._theme_pref
+        if preference == "auto":
+            dark = system_is_dark()
+        elif preference == "light":
+            dark = False
+        else:
+            dark = True
+        self._dark = dark
+        tokens = TOKENS["dark" if dark else "light"]
         app = QtWidgets.QApplication.instance()
         if app is not None:
-            app.setStyleSheet(build_qss(tokens))
+            app.setStyleSheet(build_qss(tokens, self._font_scale))
         self.sidebar.set_theme_label(self._dark)
+        # 帮助页是 HTML，样式得跟着主题重算
+        if hasattr(self, "help_page"):
+            doc = self.help_page.findChild(QtWidgets.QTextBrowser)
+            if doc is not None:
+                doc.setHtml(pages.HelpPage._html(tokens))
         palette = self.palette()
         palette.setColor(QtGui.QPalette.Window, QtGui.QColor(tokens["bg"]))
         palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor(tokens["fg"]))
         self.setPalette(palette)
 
+    def apply_font_scale(self, scale):
+        """改界面字号。缩放系数会写进 QSS 的字号声明。"""
+        scale = min(1.3, max(0.85, float(scale)))
+        self._font_scale = scale
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            tokens = TOKENS["dark" if self._dark else "light"]
+            app.setStyleSheet(build_qss(tokens, scale))
+        font = QtGui.QFont("Segoe UI Variable Text", 9)
+        font.setFamilies(["Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI"])
+        font.setPointSizeF(max(7.0, 9.0 * scale))
+        if app is not None:
+            app.setFont(font)
+
     def toggle_theme(self):
-        self._dark = not self._dark
-        self.apply_theme()
+        """主题按钮：在 深色/浅色 之间切，并把选择记住。"""
+        new_pref = "light" if self._dark else "dark"
+        self._theme_pref = new_pref
+        config.update(theme=new_pref)
+        self.apply_theme(preference=new_pref)
 
     # ---------- 交互 ----------
 
@@ -813,9 +931,11 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._clear_detail()
 
-        back = QtWidgets.QPushButton("← 返回")
-        back.setObjectName("Ghost")
+        back = QtWidgets.QPushButton("← 返回工具列表")
+        back.setObjectName("Secondary")
         back.setCursor(QtCore.Qt.PointingHandCursor)
+        back.setMinimumWidth(132)
+        back.setMinimumHeight(32)
         back.clicked.connect(self.close_panel)
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -828,10 +948,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.stack.setCurrentWidget(self.detail_host)
         self.page_title.setText(tool["title"])
-        if actions.has_form(key):
-            self.page_desc.setText("可视化面板 · 结果留在下方，不再弹控制台")
-        else:
-            self.page_desc.setText("内嵌终端 · 输出与输入都在这里")
+        # 工具页不放副标题：横线上面那行小字多余，留白反而更清爽
+        self.page_desc.setText("")
 
     def close_panel(self):
         self._clear_detail()
@@ -858,6 +976,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.page_title.setText(group)
         self.page_desc.setText(self.GROUP_DESC.get(group, ""))
         self.sidebar.select(group)
+
+    def show_special(self, key):
+        """切到帮助页或设置页。"""
+        if self.search.text().strip():
+            self.search.clear()
+        if key == "帮助":
+            self.stack.setCurrentWidget(self.help_page)
+            self.page_title.setText("使用帮助")
+            self.page_desc.setText("")
+            self.sidebar.select_special("帮助")
+        else:
+            self.stack.setCurrentWidget(self.settings_page)
+            self.page_title.setText("设置")
+            self.page_desc.setText("")
+            self.sidebar.select_special("设置")
 
     def apply_filter(self, text):
         if text.strip() and self.stack.currentWidget() is self.detail_host:
@@ -912,6 +1045,17 @@ class MainWindow(QtWidgets.QMainWindow):
             elif self.stack.currentWidget() is self.detail_host:
                 self.close_panel()
             return
+        # Ctrl+1~6 跳组；Ctrl+, 打开设置
+        if event.modifiers() & QtCore.Qt.ControlModifier:
+            key = event.key()
+            if key == QtCore.Qt.Key_Comma:
+                self.show_special("设置")
+                return
+            if QtCore.Qt.Key_1 <= key <= QtCore.Qt.Key_9:
+                index = key - QtCore.Qt.Key_1
+                if index < len(self.groups):
+                    self.show_group(self.groups[index])
+                    return
         super().keyPressEvent(event)
 
 

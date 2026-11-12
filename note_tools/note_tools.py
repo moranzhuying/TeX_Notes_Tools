@@ -19,6 +19,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/note_tools/
 TOOLS_DIR = TOOL_DIR.parent
 WORKSPACE = TOOLS_DIR.parent
@@ -90,7 +94,8 @@ def changed_count(note):
     try:
         r = subprocess.run(["git", "status", "--porcelain"], cwd=str(note),
                            capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=30)
+                           errors="replace", timeout=30,
+                           creationflags=NO_WINDOW)
         return len([ln for ln in r.stdout.splitlines() if ln.strip()])
     except Exception:
         return -1
@@ -138,7 +143,14 @@ def run_in_note(note, script_name):
     cmd = ([sys.executable, "--exec", script_name]
            if getattr(sys, "frozen", False) else [sys.executable, script_name])
     try:
-        subprocess.run(cmd, cwd=str(note))
+        # 捕获输出转回自己的 stdout，否则子脚本的打印在面板里看不到
+        r = subprocess.run(cmd, cwd=str(note), capture_output=True, text=True,
+                           encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW)
+        if r.stdout:
+            print(r.stdout.rstrip())
+        if r.stderr:
+            print(r.stderr.rstrip())
     except KeyboardInterrupt:
         print("\n  已中断。")
     except OSError as e:

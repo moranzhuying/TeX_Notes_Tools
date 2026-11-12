@@ -6,6 +6,7 @@ panel_core.py — 面板的共用逻辑（工具清单、启动、停止、状�
 `panel_qt.py`（桌面窗口）与 `panel_gui.py`（本地网页备用）都调用这里，
 避免同一套启动规则写两遍。菜单本身来自 `launcher.py` 的 `MENU`，只有一处定义。
 """
+import os
 import subprocess
 import sys
 import threading
@@ -21,6 +22,11 @@ else:
     TOOLS_ROOT = Path(__file__).resolve().parent
 WORKSPACE = TOOLS_ROOT.parent
 MAX_LINES = 4000
+
+#: 启动子进程时不弹控制台窗口。
+#: GUI 子系统程序（windowed exe）调控制台子程序时，Windows 会新分配控制台
+#: 并弹黑窗。所有外部命令都要带上这个标志。
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 sys.path.insert(0, str(TOOLS_ROOT))
 import launcher  # noqa: E402  —— 复用 MENU / split_args
@@ -152,15 +158,24 @@ def launch(key, extra=""):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, text=True,
             encoding="utf-8", errors="replace",
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            creationflags=_NO_WINDOW)
         rec = {"proc": proc, "mode": "capture", "started": time.time(),
                "output": deque(maxlen=MAX_LINES), "returncode": None}
         threading.Thread(target=_pump, args=(rec, proc), daemon=True).start()
     else:
-        # 交互面板必须有真终端：这些工具都是 input() 循环，无控制台直接 OSError
+        # 交互面板必须有真终端：这些工具都是 input() 循环，无控制台直接 OSError。
+        # CREATE_NEW_CONSOLE 会开一个**新的**控制台窗口（不是隐藏），所以这个
+        # 标志与「不要弹命令行窗口」冲突。网页备用版需要真终端，桌面版不用，
+        # 由调用方通过 env 里的 PANEL_HIDE_CONSOLE 决定。
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        if os.environ.get("PANEL_HIDE_CONSOLE") == "1":
+            # 桌面版：复用当前控制台（若父进程有），不新开窗口。
+            # 父进程是 GUI 程序没有控制台时，子进程会因 input() 拿不到输入而
+            # 立刻 EOF —— 这正是「点一下就结束」的表现，所以这条路只给网页版用。
+            flags = 0
         proc = subprocess.Popen(
             args, cwd=str(script.parent),
-            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            creationflags=flags)
         rec = {"proc": proc, "mode": "console", "started": time.time(),
                "output": deque(maxlen=MAX_LINES), "returncode": None}
 

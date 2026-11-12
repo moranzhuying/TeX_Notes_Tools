@@ -59,3 +59,6 @@ _build/
 LaTeX-Toolbox*/
 _dbg/
 panel_debug.log
+
+# ===== 面板配置（用户数据，不入库） =====
+_panel_config.json

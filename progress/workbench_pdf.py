@@ -11,6 +11,10 @@ from workbench_store import Conflict, HASH, StoreError
 from workbench_features import terms
 from workbench_daily import registered_tex
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 
 def pdf_path(store):
     path = store.path('main.pdf')
@@ -152,7 +156,8 @@ def locate(store, query):
         return result | {'notice': '未找到pdftotext；仅提供PDF浏览和源码，不是OCR。'}
     stamp = (path.stat().st_mtime_ns, path.stat().st_size)
     try:
-        proc = subprocess.run([exe, '-enc', 'UTF-8', '-layout', str(path), '-'], capture_output=True, timeout=30, shell=False)
+        proc = subprocess.run([exe, '-enc', 'UTF-8', '-layout', str(path), '-'], capture_output=True, timeout=30, shell=False,
+                              creationflags=NO_WINDOW)
         if proc.returncode != 0 or len(proc.stdout) > 32 * 1024 * 1024:
             return result | {'notice': 'PDF文本提取失败或超限；仅提供浏览/源码，不是OCR。'}
         if stamp != (path.stat().st_mtime_ns, path.stat().st_size):
@@ -199,7 +204,8 @@ def _open_tex(server, store, uid, confirm, line, selected_path, expected):
         return {'opened': False, 'notice': '未找到TeXstudio；请显式配置--texstudio，未调用OS。'}
     try:
         # TeXstudio随附background.html记录--line xx[:cc]；参数分离，不使用shell。
-        subprocess.Popen([exe, *(['--line', str(line)] if line is not None else []), str(path)], shell=False)
+        subprocess.Popen([exe, *(['--line', str(line)] if line is not None else []), str(path)], shell=False,
+                         creationflags=NO_WINDOW)
     except OSError as exc:
         raise StoreError('TeXstudio启动失败；请核对--texstudio路径及本机执行权限，未确认打开成功') from exc
     return {'opened': True, 'line_requested': line, 'line_located': False,

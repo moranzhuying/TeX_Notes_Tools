@@ -20,6 +20,10 @@ import sys
 import time
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 CONF_NAME = "manager.conf"
 
 # 批量提交时「回车」采用的默认提交说明，与 commit.py 的取值保持一致
@@ -110,7 +114,8 @@ def run(cmd, cwd=None, timeout=120):
     """执行外部命令，返回 (是否成功, 标准输出, 标准错误)。"""
     try:
         r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout)
+                           encoding="utf-8", errors="replace", timeout=timeout,
+                           creationflags=NO_WINDOW)
         return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
     except FileNotFoundError as e:
         # cwd 不存在时也会抛 FileNotFoundError，别一律报成「未找到命令」

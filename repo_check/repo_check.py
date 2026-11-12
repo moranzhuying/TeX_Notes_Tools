@@ -22,6 +22,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+#: 启动外部命令时不弹控制台窗口（GUI 子系统程序调控制台程序会弹黑窗）
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 TOOL_DIR = Path(__file__).resolve().parent        # <Tools>/repo_check/
 TOOLS_DIR = TOOL_DIR.parent
 WORKSPACE = TOOLS_DIR.parent
@@ -41,7 +45,8 @@ LOCAL_PAT = r".*(\.conf$|\.cwl_source$|\.sensitive-words\.txt$|_extract\.json$|n
 def sh(args, cwd=None):
     try:
         r = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW)
         return r.returncode == 0, (r.stdout or "").strip()
     except FileNotFoundError:
         # 与 manager.run() / git_setup 一致：命令缺失时给中文提示，不抛栈
