@@ -2,7 +2,7 @@
 * text=auto eol=lf
 
 # git 钩子是无扩展名的 shell 脚本，需单独声明
-check_sensitive/pre-commit text eol=lf
+src/check_sensitive/pre-commit text eol=lf
 
 # Windows 批处理必须 CRLF：LF 换行的多行 if 块会被 cmd.exe 解析错
 *.bat text eol=crlf

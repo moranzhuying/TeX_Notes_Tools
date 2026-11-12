@@ -7,8 +7,8 @@
 # ===== 运行时档案与本机数据 =====
 notes_tree.json
 symbols_extract.json
-progress/workbench_local.json
-progress/workbench_local.json.*.tmp
+src/progress/workbench_local.json
+src/progress/workbench_local.json.*.tmp
 
 # ===== Python =====
 __pycache__/
@@ -38,17 +38,17 @@ sync_paths.py
 # 属工作区专用，不随公开库分发。
 spec_sync/
 # TeXstudio 行定位验证的探测脚本：本机专用，含本机绝对路径（解释器 / 证据目录），不入库。
-progress/tests/texstudio_*
+src/progress/tests/texstudio_*
 
 # ===== video2text 运行时数据（模型 / 登录态 / 浏览器官案 / 转写产物） =====
 # 模型 1.5GB、cookie 含登录凭证、profile 含浏览数据，一律不入库。
-video2text/_data/
+src/video2text/_data/
 # 本机配置（*.conf 已在上面统一排除，这里只作显式声明）
-video2text/video2text.conf
+src/video2text/video2text.conf
 
 # ===== watch_notes 运行时数据（状态 / 日志 / 实例锁） =====
-watch_notes/_state/
-watch_notes/_logs/
+src/watch_notes/_state/
+src/watch_notes/_logs/
 
 # ===== panel_qt 崩溃日志（pythonw 无 stderr 时的落盘痕迹） =====
 _panel_error.log

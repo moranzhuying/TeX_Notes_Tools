@@ -163,6 +163,33 @@
     * `build_exe` 的 `import PyInstaller  # noqa: F401` 骗不过 pyflakes（`noqa` 是 flake8 的写法），改 `importlib.util.find_spec`。
     * `make_icon` 的 `app` 不能删也不能改成下划线（pyflakes 一样报），末尾 `_app.quit()` 收尾 —— QApplication 的 C++ 对象被回收会崩。
 
+### 结构调整：源码收进 `src/`
+
+`Tools/` 根只留 `LaTeX-Toolbox.exe`、`README.md`、`CHANGELOG.md`、`_panel_config.json` 与 `src/`；全部源码（面板 + 16 个工具 + 两个非面板工具）下沉一层。exe 仍从磁盘读脚本，所以这只是收纳，不是把脚本打进包。
+
+* **`panel_core`：拆开「工具根」与「脚本根」**
+    * `TOOLS_ROOT` = `Tools/`（exe 所在，也是工作区的直接子目录）；新增 `SRC_ROOT` = 脚本所在（`Tools/src/`）。打包时取 exe 旁的 `src/`，**目录不存在则回退 `TOOLS_ROOT`**，旧的「脚本与 exe 同目录」布局照样能跑。
+    * `describe_tools()` 的 `exists` 检查与 `launch()` 的脚本定位都改用 `SRC_ROOT`；`panel_actions` 的表单执行同样改。
+    * `launcher.py` 一并拆出 `SCRIPT_ROOT`，`WORKSPACE` 仍由 `TOOLS_ROOT` 推导。
+* **12 个工具：工作区上溯多一层**
+    * `clean_aux` / `spec_sync` 从 `parent×3` 改成 `parent×4`；`new_note` / `note_tools` / `outline_tool` / `repo_check` / `sync_paths` / `show_memory` / `watch_notes` / `manager` 的 `WORKSPACE` 各加一层。
+    * `manager` 另需一个 `TOOLS_ROOT`：它遍历工作区时要把「工具区」认出来并排除，若沿用 `TOOLS_DIR`（现在指向 `src/`）就永远匹配不上，`Tools/` 会被当成一个笔记仓库。
+    * `TOOLS_DIR`（各工具目录的父级）语义恰好吃到 `src/`，所以 `TOOLS_DIR / "manager" / "manager.conf"`、`sys.path.insert(TOOLS_DIR / "new_note")` 这类引用不用动。
+    * `symbols` 找「父目录下有多个笔记」的兜底、`video2text` 打印的工作区各加一层。
+* **`progress`：默认配置与测试**
+    * 默认 `root` 由 `../../LaTeX_Notes` 改为 `../../../LaTeX_Notes`（相对配置文件目录）。
+    * `tests/` 里 `parents[3]`（工作区）改 `parents[4]`、`'Tools/progress'` 改 `'Tools/src/progress'`；`test_workbench_launcher` 的 `TOOLS`（Tools 根）改 `parents[3]`，`test_clean_save_acceptance` 与 `texstudio_ipc_routes` 的 `WORKSPACE`/`WS` 各多上溯一级。
+* **打包与启动脚本**
+    * `build_exe.py` 的入口改为 `src/panel_qt.py`，加 `--paths src`（`panel_core` 是「先改 `sys.path` 再 import launcher」，静态分析看不到），`--icon` / `--add-data` 指向 `src/tools.ico`；`--distpath` 仍是 `Tools/`，产物不变。
+    * `run_panel.bat` 随源码进 `src/`，`ROOT=%~dp0..` 指回 `Tools/` 找 exe；文件保持 CRLF。
+    * `panel_config.py` 源码运行时用 `parents[1]` 定位 `Tools/`，配置仍落在 exe 旁而不是 `src/` 里。
+* **忽略规则与钩子（不做就会出事的两处）**
+    * `.gitignore` 里带目录前缀的规则全部加 `src/` —— `progress/workbench_local.json`、`video2text/_data/`、`watch_notes/_state/` 这类规则按仓库根匹配，不跟着目录走；漏改会让本机配置和 1.5 GB 模型进入版本控制。
+    * `.gitattributes` 的 `check_sensitive/pre-commit text eol=lf` 同样要加前缀，否则钩子被 CRLF 化、`sh` 报 `\r` 语法错。
+    * `pre-commit` 模板的查找列表补 `Tools/src/*/check_sensitive.py`（保留旧的 `Tools/*/…` 兼容旧布局）。**已装钩子的 12 个仓库必须同步更新**：旧模板只认 `../../Tools/*/check_sensitive.py`，脚本沉到 `src/` 后一个都匹配不到，钩子会静默放行、防泄露形同虚设。已按「与旧模板逐字节相同才覆盖」的判据全量更新，并在 `LaTeX_Notes/Algebra` 实跑确认能定位到脚本。
+* **文档**
+    * README 的目录树重写（补上选项 16 `watch_notes`），散落的 `Tools/xxx` 路径统一补 `src/`；「exe 必须与脚本同目录」改为「exe 在 `Tools/` 根、脚本在 `src/`，只拷 exe 跑不起来」。
+
 ### 新增功能
 
 * **`watch_notes`（面板选项 16）**
