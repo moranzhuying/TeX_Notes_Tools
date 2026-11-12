@@ -46,9 +46,10 @@ def img_tag(name):
     boxes = f'width="{IMG_W}"'
     if w:
         boxes += f' height="{max(1, round(IMG_W * h / w))}"'
-    # 外面套一层链接：面板里点击会用系统看图器打开原图，细节能看清
-    return (f'<p align="center"><a href="img/light/{name}">'
-            f'<img src="img/light/{name}" {boxes} alt="界面"></a></p>')
+    # 不套链接：面板里点一下就会调系统看图器弹窗，看文档时是干扰。
+    # 图已经按窗口宽度撑满，够看清；要原图去 resources/help/img/ 拿。
+    return (f'<p align="center"><img src="img/light/{name}" {boxes} '
+            f'alt="界面"></p>')
 
 CSS = """
 :root { color-scheme: light; }
@@ -150,7 +151,7 @@ def page(doc, prev=None, nxt=None):
     ]
     if doc.get("image"):
         body.append(img_tag(doc["image"]))
-        body.append(f'<p class="cap" align="center">{e(doc.get("caption", ""))}（点击图片用看图器放大）</p>')
+        body.append(f'<p class="cap" align="center">{e(doc.get("caption", ""))}</p>')
 
     body.append("<h2>什么时候用</h2>" + ul(doc["when"]))
     body.append("<h2>怎么做</h2>" + ol(doc["steps"]))

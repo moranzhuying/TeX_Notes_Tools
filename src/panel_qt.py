@@ -935,15 +935,6 @@ class Sidebar(QtWidgets.QWidget):
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    GROUP_DESC = {
-        "核心工具": "日常最常用的四件事：Git 环境、仓库管理、符号库、写作工作台",
-        "创建与维护": "建新笔记、导出大纲、清理编译产物",
-        "信息安全与提交": "扫描本机信息、检查路径、体检仓库、提交",
-        "素材与转写": "视频转文字，字幕优先，无字幕走本地 whisper",
-        "PDF 处理": "横躺的课件 PDF 就地转正",
-        "运行监测": "监测笔记目录，有改动自动提交推送并裁剪历史",
-    }
-
     def __init__(self):
         super().__init__()
         self.setWindowTitle("LaTeX 工具箱")
@@ -959,6 +950,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._theme_pref = self._config.get("theme", "auto")
         self._font_scale = float(self._config.get("font_scale", 0.0) or 0.0)
         self._dark = system_is_dark()
+        self._help_back = None
         self._apply_scale_value()
 
         root = QtWidgets.QWidget()
@@ -972,8 +964,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.icon.isNull():
             self.setWindowIcon(self.icon)
         self.sidebar = Sidebar(self.groups, self.icon)
-        self.sidebar.group_selected.connect(self.show_group)
-        self.sidebar.special_selected.connect(self.show_special)
+        self.sidebar.group_selected.connect(self._on_sidebar_group)
+        self.sidebar.special_selected.connect(self._on_sidebar_special)
         shell.addWidget(self.sidebar)
 
         right = QtWidgets.QWidget()
@@ -1062,7 +1054,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bar.addWidget(self.search, 0, QtCore.Qt.AlignVCenter)
 
         # 右上角常驻一个「?」：按当前页面给对应帮助（工具页 → 该工具，
-        # 分组页 → 本板块全部工具）。工具页里另有就近的「查看帮助」。
+        # 分组页 → 本板块全部工具）。点完它会变成返回键。
         self.context_help = QtWidgets.QPushButton("?")
         self.context_help.setObjectName("IconBtn")
         self.context_help.setFixedSize(px(30), px(30))
@@ -1212,6 +1204,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 sub.deleteLater()
 
     def open_panel(self, key):
+        self._leave_help()
         tool = next((t for t in self.tools if t["id"] == key), None)
         if tool is None:
             return
@@ -1227,19 +1220,12 @@ class MainWindow(QtWidgets.QMainWindow):
         back.setMinimumWidth(px(132))
         back.setMinimumHeight(px(32))
         back.clicked.connect(self.close_panel)
-        help_btn = QtWidgets.QPushButton("? 查看帮助")
-        help_btn.setObjectName("Secondary")
-        help_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        help_btn.setMinimumHeight(px(32))
-        if not tool.get("help"):
-            help_btn.setEnabled(False)
-        help_btn.clicked.connect(lambda _=False, t=tool: self.show_tool_help(t))
 
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(back)
         row.addStretch(1)
-        row.addWidget(help_btn)
+        # 不再单放「? 查看帮助」：右上角那个「?」已覆盖，且它点完会变成返回键
         self.detail_lay.addLayout(row)
         self.detail_lay.addWidget(panel, 1)
         panel.status_changed.connect(
@@ -1257,11 +1243,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def close_panel(self):
         self._current_tool = None
+        self._help_back = None
+        if hasattr(self, "context_help"):
+            self._set_context_help(back=False)
         self._clear_detail()
         group = getattr(self, "_current_group", self.groups[0])
         self.stack.setCurrentWidget(self.pages[group])
         self.page_title.setText(group)
-        self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+        # 分组页不放副标题：下面几张卡已经把工具列全了，再罗列一遍是重复
+        self.page_desc.setText("")
         # 回到分组页，侧栏高亮也跟着回去
         self.sidebar.select(group)
 
@@ -1282,6 +1272,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.apply_font_scale(0.0)
             self._fit_window()
 
+    def _on_sidebar_group(self, group):
+        self._leave_help()
+        self.show_group(group)
+
+    def _on_sidebar_special(self, key):
+        self._leave_help()
+        self.show_special(key)
+
     def show_group(self, group):
         if self.search.text().strip():
             self.search.clear()
@@ -1291,7 +1289,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_group = group
         self.stack.setCurrentWidget(page)
         self.page_title.setText(group)
-        self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+        # 分组页不放副标题：下面几张卡已经把工具列全了，再罗列一遍是重复
+        self.page_desc.setText("")
         self.sidebar.select(group)
 
     def show_tool_help(self, tool):
@@ -1311,15 +1310,67 @@ class MainWindow(QtWidgets.QMainWindow):
         self.help_page.show_doc(slug + ".html")
 
     def open_context_help(self):
-        """右上角「?」：按当前页面决定给哪份帮助。"""
+        """右上角按钮：进帮助，或从帮助返回。
+
+        从工具页/分组页点进来时把「来处」记下，按钮同时换成「←」；再点一下
+        回到原页面。原先两个按钮各管一头，点完「?」后再点一次只是把标题
+        换回「使用帮助」，什么都没发生 —— 那个按钮没有存在意义。
+        """
+        if self._help_back is not None:
+            self._help_back()
+            return
+
         current = self.stack.currentWidget()
         tool = getattr(self, "_current_tool", None)
         if current is self.detail_host and tool is not None:
+            self._remember_help_origin()
             self.show_tool_help(tool)
         elif current in self.pages.values():
+            self._remember_help_origin()
             self.show_group_help(getattr(self, "_current_group", self.groups[0]))
         else:
+            # 本来就在帮助页：回总览即可，不需要「返回」
             self.show_special("帮助")
+            self.help_page.show_doc("index.html")
+
+    def _leave_help(self):
+        """从任何别的入口离开帮助页，都把「返回」状态作废 ——
+        否则侧栏跳到分组页后按钮还写着「←」，点它会跳回早已不相关的地方。
+        """
+        if self._help_back is None:
+            return
+        self._help_back = None
+        self._set_context_help(back=False)
+
+    def _remember_help_origin(self):
+        """记下离开时的页面、标题与侧栏状态，返回按钮据此还原。"""
+        widget = self.stack.currentWidget()
+        title = self.page_title.text()
+        desc = self.page_desc.text()
+        special = next((k for k, b in self.sidebar.special_buttons.items()
+                        if b.isChecked()), None)
+        group = getattr(self, "_current_group", None)
+
+        def restore():
+            self.stack.setCurrentWidget(widget)
+            self.page_title.setText(title)
+            self.page_desc.setText(desc)
+            self._help_back = None
+            self._set_context_help(back=False)
+            if special is not None:
+                self.sidebar.select_special(special)
+            elif group is not None:
+                self.sidebar.select(group)
+
+        self._help_back = restore
+        self._set_context_help(back=True)
+
+    def _set_context_help(self, back):
+        """把「?」换成「←」，或换回来。"""
+        btn = self.context_help
+        btn.setText("←" if back else "?")
+        btn.setToolTip("返回刚才的页面" if back
+                       else "查看当前页面相关帮助（F1）")
 
     def show_special(self, key, title=None):
         """切到帮助页或设置页。"""
@@ -1348,7 +1399,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for group, page in self.pages.items():
                 if page is current:
                     self.page_title.setText(group)
-                    self.page_desc.setText(self.GROUP_DESC.get(group, ""))
+                    self.page_desc.setText("")
                     break
             self.sidebar.show()
             return
@@ -1386,8 +1437,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if event.key() == QtCore.Qt.Key_Escape:
             if self.search.text():
                 self.search.clear()
+            elif self._help_back is not None:
+                self._help_back()
             elif self.stack.currentWidget() is self.detail_host:
                 self.close_panel()
+            return
+        if event.key() == QtCore.Qt.Key_F1:
+            # 与右上角那个按钮同一条路径：进帮助 / 从帮助返回
+            self.open_context_help()
             return
         # Ctrl+1~6 跳组；Ctrl+, 打开设置
         if event.modifiers() & QtCore.Qt.ControlModifier:

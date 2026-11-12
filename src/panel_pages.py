@@ -367,15 +367,17 @@ class HelpPage(QtWidgets.QWidget):
         self.reload()
 
     def _go(self, url):
-        """站内链接跳转；点到图片就用系统看图器打开原图。"""
+        """只处理站内跳转与外部网址，本地文件一律不打开。
+
+        文档里的配图刻意不带链接（早先套过一层，点一下弹系统看图器，
+        看文档时反而碍事）；这里再把本地文件挡掉，免得以后有人加个
+        `<a href="img/...">` 又把看图器叫出来。
+        """
         name = url.fileName() or "index.html"
         if name.endswith(".html") and (help_dir() / name).is_file():
             self.show_doc(name)
             return
-        local = help_dir() / url.toString().lstrip("/")
-        if local.is_file():
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(local)))
-        else:
+        if url.scheme() in ("http", "https"):
             QtGui.QDesktopServices.openUrl(url)
 
     def reload(self):
