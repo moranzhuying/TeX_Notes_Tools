@@ -37,7 +37,7 @@ _tmp_*
 tools/sync_paths/
 # 项目规范副本同步：默认配对指向工作区内部文档（项目规范.md / .workbuddy/refs/），
 # 属工作区专用，不随公开库分发。
-spec_sync/
+tools/spec_sync/
 # TeXstudio 行定位验证的探测脚本：本机专用，含本机绝对路径（解释器 / 证据目录），不入库。
 tools/progress/tests/texstudio_*
 

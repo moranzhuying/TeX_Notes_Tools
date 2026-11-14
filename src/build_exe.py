@@ -6,7 +6,7 @@ build_exe.py — 把图形面板打包成 exe（双击即用，不需要装 Pyth
     <venv>/Scripts/python.exe build_exe.py              # 单文件（启动稍慢）
     <venv>/Scripts/python.exe build_exe.py --onedir     # 目录模式（启动快，产物是文件夹）
 
-产物落在 Tools/ 下（与 src/ 同级）。工具脚本留在 src/ 里、不塞进 exe 的解包临时
+产物落在 Tools/ 下（与 src/ 同级）。工具脚本留在 tools/ 里、不塞进 exe 的解包临时
 目录 —— 它们要操作真实工作区；exe 只负责带运行环境和界面。
 """
 import argparse

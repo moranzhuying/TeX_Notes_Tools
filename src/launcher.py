@@ -42,14 +42,14 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 if getattr(sys, "frozen", False):
-    # 打包进 exe 时 __file__ 在解包临时目录；脚本始终在 exe 旁的 src/ 下。
+    # 打包进 exe 时 __file__ 在解包临时目录；脚本始终在 exe 旁的 tools/ 下。
     TOOLS_ROOT = Path(sys.executable).resolve().parent
-    SCRIPT_ROOT = TOOLS_ROOT / "src"
+    SCRIPT_ROOT = TOOLS_ROOT / "tools"
     if not SCRIPT_ROOT.is_dir():      # 老布局：脚本与 exe 同目录
         SCRIPT_ROOT = TOOLS_ROOT
 else:
-    SCRIPT_ROOT = _HERE               # Tools/src
-    TOOLS_ROOT = _HERE.parent         # Tools
+    SCRIPT_ROOT = _HERE.parent / "tools"   # Tools/tools
+    TOOLS_ROOT = _HERE.parent              # Tools
 WORKSPACE = TOOLS_ROOT.parent
 
 # (序号, 标题, 相对脚本路径, 运行方式, 分组)
