@@ -21,9 +21,11 @@ watch_notes.py — 笔记目录监测与滚动 git 历史压缩
     python watch_notes.py --dir Algebra --once   # 只跑一轮后退出
     python watch_notes.py --dir Algebra --fresh  # 丢弃上次状态，重新开始
     python watch_notes.py --dir Algebra --keep 5 # 历史只留最新 5 条
+    python watch_notes.py --dir Algebra --clear-logs  # 删掉该仓库的监测日志
 
 ``--dir`` 也可以给绝对路径。中断（Ctrl+C）后再次启动默认沿用上次状态；
-加 ``--fresh`` 则清空状态从头开始。
+加 ``--fresh`` 则清空状态从头开始。日志是逐轮追加的，跑几个月会有几十 KB，
+``--clear-logs`` 只删日志文件，不动状态、也不动 git 历史。
 """
 import argparse
 import datetime
@@ -284,6 +286,33 @@ def log_path_for(repo):
     return LOG_DIR / "watch-{}.log".format(dir_key(repo))
 
 
+def clear_logs(repo):
+    """删掉这个仓库的监测日志（含 watch-fatal.log）。
+
+    只删日志：状态文件留着，历史裁剪的进度不受影响。日志按「打开-写-关闭」
+    追加，所以在另一个进程正跑着监测时删也不会失败 —— 它下次写会重新建文件。
+    输出走 log(None, ...)：不写回日志文件（正在删它），但保持同一种行格式，
+    面板的日志表能直接解析出这几条。
+    """
+    targets = [log_path_for(repo), LOG_DIR / "watch-fatal.log"]
+    removed = 0
+    for path in targets:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        try:
+            path.unlink()
+        except OSError as exc:
+            log(None, "删除失败 {}：{}".format(path.name, exc), "ERROR")
+            continue
+        removed += 1
+        log(None, "已删除 {}（{} 字节）".format(path.name, size))
+    if not removed:
+        log(None, "没有可删的日志：{}".format(LOG_DIR))
+    return 0
+
+
 def load_state(path, fresh):
     if fresh:
         try:
@@ -498,6 +527,8 @@ def parse_args(argv=None):
                    help="历史保留条数（默认 %(default)s，最少 1）")
     p.add_argument("--fresh", action="store_true",
                    help="忽略上次状态，重新开始")
+    p.add_argument("--clear-logs", action="store_true",
+                   help="删掉该仓库的监测日志后退出（不动状态与 git 历史）")
     p.add_argument("--once", action="store_true", help="只跑一轮后退出")
     p.add_argument("--no-push", action="store_true", help="只提交不推送")
     return p.parse_args(argv)
@@ -520,6 +551,8 @@ def main(argv=None):
         return interactive()
 
     repo = resolve_repo(args.dir)
+    if args.clear_logs:
+        return clear_logs(repo)
     interval = max(MIN_INTERVAL, args.interval)
     prune = max(MIN_INTERVAL, args.prune_interval)
     keep = max(1, args.keep)

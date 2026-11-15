@@ -371,6 +371,9 @@ CARD_MIN_WIDTH = 360
 CARD_MAX_WIDTH = 660
 GAP = 12
 
+#: 窗口标题。单实例激活要靠它找到已经打开的窗口，所以只在这里写一次。
+WINDOW_TITLE = "LaTeX 工具箱"
+
 #: 每个工具的图标（用彩色 emoji，不依赖字形码点，换机器也不会变方块）
 ICONS = {
     "1": "🔀", "2": "📚", "3": "🔤", "4": "🖥️",
@@ -937,9 +940,12 @@ class Sidebar(QtWidgets.QWidget):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LaTeX 工具箱")
+        self.setWindowTitle(WINDOW_TITLE)
         self.tools = core.describe_tools()
         self.cards = {}
+        # 打开过的工具面板：切换工具页时只摘下来藏好，不销毁 ——
+        # 表单值、结果、正在跑的子进程都靠它留着。
+        self._panels = {}
         self.groups = []
         for tool in self.tools:
             if tool["group"] not in self.groups:
@@ -1168,14 +1174,15 @@ class MainWindow(QtWidgets.QMainWindow):
             card.resize_parts()
         for grid in getattr(self, "grids", {}).values():
             grid.refresh_spacing()
-        # 正开着工具页就按新倍率重开一遍，别把用户晾在空页上
-        if hasattr(self, "detail_host"):
-            tool = getattr(self, "_current_tool", None)
-            on_detail = (tool is not None
-                         and self.stack.currentWidget() is self.detail_host)
-            self._clear_detail()
-            if on_detail:
-                self.open_panel(tool["id"])
+        # 工具页不重建：面板留着进度和正在跑的任务，只把写死的尺寸补一遍。
+        # 之前这里先清再重开，改一次字号就把手上的活全丢了。
+        for panel in getattr(self, "_panels", {}).values():
+            panel.resize_parts()
+
+    def reset_column_widths(self):
+        """让所有已打开的结果表忘掉记住的列宽（设置页那个按钮调这里）。"""
+        for panel in getattr(self, "_panels", {}).values():
+            panel.reset_column_widths()
 
     def toggle_theme(self):
         """主题按钮：在 深色/浅色 之间切，并把选择记住。"""
@@ -1186,19 +1193,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---------- 交互 ----------
 
-    def _clear_detail(self):
+    def _detach_detail(self):
+        """把工具页的控件从布局里摘下，但不销毁面板本身。
+
+        以前这里是 deleteLater：点「返回工具列表」等于把面板连同表单里填的值、
+        结果表、还在跑的子进程一起扔掉，回来只能从头再来。现在 FormPanel 一律
+        留在 `self._panels` 里，摘下来只是藏起来。
+        """
         while self.detail_lay.count():
             item = self.detail_lay.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.hide()
                 widget.setParent(None)
-                widget.deleteLater()
+                if not isinstance(widget, actions.FormPanel):
+                    widget.deleteLater()
                 continue
             sub = item.layout()
             if sub is not None:
                 while sub.count():
                     child = sub.takeAt(0).widget()
                     if child is not None:
+                        child.hide()
                         child.setParent(None)
                         child.deleteLater()
                 sub.deleteLater()
@@ -1208,11 +1224,22 @@ class MainWindow(QtWidgets.QMainWindow):
         tool = next((t for t in self.tools if t["id"] == key), None)
         if tool is None:
             return
-        panel = actions.build(key, tool)
-        if panel is None:
-            self.toast("该工具还没有可视化面板，先用控制台")
+        current_tool = getattr(self, "_current_tool", None)
+        if (current_tool is not None and current_tool["id"] == key
+                and self.stack.currentWidget() is self.detail_host):
             return
-        self._clear_detail()
+
+        panel = self._panels.get(key)
+        if panel is None:
+            panel = actions.build(key, tool)
+            if panel is None:
+                self.toast("该工具还没有可视化面板，先用控制台")
+                return
+            panel.status_changed.connect(
+                lambda text, cid=key: self.cards[cid].set_status(text))
+            self._panels[key] = panel
+
+        self._detach_detail()
 
         back = QtWidgets.QPushButton("← 返回工具列表")
         back.setObjectName("Secondary")
@@ -1228,8 +1255,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # 不再单放「? 查看帮助」：右上角那个「?」已覆盖，且它点完会变成返回键
         self.detail_lay.addLayout(row)
         self.detail_lay.addWidget(panel, 1)
-        panel.status_changed.connect(
-            lambda text, cid=key: self.cards[cid].set_status(text))
+        panel.show()
 
         self._current_tool = tool
         self.stack.setCurrentWidget(self.detail_host)
@@ -1246,7 +1272,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._help_back = None
         if hasattr(self, "context_help"):
             self._set_context_help(back=False)
-        self._clear_detail()
+        self._detach_detail()
         group = getattr(self, "_current_group", self.groups[0])
         self.stack.setCurrentWidget(self.pages[group])
         self.page_title.setText(group)
@@ -1554,11 +1580,185 @@ def _excepthook(exc_type, exc, tb):
         pass
 
 
+# ---------------------------------------------------------------- 单实例
+#
+# 两个面板同时开着会互相干扰：同一个工具能在两边各跑一份，配置文件（列宽、
+# 设置）也会互相覆盖。所以进程层面只留一个，再开就把已经有的那个叫到前面。
+#
+# 实现用命名互斥体而不是「查进程名」：进程名可以被改，互斥体由内核持有，
+# 进程一退出（包括崩溃）就自动释放，不会留下假的「已经在运行」。
+
+#: `Local\` = 只在本用户会话内互斥。同一台机器两个用户各开一个互不干扰，
+#: 用 `Global\` 反而会让第二个用户永远打不开。
+MUTEX_NAME = "Local\\LaTeX-Toolbox-Panel"
+_ERROR_ALREADY_EXISTS = 183
+_SINGLETON_HANDLE = None      # 模块级持有：只要进程活着，互斥体就在
+
+
+def _pid_file():
+    """第一个实例把 pid 写在设置目录里，第二个靠它精确找到那个窗口。
+
+    比可执行文件路径可靠：venv 里的 python.exe 只是个 shim，进程的真实映像
+    是基础解释器，比路径会全部落空；pid 没有这个问题。
+    """
+    try:
+        import panel_config
+        return Path(panel_config.CONFIG_PATH).parent / "_panel.pid"
+    except Exception:  # noqa: BLE001 —— 拿不到落点就别记，不影响互斥
+        return None
+
+
+def _claim_single_instance():
+    """抢单实例。抢到了返回 True，已有实例在跑返回 False。
+
+    `PANEL_ALLOW_MULTI=1` 可以放行 —— 改代码时要同时开新旧两份对比，
+    没有这个开关就只能先杀掉正在用的那个。
+    """
+    global _SINGLETON_HANDLE
+    if os.name != "nt" or os.environ.get("PANEL_ALLOW_MULTI") == "1":
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL,
+                                          wintypes.LPCWSTR]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+        already = ctypes.get_last_error() == _ERROR_ALREADY_EXISTS
+    except Exception:  # noqa: BLE001 —— 拿不到 API 就放行，别把面板锁死
+        return True
+
+    if not handle:
+        return True
+    if already:
+        try:
+            kernel32.CloseHandle(handle)
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+    _SINGLETON_HANDLE = handle
+    path = _pid_file()
+    if path is not None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            pass
+    return True
+
+
+def _peer_pid():
+    """读第一个实例记下的 pid；没有或读坏了返回 None。"""
+    path = _pid_file()
+    if path is None:
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _find_panel_window(pid=None):
+    """找已经打开的那个面板窗口，返回 hwnd；没有则 None。
+
+    优先认 pid（见 `_pid_file`）。pid 对不上时退回只看标题 —— 那对应两种瞬态：
+    窗口刚建好、pid 还没落盘；或者上一次异常退出留下了别的 pid。
+    标题以外唯一排除的是「自己」，避免把本进程的窗口当成别人的。
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+    except Exception:  # noqa: BLE001
+        return None
+
+    # 64 位上 HWND 是 8 字节：不声明 argtypes，ctypes 按 32 位 int 传，
+    # 高位被截断 —— 窗口找得到，叫不到前面。
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND,
+                                                ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
+    mine = os.getpid()
+    exact = []
+    loose = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def enum_cb(hwnd, _lparam):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        if buf.value != WINDOW_TITLE:
+            return True
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == mine:
+            return True
+        if pid is not None and owner.value == pid:
+            exact.append(hwnd)
+        else:
+            loose.append(hwnd)
+        return True
+
+    user32.EnumWindows(enum_cb, 0)
+    if exact:
+        return exact[0]
+    return loose[0] if loose else None
+
+
+def _activate_running_instance():
+    """把已有窗口叫到前面。返回是否成功。"""
+    hwnd = _find_panel_window(_peer_pid())
+    if not hwnd:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.ShowWindow.restype = wintypes.BOOL
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.ShowWindow(hwnd, 9)     # SW_RESTORE：最小化了也拉回来
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _warn_already_running():
+    """叫不出窗口时至少说一句 —— 双击图标毫无反应最让人困惑。"""
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "LaTeX 工具箱已经在运行了。\n请切换到已经打开的那个窗口。",
+            WINDOW_TITLE, 0x40)      # MB_ICONINFORMATION
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main():
+    if not _claim_single_instance():
+        if not _activate_running_instance():
+            _warn_already_running()
+        return 0
     _claim_taskbar_identity()
     sys.excepthook = _excepthook
     app = QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("LaTeX 工具箱")
+    app.setApplicationName(WINDOW_TITLE)
     app.setStyle("Fusion")
     font = QtGui.QFont("Segoe UI Variable Text", 9)
     font.setFamilies(["Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI"])

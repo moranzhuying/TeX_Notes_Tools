@@ -67,3 +67,5 @@ config.json
 logs/
 _panel_config.json
 _panel_error.log
+# 单实例锁：第一个实例把自己的 pid 写在这里，第二个实例靠它找到已有窗口
+_panel.pid

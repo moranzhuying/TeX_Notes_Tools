@@ -101,8 +101,15 @@ class SettingsPage(QtWidgets.QWidget):
         reset.setObjectName("Secondary")
         reset.setCursor(QtCore.Qt.PointingHandCursor)
         reset.clicked.connect(self._on_reset)
+        reset_cols = QtWidgets.QPushButton("清除记住的列宽")
+        reset_cols.setObjectName("Secondary")
+        reset_cols.setCursor(QtCore.Qt.PointingHandCursor)
+        reset_cols.setToolTip("把所有结果表恢复到按内容算的默认列宽")
+        reset_cols.clicked.connect(self._on_reset_columns)
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(reset_cols)
         row.addWidget(reset)
         row.addStretch(1)
         data_box = QtWidgets.QFrame()
@@ -228,6 +235,14 @@ class SettingsPage(QtWidgets.QWidget):
 
     def _on_columns(self, checked):
         self._save(remember_columns=bool(checked))
+
+    def _on_reset_columns(self):
+        """只清列宽记忆，不动其它设置。"""
+        self.config = cfg.load()
+        self.config["column_widths"] = {}
+        cfg.save(self.config)
+        self.main.reset_column_widths()
+        self.main.toast("已清除列宽记忆，结果表回到默认宽度")
 
     def _on_reset(self):
         self.config = dict(cfg.DEFAULTS)

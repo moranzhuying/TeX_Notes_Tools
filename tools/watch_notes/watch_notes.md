@@ -11,6 +11,7 @@ python watch_notes.py --dir Algebra          # 直接监测（相对 LaTeX_Notes
 python watch_notes.py --dir Algebra --once   # 只跑一轮后退出
 python watch_notes.py --dir Algebra --fresh  # 丢弃上次状态，重新开始
 python watch_notes.py --dir Algebra --keep 5 # 历史只留最新 5 条
+python watch_notes.py --dir Algebra --clear-logs  # 删掉该仓库的监测日志
 python watch_notes.py --dir "D:/某处/仓库"    # 也可给绝对路径
 ```
 
@@ -45,6 +46,8 @@ python watch_notes.py --dir "D:/某处/仓库"    # 也可给绝对路径
 - Ctrl+C 中断：保存状态并写一行退出日志。
 
 日志在 `watch_notes/_logs/watch-<目录哈希>.log`。`_state/` 与 `_logs/` 均由 `.gitignore` 排除，不随仓库分发。
+
+日志是逐轮追加的，跑几个月会有几十 KB。清掉用 `--clear-logs`（面板里是「操作 → 清理日志文件」）：只删该仓库的日志与 `watch-fatal.log`，不动状态文件，也不动 git 历史。日志按「打开-写-关闭」追加，所以另一个进程正跑着监测时删也不会失败，它下次写会重建文件。输出不写回日志（正在删它），但沿用同一种行格式。
 
 ## 面板
 

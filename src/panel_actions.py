@@ -478,9 +478,9 @@ def _build_pdf_upright(v):
 
 
 def _build_watch_notes(v):
-    args = []
-    if v["dir"]:
-        args += ["--dir", v["dir"]]
+    if v["op"] == "清理日志文件":
+        return ["--dir", v["dir"], "--clear-logs"]
+    args = ["--dir", v["dir"]] if v["dir"] else []
     args += ["--interval", str(v["interval"])]
     args += ["--prune-interval", str(v["prune"])]
     args += ["--keep", str(v["keep"])]
@@ -1019,13 +1019,20 @@ SPECS = {
         "title": "笔记目录监测",
         "desc": "定时提交推送，并按条数上限裁剪历史。测一次用「只跑一轮」。",
         "fields": [
+            {"key": "op", "label": "操作", "type": "choice",
+             "choices": ["开始监测", "清理日志文件"], "default": "开始监测"},
             {"key": "dir", "label": "监测仓库", "type": "choice",
-             "choices": _watch_repo_choices, "default": ""},
-            {"key": "interval", "label": "检测间隔（秒）", "type": "int", "default": 300},
-            {"key": "prune", "label": "裁剪检查间隔（秒）", "type": "int", "default": 900},
-            {"key": "keep", "label": "历史保留条数", "type": "int", "default": 20},
-            {"key": "once", "label": "只跑一轮就退出", "type": "check", "default": True},
-            {"key": "no_push", "label": "只提交不推送", "type": "check", "default": False},
+             "choices": _watch_repo_choices, "default": "", "required": True},
+            {"key": "interval", "label": "检测间隔（秒）", "type": "int", "default": 300,
+             "show_if": ("op", "开始监测")},
+            {"key": "prune", "label": "裁剪检查间隔（秒）", "type": "int", "default": 900,
+             "show_if": ("op", "开始监测")},
+            {"key": "keep", "label": "历史保留条数", "type": "int", "default": 20,
+             "show_if": ("op", "开始监测")},
+            {"key": "once", "label": "只跑一轮就退出", "type": "check", "default": True,
+             "show_if": ("op", "开始监测")},
+            {"key": "no_push", "label": "只提交不推送", "type": "check", "default": False,
+             "show_if": ("op", "开始监测")},
         ],
         "build": _build_watch_notes,
         "result": {
@@ -1081,6 +1088,11 @@ class FormPanel(QtWidgets.QWidget):
 
     status_changed = QtCore.Signal(str)
 
+    #: 列宽上下限（设计像素，经 _px 换算）。下限保证「时间 / 级别」这类短列头
+    #: 也放得下两三个汉字，上限只防极端长文本把别的列挤没。
+    MIN_COL_WIDTH = 110
+    MAX_COL_WIDTH = 560
+
     def __init__(self, tool_id, tool, parent=None):
         super().__init__(parent)
         self.tool_id = tool_id
@@ -1088,9 +1100,35 @@ class FormPanel(QtWidgets.QWidget):
         self.spec = SPECS[tool_id]
         self.widgets = {}
         self.rows = {}
+        self._field_labels = []
+        self._form = None
         self.proc = None
         self._buffer = ""
+        # 列宽：_saved_widths 是「用户手定的宽度」，None 表示还没定过、
+        # 按内容算。_applying_widths 区分「程序设宽」与「用户拖动」——
+        # 不区分的话程序每次设宽都会触发 sectionResized，把默认值当用户的
+        # 选择落盘，之后就再也回不到按内容算的默认值了。
         self._saved_widths = None
+        self._applying_widths = False
+        self._widths_from_data = False
+        # 输出节流：长任务的日志是逐行吐的，每来一行就重建整张表，
+        # 攒到上千行时界面会明显卡。200ms 合并一次。
+        self._pending_show = QtCore.QTimer(self)
+        self._pending_show.setSingleShot(True)
+        self._pending_show.setInterval(200)
+        self._pending_show.timeout.connect(self._flush_result)
+        # 拖动列宽时 sectionResized 会连发几十次，落盘合并到 400ms 一次
+        self._width_timer = QtCore.QTimer(self)
+        self._width_timer.setSingleShot(True)
+        self._width_timer.setInterval(400)
+        self._width_timer.timeout.connect(self._save_column_widths)
+        # 末列补足要在「滚动条状态定下来之后」再量一次：竖向滚动条一出现，
+        # 视口就窄了 10px，而它出现与否取决于行数 —— 同一拍里量不准。
+        self._fit_timer = QtCore.QTimer(self)
+        self._fit_timer.setSingleShot(True)
+        self._fit_timer.setInterval(0)
+        self._fit_timer.timeout.connect(self._fit_last_column)
+        self._fit_retries = 0
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -1110,6 +1148,7 @@ class FormPanel(QtWidgets.QWidget):
             form.setContentsMargins(18, 16, 18, 16)
             form.setHorizontalSpacing(_px(12))
             form.setVerticalSpacing(_px(10))
+            self._form = form
         row = 0
         for field in (self.spec["fields"] if form is not None else []):
             container = QtWidgets.QWidget()
@@ -1120,6 +1159,7 @@ class FormPanel(QtWidgets.QWidget):
             label.setObjectName("FieldLabel")
             label.setFixedWidth(_px(168))
             label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            self._field_labels.append(label)
             box.addWidget(label, 0)
             widget = self._make_widget(field)
             box.addWidget(widget, 1)
@@ -1173,6 +1213,14 @@ class FormPanel(QtWidgets.QWidget):
         self.result_summary = QtWidgets.QLabel("")
         self.result_summary.setObjectName("CardDesc")
         head.addWidget(self.result_summary, 1)
+        # 清空只清界面，不动正在跑的进程：日志型工具（监测、转写）跑久了
+        # 结果区会越积越长，没有出口就只能重启面板。
+        self.clear_btn = QtWidgets.QPushButton("清空")
+        self.clear_btn.setObjectName("Secondary")
+        self.clear_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.clear_btn.setToolTip("清掉结果区里的内容，不影响正在运行的任务")
+        self.clear_btn.clicked.connect(self.clear_result)
+        head.addWidget(self.clear_btn)
         copy_btn = QtWidgets.QPushButton("复制")
         copy_btn.setObjectName("Secondary")
         copy_btn.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1197,9 +1245,9 @@ class FormPanel(QtWidgets.QWidget):
             # Interactive：用户可以拖动列边界自由调列宽。
             # ResizeToContents 会锁死列宽（拖不动），Stretch 同样不能手动调。
             header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
-            header.setMinimumSectionSize(48)
-            # 记忆里存了列宽的列，用记录的宽度；没存的按内容给一个合适的初值。
-            # 全部是 Interactive，这样每一列都能拖。
+            header.setMinimumSectionSize(_px(56))
+            header.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            header.customContextMenuRequested.connect(self._table_menu)
             self._saved_widths = self._load_column_widths()
             header.sectionResized.connect(self._on_column_resized)
             self._apply_column_widths()
@@ -1223,7 +1271,14 @@ class FormPanel(QtWidgets.QWidget):
                     if c < self.table.columnCount():
                         self.table.setItem(
                             r, c, QtWidgets.QTableWidgetItem(str(val)))
-            self._apply_column_widths()
+            # 没记住用户手定的宽度时，第一次拿到数据按内容定宽。之后的流式
+            # 追加不再重算 —— 每 200ms 跟着内容跳动，比窄更难受。
+            if self._saved_widths is None and not self._widths_from_data:
+                self._apply_column_widths()
+                self._widths_from_data = True
+            # 行数变了，竖向滚动条可能刚出现/刚消失，视口宽度要重新对一次
+            self._fit_retries = 0
+            self._fit_timer.start()
             summary = self.result.get("summary")
             if rows:
                 self.result_summary.setText(summary(rows) if summary else "")
@@ -1235,16 +1290,26 @@ class FormPanel(QtWidgets.QWidget):
             lines = cleaned.splitlines()
             self.result_summary.setText("{} 行".format(len(lines)) if lines else "无输出")
 
+    def clear_result(self):
+        """清掉结果区。正在跑的任务不受影响，后续输出接着显示。"""
+        self._buffer = ""
+        if self.table is not None:
+            self.table.setRowCount(0)
+        elif self.out is not None:
+            self.out.clear()
+        running = self.proc is not None
+        self.result_summary.setText("已清空，新输出继续显示" if running else "已清空")
+
     # ---------- 列宽 ----------
 
     def _load_column_widths(self):
-        """读回上次记住的列宽。"""
+        """读回上次记住的列宽（用户手拖过的那些）。"""
         try:
             import panel_config as _cfg
             data = _cfg.load()
             if not data.get("remember_columns", True):
                 return None
-            widths = (data.get("columns") or {}).get(self.tool_id)
+            widths = (data.get("column_widths") or {}).get(self.tool_id)
             if isinstance(widths, list) and len(widths) == self.table.columnCount():
                 return [int(w) for w in widths]
         except Exception:  # noqa: BLE001 —— 读配置失败不该影响显示
@@ -1252,10 +1317,11 @@ class FormPanel(QtWidgets.QWidget):
         return None
 
     def _apply_column_widths(self):
-        """给每列一个合适的初始宽度。
+        """定列宽：有记忆就照记忆，没有就按内容算，最后把余量补给末列。
 
-        优先用用户记住的宽度；没有就按内容宽度算。所有列都是 Interactive，
-        用户随时能拖动边界调整。
+        全部列保持 Interactive，用户随时能拖。所谓「默认太窄」的根因有两个：
+        一是老版本下限写死 72px，中文列头都放不下；二是程序设宽时也走了
+        sectionResized，把默认值当用户选择存了下来，之后永远 72。
         """
         if self.table is None:
             return
@@ -1264,56 +1330,130 @@ class FormPanel(QtWidgets.QWidget):
         if count == 0:
             return
 
-        metrics = self.table.fontMetrics()
-        widths = self._saved_widths or []
-        if len(widths) != count:
-            widths = [0] * count
+        saved = self._saved_widths
+        self._applying_widths = True
+        try:
+            if saved and len(saved) == count:
+                for c, width in enumerate(saved):
+                    header.resizeSection(
+                        c, max(_px(self.MIN_COL_WIDTH), int(width)))
+                return
+            metrics = self.table.fontMetrics()
+            for c in range(count):
+                header.resizeSection(c, self._natural_width(c, metrics))
+        finally:
+            self._applying_widths = False
+        self._fit_last_column()
 
-        for c in range(count):
-            remembered = widths[c]
-            if remembered > 0:
-                header.resizeSection(c, remembered)
-                continue
-            if self.table.rowCount() == 0:
-                # 还没数据，先按表头文字给个宽度，等有结果了再按内容细调
-                head = self.table.horizontalHeaderItem(c)
-                text = head.text() if head is not None else ""
-                header.resizeSection(
-                    c, min(520, max(72, metrics.horizontalAdvance(text) + 28)))
-                continue
-            # 按内容算：取该列最宽的一格，再留一点余量
-            longest = 0
-            for r in range(self.table.rowCount()):
-                item = self.table.item(r, c)
-                if item is None:
-                    continue
-                longest = max(longest, metrics.horizontalAdvance(item.text()))
-            head = self.table.horizontalHeaderItem(c)
-            if head is not None:
-                longest = max(longest, metrics.horizontalAdvance(head.text()))
-            header.resizeSection(c, min(520, max(72, longest + 28)))
+    def _natural_width(self, column, metrics):
+        """一列按表头与内容算出的宽度。只看前 200 行 —— 表格几万行时
+        全量扫描会把界面卡住，而这个宽度只是初值，用户随时能拖。"""
+        head = self.table.horizontalHeaderItem(column)
+        widest = metrics.horizontalAdvance(head.text()) if head is not None else 0
+        for r in range(min(self.table.rowCount(), 200)):
+            item = self.table.item(r, column)
+            if item is not None:
+                widest = max(widest, metrics.horizontalAdvance(item.text()))
+        return max(_px(self.MIN_COL_WIDTH),
+                   min(_px(self.MAX_COL_WIDTH), widest + _px(30)))
 
-    def _on_column_resized(self, index, _old, new):
-        """用户拖动列边界后把宽度记下来。"""
-        if self.table is None or index < 0:
+    def _fit_last_column(self):
+        """把最后一列调到「正好填满剩余宽度」，多则收、少则补。
+
+        只对「没记住列宽」的表格生效：用户一拖动，宽度就归用户管，
+        再自动补足等于把人家拖的又改回去。
+
+        收的动作是必需的：按内容算出来的宽度加起来常比视口还宽，那时表格会
+        冒出横向滚动条，最后一列的文字被切在边框外 —— 比窄更难看。
+        """
+        if self.table is None or self._saved_widths:
+            self._fit_retries = 0
+            return
+        header = self.table.horizontalHeader()
+        count = self.table.columnCount()
+        if count == 0:
+            return
+        avail = self.table.viewport().width()
+        if avail <= 0:
+            return
+        used = sum(header.sectionSize(c) for c in range(count))
+        extra = avail - used
+        if extra == 0:
+            self._fit_retries = 0
+            return
+        current = header.sectionSize(count - 1)
+        target = max(_px(self.MIN_COL_WIDTH), current + extra)
+        if target == current:
+            self._fit_retries = 0
+            return
+        self._applying_widths = True
+        try:
+            header.resizeSection(count - 1, target)
+        finally:
+            self._applying_widths = False
+        # 宽度一改，视口的滚动条状态可能跟着变（横向让位、纵向出现），
+        # 余量得重算一次。只补两拍 —— 再多就是在跟滚动条互相推。
+        if self._fit_retries < 2:
+            self._fit_retries += 1
+            self._fit_timer.start()
+
+    def _on_column_resized(self, index, old, new):
+        """用户拖动列边界后把宽度记进内存，稍后合并落盘。"""
+        if self._applying_widths or self.table is None:
             return
         count = self.table.columnCount()
-        if index >= count or new <= 0:
+        if index < 0 or index >= count or new <= 0 or new == old:
+            return
+        header = self.table.horizontalHeader()
+        # 拖动之后「补足末列」必须让位，否则一 resize 又被改回去
+        self._saved_widths = [header.sectionSize(c) for c in range(count)]
+        self._widths_from_data = True
+        self._width_timer.start()
+
+    def _save_column_widths(self):
+        if self.table is None or not self._saved_widths:
             return
         try:
             import panel_config as _cfg
             data = _cfg.load()
             if not data.get("remember_columns", True):
                 return
-            store = data.setdefault("columns", {})
-            widths = list(store.get(self.tool_id) or [])
-            if len(widths) != count:
-                widths = [0] * count
-            widths[index] = int(new)
-            store[self.tool_id] = widths
+            store = data.setdefault("column_widths", {})
+            store[self.tool_id] = [int(w) for w in self._saved_widths]
             _cfg.save(data)
         except Exception:  # noqa: BLE001 —— 存配置失败不影响使用
             pass
+
+    def reset_column_widths(self):
+        """忘掉记住的宽度，回到按内容算的默认值。"""
+        self._saved_widths = None
+        self._widths_from_data = False
+        try:
+            import panel_config as _cfg
+            data = _cfg.load()
+            store = data.get("column_widths") or {}
+            if self.tool_id in store:
+                store.pop(self.tool_id)
+                _cfg.save(data)
+        except Exception:  # noqa: BLE001 —— 存配置失败不影响使用
+            pass
+        self._apply_column_widths()
+
+    def _table_menu(self, pos):
+        """表头右键：恢复默认列宽。拖乱了又不想逐列调时的出口。"""
+        if self.table is None:
+            return
+        menu = QtWidgets.QMenu(self)
+        act = menu.addAction("恢复默认列宽")
+        act.triggered.connect(self.reset_column_widths)
+        menu.exec(self.table.horizontalHeader().mapToGlobal(pos))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 构造过程中可能先来一次 resize，那时 table 还没建
+        if getattr(self, "table", None) is not None:
+            self._fit_last_column()
+
 
     def _copy_result(self):
         if self.table is not None:
@@ -1446,6 +1586,7 @@ class FormPanel(QtWidgets.QWidget):
         args = self.spec["build"](values)
         program, argv = core.spawn_command(script, args)
         self._buffer = ""
+        self._pending_show.stop()
         self._show_result("")
         self.hint.setText("运行中…")
         self.run_btn.setEnabled(False)
@@ -1509,12 +1650,23 @@ class FormPanel(QtWidgets.QWidget):
         if self.proc is None:
             return
         data = bytes(self.proc.readAllStandardOutput())
-        text = data.decode("utf-8", "replace")
-        self._buffer += text
+        if not data:
+            return
+        self._buffer += data.decode("utf-8", "replace")
+        # 不直接重建界面：日志型工具一秒能吐几十行，每行一次 setRowCount
+        # 会让窗口卡到没法操作。攒 200ms 刷新一次。
+        if not self._pending_show.isActive():
+            self._pending_show.start()
+
+    def _flush_result(self):
+        """把缓冲里的输出现成化（节流定时器到期，或任务结束时立即调）。"""
+        if self._pending_show.isActive():
+            self._pending_show.stop()
         self._show_result(self._buffer)
 
     def _finished(self, code, _status):
         self._read_output()
+        self._flush_result()
         self.hint.setText("完成" if code == 0 else "完成，但有错误（退出码 {}）".format(code))
         self.status_changed.emit("已完成" if code == 0 else "已完成（有错误）")
         self._cleanup()
@@ -1522,6 +1674,7 @@ class FormPanel(QtWidgets.QWidget):
     def _failed(self, _err):
         if self.proc is not None:
             self.hint.setText("启动失败：{}".format(self.proc.errorString()))
+        self._flush_result()
         self._cleanup()
 
     def _cleanup(self):
@@ -1537,6 +1690,24 @@ class FormPanel(QtWidgets.QWidget):
             self.hint.setText("已中止")
             self.status_changed.emit("已中止")
             self._cleanup()
+
+    # ---------- 缩放 ----------
+
+    def resize_parts(self):
+        """界面倍率变了：重设写死的尺寸并按新字号重算列宽。
+
+        面板在切换工具页时不再销毁（进度要留着），所以字号变化得由这里
+        逐个补一遍 —— QSS 只管样式表里的 px，管不到 setFixedWidth。
+        """
+        for label in self._field_labels:
+            label.setFixedWidth(_px(168))
+        if self._form is not None:
+            self._form.setContentsMargins(_px(18), _px(16), _px(18), _px(16))
+            self._form.setHorizontalSpacing(_px(12))
+            self._form.setVerticalSpacing(_px(10))
+        if self.table is not None:
+            self.table.horizontalHeader().setMinimumSectionSize(_px(56))
+            self._apply_column_widths()
 
 
 def build(tool_id, tool):
