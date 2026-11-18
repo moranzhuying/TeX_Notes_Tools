@@ -331,10 +331,20 @@ def main():
         if dry:
             print(f"[预览] 将写入 CHANGELOG.md（{mode}）")
         else:
-            tools_root = os.path.dirname(
-                os.path.dirname(os.path.abspath(__file__)))
-            written, info = update_changelog(
-                os.path.join(tools_root, "CHANGELOG.md"), msg, mode)
+            # CHANGELOG 定位：先看脚本同级（笔记仓库根，脚本就在仓库根），
+            # 再逐级上探（Tools 布局下脚本在 tools/commit/，Tools 根在上两级）。
+            # 一份脚本要在两种布局下都能用，不能写死层数。
+            here = os.path.dirname(os.path.abspath(__file__))
+            cands = []
+            d = here
+            for _ in range(3):
+                cands.append(os.path.join(d, "CHANGELOG.md"))
+                parent = os.path.dirname(d)
+                if parent == d:
+                    break
+                d = parent
+            target = next((c for c in cands if os.path.isfile(c)), cands[0])
+            written, info = update_changelog(target, msg, mode)
             print(("[提示] " if not written else "[OK] ") + info)
             if not written and log_mode != "auto":
                 return 1
